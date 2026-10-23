@@ -174,7 +174,7 @@ const fp_ = s => { const S = CONFIG.SCORING; return S.G * s.g + S.A * s.a + S.PP
 const blend_ = (prior, obs, n, k) => (k * prior + n * obs) / (k + n);
 
 // Réglages appris par le backtest 2025-26 (🧪), sinon valeurs de base de APP.K
-let WEEKST = null, STARTERS = null, TX_SEEN = {}, OPP_ADJ = null, BT_P = undefined, PJ_GK = undefined, TX_CACHE = [], GK_RECENT = {}, JOURNAL = null, ROLES = null;
+let CUR_TEAMS = null, WEEKST = null, STARTERS = null, TX_SEEN = {}, OPP_ADJ = null, BT_P = undefined, PJ_GK = undefined, TX_CACHE = [], GK_RECENT = {}, JOURNAL = null, ROLES = null;
 function inSeason_() {
   if (BT_P === undefined) { BT_P = null; try { if (typeof btParams_ === 'function') BT_P = btParams_(); } catch (e) { /* rien */ } }
   return BT_P;
@@ -435,6 +435,7 @@ function simulate_(teamsOut, sched) {
 
 // ---------------- Instantané pour l'app ----------------
 function buildAppSnapshot_(ss, teams, players, index, aliases) {
+  try { CUR_TEAMS = currentTeams_(); } catch (e) { CUR_TEAMS = null; WARN.push('Équipes LNH actuelles : ' + e.message); }
   // présences sur la glace d'abord : le drapeau « joue blessé » (temps de jeu −20 % sur 3 matchs) en a besoin
   try { ROLES = typeof iceRoles_ === 'function' ? iceRoles_() : null; } catch (e) { WARN.push('Présences sur la glace : ' + e.message); }
   let mp = {};
@@ -469,7 +470,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
     const prior = g === 'G' ? gafPrior : combine(gafPrior, pjPrior);
     const m = g === 'G' ? modelGoalie_(p, prior, p ? mp[p.id] : null, name, engG)
                         : modelSkater_(p, prior, p ? mp[p.id] : null, g, pjPrior, pjPri._lg, gafPrior);
-    const team = (p && p.team) || nhl || '';
+    const team = (CUR_TEAMS && ((p && CUR_TEAMS.id[p.id]) || CUR_TEAMS.nom[norm_(name)])) || (p && p.team) || nhl || '';   // équipe actuelle (échanges compris)
     const ov = OVR[name], st = ov && ov.out && ov.out >= ymd_(new Date()) ? 'OUT' : (status || '');
     return {
       name: name, pos: pos || (p && p.pos) || '', grp: g, nhl: team, status: st,
@@ -699,6 +700,29 @@ function weekStats_(weekEnd) {
     out.p[r.playerId] = [r.gamesStarted != null ? r.gamesStarted : (r.gamesPlayed || 0), Math.round(fp * 10) / 10];
   });
   try { cache.put(ck, JSON.stringify(out), 600); } catch (e) {}
+  return out;
+}
+// Équipe LNH actuelle de chaque joueur (alignements officiels) : un joueur échangé change d'équipe tout de suite,
+// même s'il n'a pas encore joué pour sa nouvelle équipe. Gardé 1 h. { id: { idLNH: 'ABC' }, nom: { nomnormalisé: 'ABC' } }
+const NHL_TEAMS = ['ANA','BOS','BUF','CGY','CAR','CHI','COL','CBJ','DAL','DET','EDM','FLA','LAK','MIN','MTL','NSH','NJD','NYI','NYR','OTT','PHI','PIT','SJS','SEA','STL','TBL','TOR','UTA','VAN','VGK','WSH','WPG'];
+function currentTeams_() {
+  const cache = CacheService.getScriptCache(), hit = cache.get('CUR_TEAMS');
+  if (hit) return JSON.parse(hit);
+  const res = UrlFetchApp.fetchAll(NHL_TEAMS.map(t => ({ url: `${WEB}/roster/${t}/current`, muteHttpExceptions: true })));
+  const out = { id: {}, nom: {} };
+  let ok = 0;
+  res.forEach((r, i) => {
+    if (r.getResponseCode() !== 200) return;
+    let j; try { j = JSON.parse(r.getContentText()); } catch (e) { return; }
+    ok++;
+    ['forwards', 'defensemen', 'goalies'].forEach(k => (j[k] || []).forEach(p => {
+      out.id[p.id] = NHL_TEAMS[i];
+      const n = `${(p.firstName || {}).default || ''} ${(p.lastName || {}).default || ''}`;
+      out.nom[norm_(n)] = NHL_TEAMS[i];
+    }));
+  });
+  if (ok < 25) return out;                       // lecture incomplète : on ne la garde pas en cache
+  try { cache.put('CUR_TEAMS', JSON.stringify(out), 3600); } catch (e) {}
   return out;
 }
 // Gardiens partants (DailyFaceoff, page « starting goalies » : statut Confirmed / Likely / Unconfirmed), aujourd'hui et demain.
