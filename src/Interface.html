@@ -154,6 +154,7 @@ function progress(on) {
     }).getProgress();
   }, 1200);
 }
+let CODEUP = null;
 function load(force) {
   $('#stamp').textContent = force ? 'Mise à jour en cours…' : 'Chargement…';
   if (force) progress(true);
@@ -163,7 +164,14 @@ function load(force) {
   };
   const ko = e => { if (force) progress(false); $('#stamp').textContent = 'Erreur : ' + (e && e.message || e); };
   if (window.google && google.script && google.script.run) {
-    google.script.run.withSuccessHandler(ok).withFailureHandler(ko)[force ? 'refreshFromApp' : 'getAppData']();
+    if (!force) { google.script.run.withSuccessHandler(ok).withFailureHandler(ko).getAppData(); return; }
+    // ↻ : d'abord le code (nouvelle version sur GitHub ?), puis les données — avec le nouveau code s'il vient d'être installé
+    $('#plabel').textContent = 'Vérification du code…';
+    google.script.run.withSuccessHandler(t => {
+      let c = {}; try { c = JSON.parse(t || '{}'); } catch (e) {}
+      CODEUP = c.updated ? c : (c.err ? { err: c.err } : null);
+      google.script.run.withSuccessHandler(ok).withFailureHandler(ko).refreshFromApp();
+    }).withFailureHandler(() => google.script.run.withSuccessHandler(ok).withFailureHandler(ko).refreshFromApp()).checkCodeFromApp();
   } else if (window.MOCK) ok(JSON.stringify(window.MOCK));
 }
 $('#refresh').onclick = () => load(true);
@@ -206,7 +214,9 @@ function simulate(powers, N) {
 function render() {
   PREG = [];
   $('#stamp').textContent = 'Mis à jour ' + D.updated + (D.weekEnd ? ' · semaine jusqu’au ' + D.weekEnd.slice(5).replace('-', '/') : '');
-  const warn = D.warn && D.warn.length ? `<div class="warnbox">⚠ ${D.warn.map(esc).join(' · ')}</div>` : '';
+  const warn = (CODEUP && CODEUP.updated ? `<div class="warnbox" style="border-color:var(--good)">⬆️ Nouvelle version de l’app installée (${esc(CODEUP.bundle)}). ${CODEUP.url ? `<a href="${esc(CODEUP.url)}" target="_top"><b>Touche ici pour la recharger</b></a>` : '<b>Rafraîchis la page</b>'} pour voir les changements.</div>` : '')
+    + (CODEUP && CODEUP.err ? `<div class="warnbox">⚠ Mise à jour du code impossible : ${esc(CODEUP.err)}</div>` : '')
+    + (D.warn && D.warn.length ? `<div class="warnbox">⚠ ${D.warn.map(esc).join(' · ')}</div>` : '');
   $('#view').innerHTML = warn + ({ board: vBoard, team: vTeam, week: vWeek, todo: vTodo, waivers: vWaivers, search: vSearch, trend: vTrend, tx: vTx, log: vLog, trade: vTrade, about: vAbout }[TAB])();
   if (TAB === 'search') bindSearch();
   if (TAB === 'todo') bindWeek();
@@ -215,13 +225,6 @@ function render() {
   if (TAB === 'trade') bindTrade();
   if (TAB === 'trend') bindTrend();
   if (TAB === 'tx') bindTx();
-  if (TAB === 'about') { const b = $('#codeup'); if (b) b.onclick = () => {
-    b.disabled = true; b.textContent = 'Installation…'; const out = $('#codeupres');
-    google.script.run.withSuccessHandler(t => { const r = JSON.parse(t);
-        out.innerHTML = r.ok ? `✅ Version ${esc(r.bundle)} installée (${r.files.length} fichiers, app n° ${r.version}). <b>Rafraîchis la page</b> pour l’utiliser, puis fais une mise à jour des données.` : `⚠ ${esc(r.err)}`;
-        b.disabled = false; b.textContent = '⬆️ Mettre à jour le code'; })
-      .withFailureHandler(e => { out.textContent = '⚠ ' + (e && e.message || e); b.disabled = false; b.textContent = '⬆️ Mettre à jour le code'; })
-      .updateCodeFromApp(); }; }
   if (TAB === 'team') $('#teamsel').onchange = e => { TEAMV = e.target.value.replace(/ \(toi\)$/, ''); render(); };
   enableSorting();
 }
@@ -543,9 +546,7 @@ function vAbout() {
   const aTxt = bt && bt.lam != null && bt.lam < 1 ? `réelles, <b>passes secondaires pondérées à ${bt.lam}</b> (les primaires sont plus fiables)` : 'réelles';
   const pppTxt = bt && bt.ppb ? `réels ; la base suit ton <b>rôle en AN</b> cette saison vs l’an passé (${bt.ppMode === 'toi' ? 'temps en AN' : 'tentatives en AN'}, poids ${bt.ppb})` : 'réels';
   const gTxt = bt ? (bt.gk ? `réels, base analystes + moteur maison (FP/match et <b>GSAx</b> sur 3 saisons), biais ${bt.gk.b}` : 'réels') : 'réels, projection des analystes réduite de 0,5';
-  return `<div class="card"><h2>⬆️ Code de l’app</h2><div class="small muted" style="margin-bottom:8px">Installe la dernière version du code poussée sur GitHub (même chose que le menu du classeur), puis rafraîchis la page.</div>
-      <button class="btn primary" id="codeup">⬆️ Mettre à jour le code</button><div id="codeupres" class="small" style="margin-top:8px"></div></div>
-    <div class="card"><h2>Comment marche la projection maison</h2>
+  return `<div class="card"><h2>Comment marche la projection maison</h2>
   <p><b>Base d’avant-saison</b> = projections des <b>analystes</b> (GAF : la moyenne des projections d’experts) combinées au moteur maison (3 saisons passées, réglé sur 4 saisons de backtest). Puis, pour chaque stat : <b>(base × k + saison × matchs) ÷ (k + matchs)</b>. Plus k est petit, plus on croit vite la saison en cours — le poids du réel grandit tout seul avec les matchs joués.</p>
   <div class="tbl"><table><tr><th>Stat</th><th>k</th><th class="l">Ce qu’on utilise de la saison en cours</th></tr>
   <tr><td>Tirs</td><td>${k.sog}</td><td class="l">${sogTxt}</td></tr><tr><td>Mises en échec</td><td>${k.hit}</td><td class="l">réelles</td></tr>

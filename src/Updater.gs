@@ -37,6 +37,21 @@ function updateCodeFromApp() {
   try { const r = codeUpdate_(repo); r.ok = true; return JSON.stringify(r); }
   catch (e) { return JSON.stringify({ ok: false, err: codeHelp_(e.message) }); }
 }
+// Bouton ↻ de l'app : s'il y a une nouvelle version du code sur GitHub (version.txt ≠ version installée), on l'installe d'abord.
+// La page lance ensuite la mise à jour des données, qui tourne déjà avec le nouveau code (le déploiement pointe dessus).
+function checkCodeFromApp() {
+  const props = PropertiesService.getScriptProperties(), repo = props.getProperty(CODE.REPO_PROP);
+  if (!repo) return JSON.stringify({ updated: false });
+  try {
+    const r = UrlFetchApp.fetch(`https://raw.githubusercontent.com/${repo}/${CODE.BRANCH}/version.txt?t=${Date.now()}`,
+      { muteHttpExceptions: true, headers: { 'Cache-Control': 'no-cache' } });
+    const remote = r.getResponseCode() === 200 ? r.getContentText().trim() : '';
+    if (!remote || remote === props.getProperty('CODE_VER')) return JSON.stringify({ updated: false });
+    const u = codeUpdate_(repo);
+    let url = ''; try { url = ScriptApp.getService().getUrl(); } catch (e) {}
+    return JSON.stringify({ updated: true, bundle: u.bundle, url: url });
+  } catch (e) { return JSON.stringify({ updated: false, err: codeHelp_(e.message) }); }
+}
 function codeChangeRepo() {
   PropertiesService.getScriptProperties().deleteProperty(CODE.REPO_PROP);
   updateCode();
@@ -82,6 +97,7 @@ function codeUpdate_(repo) {
       manifestFileName: 'appsscript', description: 'Code ' + (bundle.version || '') } });
     n++;
   });
+  PropertiesService.getScriptProperties().setProperty('CODE_VER', bundle.version || '');
   return { bundle: bundle.version || '?', files: bundle.files.map(f => f.name), version: v.versionNumber, deployments: n };
 }
 
