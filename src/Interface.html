@@ -85,16 +85,19 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:20px 16px 40p
 /* Fiche de joueur */
 .pn{cursor:pointer;font-weight:600;color:var(--ink);text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
 .pn:hover{text-decoration-color:var(--accent)}
-#ps{position:fixed;inset:0;z-index:30;display:none;background:rgba(0,0,0,.55);align-items:flex-end;justify-content:center;overflow-y:auto}
+#ps{position:fixed;inset:0;z-index:30;display:none;background:rgba(0,0,0,.55);flex-direction:column;align-items:center;overflow-y:auto;-webkit-overflow-scrolling:touch}
 #ps.on{display:flex}
-#ps .sheet{background:var(--bg);border-top:1px solid var(--line);border-radius:22px 22px 0 0;width:100%;max-width:680px;padding:12px 16px 32px;margin-top:40px;box-shadow:0 -10px 40px rgba(0,0,0,.4)}
+#ps .sheet{background:var(--bg);border-top:1px solid var(--line);border-radius:22px 22px 0 0;width:100%;max-width:680px;padding:12px 16px 32px;margin-top:auto;box-shadow:0 -10px 40px rgba(0,0,0,.4)}
+#ps .sheet{padding-top:12px}#ps.on::before{content:'';flex:0 0 40px}
 #ps .sheet::before{content:'';display:block;width:40px;height:4px;border-radius:3px;background:#2A3344;margin:0 auto 12px}
-@media (min-width:900px){#ps{align-items:stretch;justify-content:flex-end}#ps .sheet{margin:0;border-radius:0;border-top:0;border-left:1px solid var(--line);max-width:600px;min-height:100%;padding:20px}#ps .sheet::before{display:none}}
+@media (min-width:900px){#ps{align-items:flex-end}#ps.on::before{display:none}#ps .sheet{margin:0;border-radius:0;border-top:0;border-left:1px solid var(--line);max-width:600px;min-height:100%;padding:20px}#ps .sheet::before{display:none}}
 #ps .hd{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px}
 #ps .hd h2{margin:0;font-family:var(--display);font-size:30px;font-weight:600;line-height:1}
 #ps .x{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:12px;width:44px;height:44px;font-size:16px;cursor:pointer;flex:0 0 auto}
 #ps h3{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:16px 0 8px}
-#ps .grid{grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
+#ps .grid{grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px}
+#ps .kpi .l{font-size:11.5px;line-height:1.25}
+#ps input,#ps select{font-size:16px}
 #ps .kpi{padding:9px 10px}
 #ps .kpi .v{font-size:18px}
 #ps .note{font-size:12px;color:var(--muted);margin-top:6px}
