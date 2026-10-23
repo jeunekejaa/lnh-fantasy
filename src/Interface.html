@@ -4,44 +4,60 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>LNH Fantasy</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#f6f7f9;--card:#ffffff;--ink:#14171c;--muted:#6b7380;--line:#e4e7ec;--accent:#0b6e4f;--accent-ink:#ffffff;
-  --good:#1a7f37;--good-bg:#e6f4ea;--bad:#b42318;--bad-bg:#fdecea;--warn:#9a6700;--warn-bg:#fff4d6;--blue:#1f5fbf;--blue-bg:#e5effd;--me:#eef6f2;--chip:#eef0f3;
-}
-@media (prefers-color-scheme: dark){
-  :root{--bg:#0f1115;--card:#171a20;--ink:#e8eaee;--muted:#9aa3af;--line:#2a2f38;--accent:#3fb68b;--accent-ink:#06130e;
-        --good:#4ac26b;--good-bg:#12291b;--bad:#ff7b72;--bad-bg:#2d1414;--warn:#e3b341;--warn-bg:#2b2410;--blue:#6aa8ff;--blue-bg:#14223a;--me:#13261f;--chip:#222730;}
+  --bg:#0B0E13;--card:#141922;--card2:#0F131A;--ink:#E8ECF2;--muted:#8F9AAD;--line:#1F2733;--line2:#1B212C;--accent:#5BD3FF;--accent-ink:#06202D;--opp:#FF8A4C;
+  --good:#34D17D;--good-bg:#103A26;--bad:#FF6B6B;--bad-bg:#3D1A1A;--warn:#F5C842;--warn-bg:#3A3012;--blue:#8EA8FF;--blue-bg:#1B2547;--me:#10202B;--chip:#1A2230;
+  --display:'Barlow Condensed',system-ui,sans-serif;
 }
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif}
-header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:12px 16px 0}
-.top{display:flex;align-items:center;gap:10px;justify-content:space-between}
-h1{font-size:18px;margin:0;letter-spacing:-.01em}
-.sub{color:var(--muted);font-size:12px}
-nav{display:flex;gap:4px;overflow-x:auto;margin-top:10px;scrollbar-width:none}
-nav::-webkit-scrollbar{display:none}
-nav button{flex:0 0 auto;border:0;background:none;color:var(--muted);font:inherit;font-weight:600;padding:8px 10px;border-bottom:2px solid transparent;cursor:pointer}
-nav button.on{color:var(--ink);border-bottom-color:var(--accent)}
-main{max-width:1100px;margin:0 auto;padding:16px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
-.card h2{font-size:15px;margin:0 0 10px}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 'Inter Tight',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color-scheme:dark}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:14px 16px 10px}
+.top{display:flex;align-items:center;gap:10px;justify-content:space-between;max-width:1180px;margin:0 auto}
+h1{font-family:var(--display);font-size:30px;line-height:1;margin:0;font-weight:600;letter-spacing:.01em}
+.sub{color:var(--muted);font-size:12px;margin-top:4px}
+#tabs{position:fixed;left:0;right:0;bottom:0;z-index:15;height:calc(70px + env(safe-area-inset-bottom));padding:8px 4px env(safe-area-inset-bottom);background:#0F131A;border-top:1px solid var(--line);display:flex;justify-content:space-around}
+#tabs button{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:62px;min-height:48px;border:0;background:none;color:var(--muted);font:inherit;font-size:11px;font-weight:600;cursor:pointer}
+#tabs button.on{color:var(--accent)}
+#tabs svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#tabs .subs{display:none}
+#tabs .brand{display:none}
+body{padding-bottom:96px}
+.seg{display:flex;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:3px;margin-bottom:14px}
+.seg button{flex:1;min-height:38px;border:0;border-radius:9px;background:none;color:var(--muted);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.seg button.on{background:#232B39;color:var(--ink)}
+@media (min-width:900px){
+  body{padding-bottom:0;padding-left:236px}
+  #tabs{top:0;right:auto;bottom:0;width:236px;height:auto;flex-direction:column;justify-content:flex-start;gap:2px;padding:20px 12px;border-top:0;border-right:1px solid var(--line2)}
+  #tabs .brand{display:block;font-family:var(--display);font-size:24px;font-weight:600;padding:0 12px 16px;color:var(--ink)}
+  #tabs button{flex-direction:row;gap:12px;min-height:44px;padding:0 12px;border-radius:10px;font-size:14px;color:#AEB7C6;justify-content:flex-start}
+  #tabs button.on{background:#152634;color:var(--accent)}
+  #tabs .subs{display:flex;flex-direction:column;margin:0 0 6px}
+  #tabs .subs button{min-height:34px;padding-left:46px;font-size:13px;font-weight:500;color:var(--muted);background:none}
+  #tabs .subs button.on{color:var(--ink);background:none}
+  .seg.mob{display:none}
+}
+main{max-width:1180px;margin:0 auto;padding:4px 16px 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px;overflow-x:auto}
+html,body{overflow-x:hidden}
+.card h2{font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:0 0 12px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
-.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
-.kpi .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.kpi .v{font-family:var(--display);font-size:30px;line-height:1.05;font-weight:600;font-variant-numeric:tabular-nums}
 .kpi .l{color:var(--muted);font-size:12px}
 .tbl{width:100%;overflow-x:auto}
 table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
-th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
-th{font-size:12px;color:var(--muted);font-weight:600;position:sticky;top:0;background:var(--card)}
+th,td{padding:9px 8px;border-bottom:1px solid var(--line2);text-align:right;white-space:nowrap}
+th{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:700;position:sticky;top:0;background:var(--card)}
 th:first-child,td:first-child,th.l,td.l{text-align:left}
 tr.me td{background:var(--me);font-weight:600}
-.chip{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:600;background:var(--chip);color:var(--muted)}
+.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:var(--chip);color:var(--muted)}
 .chip.good{background:var(--good-bg);color:var(--good)} .chip.blue{background:var(--blue-bg);color:var(--blue)} .chip.bad{background:var(--bad-bg);color:var(--bad)} .chip.warn{background:var(--warn-bg);color:var(--warn)}
 .pos{color:var(--muted);font-size:12px}
 .up{color:var(--good)} .down{color:var(--bad)}
 .controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
-select,input,button.btn{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:7px 10px}
+select,input,button.btn{font:inherit;border:1px solid #2A3344;background:var(--card);color:var(--ink);border-radius:12px;padding:9px 12px;min-height:42px}
 button.btn{cursor:pointer;font-weight:600}
 button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .muted{color:var(--muted)} .small{font-size:12px}
@@ -52,12 +68,16 @@ button.primary{background:var(--accent);color:var(--accent-ink);border-color:var
 .pick{display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid var(--line);cursor:pointer}
 .pick input{width:18px;height:18px}
 .pick .n{flex:1}
-.delta{font-size:26px;font-weight:700}
-.warnbox{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px}
+.delta{font-family:var(--display);font-size:32px;font-weight:600}
+.big{font-family:var(--display);font-weight:600;font-variant-numeric:tabular-nums}
+.hero{background:var(--me);border-color:#1E4A63}
+.lbl{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.tile{background:var(--card2);border-radius:12px;padding:10px 12px}
+.warnbox{background:var(--warn-bg);color:var(--warn);border-radius:12px;padding:10px 12px;margin-bottom:14px;font-size:13px}
 .empty{color:var(--muted);text-align:center;padding:30px}
 .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
 @media (max-width:520px){.hide-s{display:none}}
-#prog{position:fixed;left:0;right:0;top:0;z-index:20;display:none;background:var(--card);border-bottom:1px solid var(--line);padding:10px 16px;box-shadow:0 2px 10px rgba(0,0,0,.08)}
+#prog{position:fixed;left:0;right:0;top:0;z-index:40;display:none;background:var(--card);border-bottom:1px solid var(--line);padding:10px 16px;box-shadow:0 2px 10px rgba(0,0,0,.08)}
 #prog .track{height:8px;background:var(--chip);border-radius:4px;overflow:hidden;margin-top:6px}
 #prog .fill{height:100%;width:0;background:var(--accent);border-radius:4px;transition:width .6s ease}
 #prog .row{display:flex;justify-content:space-between;font-size:13px}
@@ -65,25 +85,27 @@ footer{color:var(--muted);font-size:11px;text-align:center;padding:20px 16px 40p
 /* Fiche de joueur */
 .pn{cursor:pointer;font-weight:600;color:var(--ink);text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
 .pn:hover{text-decoration-color:var(--accent)}
-#ps{position:fixed;inset:0;z-index:30;display:none;background:rgba(0,0,0,.45);align-items:flex-start;justify-content:center;padding:24px 12px;overflow-y:auto}
+#ps{position:fixed;inset:0;z-index:30;display:none;background:rgba(0,0,0,.55);align-items:flex-end;justify-content:center;overflow-y:auto}
 #ps.on{display:flex}
-#ps .sheet{background:var(--card);border:1px solid var(--line);border-radius:14px;width:100%;max-width:680px;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.25)}
+#ps .sheet{background:var(--bg);border-top:1px solid var(--line);border-radius:22px 22px 0 0;width:100%;max-width:680px;padding:12px 16px 32px;margin-top:40px;box-shadow:0 -10px 40px rgba(0,0,0,.4)}
+#ps .sheet::before{content:'';display:block;width:40px;height:4px;border-radius:3px;background:#2A3344;margin:0 auto 12px}
+@media (min-width:900px){#ps{align-items:stretch;justify-content:flex-end}#ps .sheet{margin:0;border-radius:0;border-top:0;border-left:1px solid var(--line);max-width:600px;min-height:100%;padding:20px}#ps .sheet::before{display:none}}
 #ps .hd{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px}
-#ps .hd h2{margin:0;font-size:20px;letter-spacing:-.01em}
-#ps .x{border:0;background:var(--chip);color:var(--ink);border-radius:999px;width:32px;height:32px;font-size:16px;cursor:pointer;flex:0 0 auto}
+#ps .hd h2{margin:0;font-family:var(--display);font-size:30px;font-weight:600;line-height:1}
+#ps .x{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:12px;width:44px;height:44px;font-size:16px;cursor:pointer;flex:0 0 auto}
 #ps h3{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:16px 0 8px}
 #ps .grid{grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
 #ps .kpi{padding:9px 10px}
 #ps .kpi .v{font-size:18px}
 #ps .note{font-size:12px;color:var(--muted);margin-top:6px}
-#ps .why{background:var(--chip);border-radius:10px;padding:10px 12px;margin-top:12px;font-size:13.5px}
+#ps .why{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-top:12px;font-size:13.5px}
 #ps .why ul{margin:6px 0 0;padding-left:18px}
 #ps .why li{margin:4px 0}
 #ps .why .verdict{margin-top:8px;font-weight:600}
 #ps .why{border-left:4px solid transparent}
 #ps .why.tone-progression{border-left-color:var(--good)} #ps .why.tone-chanceux{border-left-color:var(--blue)}
 #ps .why.tone-malchanceux{border-left-color:var(--warn)} #ps .why.tone-panne{border-left-color:var(--bad)}
-@media (max-width:520px){#ps{padding:0}#ps .sheet{border-radius:0;min-height:100%;border:0}}
+
 th.srt{cursor:pointer;user-select:none}
 th.srt:hover{color:var(--ink)}
 th.srt[data-dir]::after{content:attr(data-dir);margin-left:3px;color:var(--accent)}
@@ -101,26 +123,16 @@ th.srt[data-dir]::after{content:attr(data-dir);margin-left:3px;color:var(--accen
 .fo td.l{white-space:normal}
 .fo tr.dim td{opacity:.55}
 .fo tr.tot td{border-top:2px solid var(--line);font-weight:600}
-@media (max-width:760px){.fo2{grid-template-columns:1fr}}
+@media (max-width:760px){.fo2{gap:10px}.fo{font-size:11.5px}.fo .hs,.fo .pos,.fo .chip{display:none}.fo th,.fo td{padding:5px 3px}.fo td.l{max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 </style>
 </head>
 <body>
 <header>
   <div class="top">
-    <div><h1>🏒 LNH Fantasy</h1><div class="sub" id="stamp">Chargement…</div></div>
-    <button class="btn" id="refresh" title="Relire les stats LNH, ESPN et MoneyPuck">↻<span class="hide-s"> Mettre à jour</span></button>
+    <div><h1 id="htitle">Semaine</h1><div class="sub" id="stamp">Chargement…</div></div>
+    <button class="btn" id="refresh" title="Relire les stats LNH, ESPN et MoneyPuck" aria-label="Mettre à jour" style="display:flex;align-items:center;gap:8px"><svg viewBox="0 0 24 24" aria-hidden="true" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/></svg><span class="hide-s">Mettre à jour</span></button>
   </div>
-  <nav id="tabs">
-    <button data-t="board" class="on">Classement</button>
-    <button data-t="team">Équipes</button>
-    <button data-t="week">Semaine</button>
-    <button data-t="tx">Transactions</button>
-    <button data-t="todo">Que faire ?</button>
-    <button data-t="trade">Simulateur d’échange</button>
-    <button data-t="waivers">Ballotage</button>
-    <button data-t="search">Chercher</button>
-    <button data-t="about">Modèle</button>
-  </nav>
+  <nav id="tabs" aria-label="Navigation"><div class="brand">LNH Fantasy</div><button data-g="ligue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM17 5h3a3 3 0 0 1-3 4M7 5H4a3 3 0 0 0 3 4"/></svg>Ligue</button><div class="subs" data-for="ligue"><button data-t="board">Classement</button><button data-t="tx">Transactions</button></div><button data-g="team"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 20v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 20v-1a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg>Équipes</button><button data-g="week"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>Semaine</button><button data-g="todo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>Que faire</button><button data-g="outils"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>Outils</button><div class="subs" data-for="outils"><button data-t="trade">Échange</button><button data-t="waivers">Ballotage</button><button data-t="search">Chercher</button><button data-t="about">Modèle</button></div></nav>
 </header>
 <div id="prog"><div class="row"><span id="plabel">Mise à jour…</span><span id="ppct">0 %</span></div><div class="track"><div class="fill" id="pfill"></div></div></div>
 <div id="ps" role="dialog" aria-modal="true"><div class="sheet" id="psheet"></div></div>
@@ -128,7 +140,19 @@ th.srt[data-dir]::after{content:attr(data-dir);margin-left:3px;color:var(--accen
 <footer>Données : LNH · ESPN Fantasy · projections des analystes (GAF Aggregate Projections) · stats avancées <a href="https://moneypuck.com" target="_blank" rel="noopener" style="color:inherit">MoneyPuck.com</a></footer>
 
 <script>
-let D = null, TAB = 'board';
+let D = null, TAB = 'week';
+const GROUPS = { ligue: ['board', 'tx'], team: ['team'], week: ['week'], todo: ['todo'], outils: ['trade', 'waivers', 'search', 'about'] };
+const GLABEL = { ligue: 'Ligue', team: 'Équipes', week: 'Semaine', todo: 'Que faire ?', outils: 'Outils' };
+const TLABEL = { board: 'Classement', tx: 'Transactions', trade: 'Échange', waivers: 'Ballotage', search: 'Chercher', about: 'Modèle' };
+const LASTSUB = { ligue: 'board', outils: 'trade' };
+const groupOf = t => Object.keys(GROUPS).find(g => GROUPS[g].indexOf(t) >= 0) || 'week';
+function navState() {
+  const g = groupOf(TAB); LASTSUB[g] = TAB;
+  document.querySelectorAll('#tabs [data-g]').forEach(x => x.classList.toggle('on', x.dataset.g === g));
+  document.querySelectorAll('#tabs [data-t]').forEach(x => x.classList.toggle('on', x.dataset.t === TAB));
+  const h = document.getElementById('htitle'); if (h) h.textContent = GLABEL[g];
+}
+function setTab(t) { TAB = t; render(); window.scrollTo(0, 0); }
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const f1 = x => x == null ? '–' : (+x).toFixed(1);
@@ -176,7 +200,7 @@ function load(force) {
 }
 $('#refresh').onclick = () => load(true);
 $('#tabs').onclick = e => { const b = e.target.closest('button'); if (!b) return;
-  TAB = b.dataset.t; document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b)); render(); window.scrollTo(0, 0); };
+  setTab(b.dataset.t || LASTSUB[b.dataset.g] || GROUPS[b.dataset.g][0]); };
 
 const me = () => D.teams.find(t => t.team === D.me) || D.teams[0];
 const sigChip = s => s === 'malchanceux' ? '<span class="chip warn" title="Produit moins que ses tirs et ses chances ne le méritent">🟡 malchanceux</span>'
@@ -217,7 +241,9 @@ function render() {
   const warn = (CODEUP && CODEUP.updated ? `<div class="warnbox" style="border-color:var(--good)">⬆️ Nouvelle version de l’app installée (${esc(CODEUP.bundle)}). ${CODEUP.url ? `<a href="${esc(CODEUP.url)}" target="_top"><b>Touche ici pour la recharger</b></a>` : '<b>Rafraîchis la page</b>'} pour voir les changements.</div>` : '')
     + (CODEUP && CODEUP.err ? `<div class="warnbox">⚠ Mise à jour du code impossible : ${esc(CODEUP.err)}</div>` : '')
     + (D.warn && D.warn.length ? `<div class="warnbox">⚠ ${D.warn.map(esc).join(' · ')}</div>` : '');
-  $('#view').innerHTML = warn + ({ board: vBoard, team: vTeam, week: vWeek, todo: vTodo, waivers: vWaivers, search: vSearch, trend: vTrend, tx: vTx, log: vLog, trade: vTrade, about: vAbout }[TAB])();
+  navState();
+  const g = groupOf(TAB), segs = GROUPS[g].length > 1 ? `<div class="seg mob" role="group" aria-label="${GLABEL[g]}">${GROUPS[g].map(t => `<button data-sub="${t}" class="${t === TAB ? 'on' : ''}">${TLABEL[t]}</button>`).join('')}</div>` : '';
+  $('#view').innerHTML = segs + warn + ({ board: vBoard, team: vTeam, week: vWeek, todo: vTodo, waivers: vWaivers, search: vSearch, trend: vTrend, tx: vTx, log: vLog, trade: vTrade, about: vAbout }[TAB])();
   if (TAB === 'search') bindSearch();
   if (TAB === 'todo') bindWeek();
   if (TAB === 'todo') bindTodo();
@@ -226,6 +252,7 @@ function render() {
   if (TAB === 'trend') bindTrend();
   if (TAB === 'tx') bindTx();
   if (TAB === 'team') $('#teamsel').onchange = e => { TEAMV = e.target.value.replace(/ \(toi\)$/, ''); render(); };
+  document.querySelectorAll('[data-sub],[data-go]').forEach(b => b.onclick = () => setTab(b.dataset.sub || b.dataset.go));
   enableSorting();
 }
 
@@ -237,22 +264,21 @@ function vBoard() {
   });
   const byPow = D.teams.slice().sort((a, b) => b.power - a.power).map(t => t.team);
   const m = me(), r = m.record || {}, s = m.sim || {};
-  const kpis = `<div class="grid" style="margin-bottom:14px">
-    <div class="kpi"><div class="v">${r.w != null ? r.w + '-' + r.l : '–'}</div><div class="l">Ta fiche ESPN</div></div>
-    <div class="kpi"><div class="v">${pct(s.playoffs)}</div><div class="l">Chances de séries (top ${D.playoffTeams})</div></div>
-    <div class="kpi"><div class="v">${f1(s.wins)}</div><div class="l">Victoires projetées</div></div>
-    <div class="kpi"><div class="v">${byPow.indexOf(m.team) + 1}<span class="muted" style="font-size:14px">/${D.teams.length}</span></div><div class="l">Rang de force (projection maison)</div></div>
-    <div class="kpi"><div class="v">${r.live != null ? f1(r.live) + ' – ' + f1(r.oppLive) : '–'}</div><div class="l">Cette semaine vs ${esc(r.opp || '–')}</div></div>
-    ${duelKpi()}
-  </div>`;
+  const kpis = `<div class="card hero"><div class="lbl" style="color:var(--accent)">Ta saison</div>
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px">
+      <div><div class="big" style="font-size:28px;line-height:1">${r.w != null ? r.w + '-' + r.l : '–'}</div><div class="small muted">fiche</div></div>
+      <div><div class="big" style="font-size:28px;line-height:1;white-space:nowrap;color:${(s.playoffs || 0) >= 0.75 ? 'var(--good)' : (s.playoffs || 0) >= 0.5 ? 'var(--warn)' : 'var(--bad)'}">${pct(s.playoffs)}</div><div class="small muted">séries (top ${D.playoffTeams})</div></div>
+      <div><div class="big" style="font-size:28px;line-height:1">${f1(s.wins)}</div><div class="small muted">victoires proj.</div></div>
+      <div><div class="big" style="font-size:28px;line-height:1;color:var(--accent)">${byPow.indexOf(m.team) + 1}<span class="muted" style="font-size:16px">/${D.teams.length}</span></div><div class="small muted">force</div></div>
+    </div></div>`;
   const rows = T.map((t, i) => { const r = t.record || {}, s = t.sim || {};
     return `<tr class="${t.team === D.me ? 'me' : ''}"><td>${i + 1}</td><td class="l"><span class="pn" data-team="${esc(t.team)}" title="Voir l’alignement">${esc(t.team)}</span></td>
       <td>${r.w != null ? r.w + '-' + r.l : '–'}</td><td>${f1(r.pf)}</td>
       <td>${r.apW != null ? r.apW + '-' + r.apL : '–'}</td>
       <td>${r.live != null ? f1(r.live) : '–'}</td>
       <td>${f1(t.power)}</td><td>${f1(t.powerReal)}</td>
-      <td>${f1(s.wins)}</td><td><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">${pct(s.playoffs)}<div class="bar" style="width:60px"><i style="width:${Math.round((s.playoffs || 0) * 100)}%"></i></div></div></td></tr>`; }).join('');
-  return kpis + `<div class="card"><h2>Classement et projections</h2><div class="tbl"><table>
+      <td>${f1(s.wins)}</td><td><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">${pct(s.playoffs)}<div class="bar" style="width:60px"><i style="width:${Math.round((s.playoffs || 0) * 100)}%;background:${(s.playoffs || 0) >= 0.75 ? 'var(--good)' : (s.playoffs || 0) >= 0.5 ? 'var(--warn)' : 'var(--bad)'}"></i></div></div></td></tr>`; }).join('');
+  return kpis + `<div class="card"><h2>Classement</h2><div class="tbl"><table>
     <tr><th title="Rang au classement ESPN">#</th><th class="l">Équipe</th><th>Fiche</th><th>PF</th><th title="Fiche si tu affrontais toutes les équipes chaque semaine">All-play</th><th>Semaine</th>
     <th title="FP par semaine attendus, projection maison, meilleur alignement, blessés exclus">Force</th><th title="Même calcul avec les stats réelles seulement">Force (réel)</th><th>V proj.</th><th>Séries</th></tr>${rows}</table></div>
     <div class="legend"><span>Force = FP/semaine attendus (projection maison)</span><span>Séries et V proj. : ${D.config.sims} saisons simulées sur ton calendrier ESPN</span></div></div>`;
@@ -351,16 +377,20 @@ function vTodo() {
     return { p, w, d, season: d * weeksLeft };
   }).filter(x => x && x.d > 0.1).sort((a, b) => b.d - a.d).slice(0, 10);
   const H = WK.h || 'court';
-  const hzBtns = `<div class="controls" id="wkhz">${[['court', 'Court terme · cette semaine + la prochaine'], ['long', 'Long terme · reste de la saison']]
-      .map(([h, l]) => `<button class="btn ${H === h ? 'primary' : ''}" data-h="${h}">${l}</button>`).join('')}</div>`;
+  const hzBtns = `<div class="seg" id="wkhz" role="group" aria-label="Horizon">${[['court', 'Cette semaine'], ['long', 'Long terme']]
+      .map(([h, l]) => `<button class="${H === h ? 'on' : ''}" data-h="${h}">${l}</button>`).join('')}</div>`;
   const acq = D.espn || {}, left = acq.acqLimit != null && acq.acqUsed != null ? Math.max(0, acq.acqLimit - acq.acqUsed) : null;
   const plan = streamPlan(m, daysWk, left == null ? 2 : Math.min(left, 3));
   const slotRow = slotsByDay(m.players, daysWk);
   const shortCard = `<h2>Ajouts court terme : alignement jour par jour</h2>
     <div class="small" style="margin-bottom:8px"><b>Places vides cette semaine</b> (avec ton alignement actuel) : ${slotRow}</div>
     ${left != null ? `<div class="small muted" style="margin-bottom:8px">Acquisitions cette semaine : ${acq.acqUsed} sur ${acq.acqLimit} utilisée${acq.acqUsed > 1 ? 's' : ''} — il t’en reste <b>${left}</b>.</div>` : ''}
-    ${plan.steps.length ? `<div class="why" style="margin:0 0 10px"><b>Plan pour cette semaine</b> (${plan.steps.length} transaction${plan.steps.length > 1 ? 's' : ''}) : <b class="up">+${f1(plan.gain)} FP</b> d’ici dimanche<ol style="margin:6px 0 0;padding-left:18px">${plan.steps.map(x =>
-      `<li>Prends ${pname(x.p, '')} <span class="pos">${esc(x.p.nhl)}</span>, retire ${pname(x.w, D.me)} : <b class="up">+${f1(x.gain)}</b> <span class="muted">(${x.days.map(d => dLabel(d)).join(', ')})</span>${(x.w.model || 0) > (x.p.model || 0) + 0.1 ? ` <span class="small down">· ⚠ à long terme, ${esc(x.w.name)} vaut plus (${f2(x.w.model)} vs ${f2(x.p.model)})</span>` : ''}</li>`).join('')}</ol></div>`
+    ${plan.steps.length ? `<div class="card hero" style="margin:0 0 12px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><div class="lbl" style="color:var(--accent)">Le plan de la semaine · ${plan.steps.length} transaction${plan.steps.length > 1 ? 's' : ''}</div><div class="big up" style="font-size:28px;white-space:nowrap">+${f1(plan.gain)} FP</div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px">${plan.steps.map((x, i) =>
+      `<div class="tile" style="background:#0E1A24"><div class="small muted">${i + 1} · ${x.days.map(d => dLabel(d)).join(', ')}</div>
+        <div style="margin-top:4px"><span class="muted">Retire</span> ${pname(x.w, D.me)}</div><div><span class="muted">Prends</span> ${pname(x.p, '')} <span class="pos">${esc(x.p.pos)} · ${esc(x.p.nhl)}</span></div>
+        <div class="up" style="font-weight:700;margin-top:4px">+${f1(x.gain)} FP</div>${(x.w.model || 0) > (x.p.model || 0) + 0.1 ? `<div class="small down" style="margin-top:2px">À long terme, ${esc(x.w.name)} vaut plus (${f2(x.w.model)} vs ${f2(x.p.model)})</div>` : ''}</div>`).join('')}</div></div>`
       : `<div class="muted small" style="margin-bottom:8px">${left === 0 ? 'Plus d’acquisition possible cette semaine.' : 'Aucun ajout ne remplit utilement tes places vides d’ici dimanche.'}</div>`}
     ${dropSel}
     ${sugg.length ? `<div class="small muted" style="margin:6px 0 2px">Autres options, de la meilleure à la moins bonne pour ton duel :</div>${moveGroups(sugg.slice(0, 8), 'court')}`
@@ -590,7 +620,7 @@ function ownerOf(p) {
 }
 $('#view').addEventListener('click', e => {
   const tm = e.target.closest('[data-team]');
-  if (tm) { TEAMV = tm.dataset.team; TAB = 'team'; document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x.dataset.t === 'team')); render(); window.scrollTo(0, 0); return; }
+  if (tm) { TEAMV = tm.dataset.team; setTab('team'); return; }
 });
 $('#view').addEventListener('click', e => { const el = e.target.closest('[data-pi]'); if (el) { e.preventDefault(); e.stopPropagation(); openSheet(PREG[+el.dataset.pi]); } });
 $('#ps').addEventListener('click', e => { if (e.target.id === 'ps' || e.target.closest('.x')) closeSheet(); });
@@ -1003,8 +1033,7 @@ function bindTodo() {
     const t = TS.res[+b.dataset.mock];
     TR.h = 'long'; TR.other = t.o.team; TR.give = {}; TR.get = {};
     t.give.forEach(p => { TR.give[p.name] = true; }); t.get.forEach(p => { TR.get[p.name] = true; });
-    TAB = 'trade'; document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x.dataset.t === 'trade'));
-    render(); calcTrade(); const r = $('#tres'); if (r) r.scrollIntoView({ behavior: 'smooth' });
+    TAB = 'trade'; render(); calcTrade(); const r = $('#tres'); if (r) r.scrollIntoView({ behavior: 'smooth' });
   });
 }
 // ---------- Semaine : le duel de la semaine ----------
@@ -1018,10 +1047,10 @@ function duelSide(t) {
 }
 function duelTable(t, side) {
   const dot = p => { const x = trend(p); return x && x.cls !== 'conforme' && TREND[x.cls] ? `<span title="${TREND[x.cls].l}">${TREND[x.cls].e}</span>` : ''; };
-  return `<table class="fo"><tr><th class="l">${esc(t.team)}${t.team === D.me ? ' <span class="chip good">toi</span>' : ''}</th><th title="Matchs joués cette semaine">MJ</th><th title="FP réels cette semaine (tous ses matchs, même sur le banc)">FP</th><th title="FP réels − projection maison × matchs joués">±</th><th title="Matchs restants cette semaine">Rst</th></tr>
-    ${side.rows.map(x => `<tr${OUT[x.p.status] ? ' class="dim"' : ''}><td class="l">${dot(x.p)} ${pname(x.p, t.team)} <span class="pos">${esc(x.p.pos)}</span>${OUT[x.p.status] ? ' ' + stChip(x.p.status) : ''}</td><td>${x.gp}</td><td><b>${f1(x.fp)}</b></td>
-      <td class="${x.d >= 1 ? 'up' : x.d <= -1 ? 'down' : 'muted'}" title="attendu ${f1(x.exp)}">${x.gp ? sgn(x.d, 1) : ''}</td><td>${x.p.grp === 'G' ? '' : x.p.left || 0}</td></tr>`).join('')}
-    <tr class="tot"><td class="l">Total</td><td>${side.rows.reduce((s, x) => s + x.gp, 0)}</td><td><b>${f1(side.rows.reduce((s, x) => s + x.fp, 0))}</b></td><td class="${side.rows.reduce((s, x) => s + x.d, 0) >= 0 ? 'up' : 'down'}">${sgn(side.rows.reduce((s, x) => s + (x.gp ? x.d : 0), 0), 1)}</td><td>${side.left}</td></tr></table>`;
+  return `<table class="fo"><tr><th class="l" style="color:${t.team === D.me ? 'var(--accent)' : 'var(--opp)'}">${t.team === D.me ? 'Toi' : esc(t.team)}</th><th class="hs" title="Matchs joués cette semaine">MJ</th><th title="FP réels cette semaine (tous ses matchs, même sur le banc)">FP</th><th title="FP réels − projection maison × matchs joués">±</th><th class="hs" title="Matchs restants cette semaine">Rst</th></tr>
+    ${side.rows.map(x => `<tr${OUT[x.p.status] ? ' class="dim"' : ''}><td class="l">${dot(x.p)} ${pname(x.p, t.team)} <span class="pos">${esc(x.p.pos)}</span>${OUT[x.p.status] ? ' ' + stChip(x.p.status) : ''}</td><td class="hs">${x.gp}</td><td><b>${f1(x.fp)}</b></td>
+      <td class="${x.d >= 1 ? 'up' : x.d <= -1 ? 'down' : 'muted'}" title="attendu ${f1(x.exp)}">${x.gp ? sgn(x.d, 1) : ''}</td><td class="hs">${x.p.grp === 'G' ? '' : x.p.left || 0}</td></tr>`).join('')}
+    <tr class="tot"><td class="l">Total</td><td class="hs">${side.rows.reduce((s, x) => s + x.gp, 0)}</td><td><b>${f1(side.rows.reduce((s, x) => s + x.fp, 0))}</b></td><td class="${side.rows.reduce((s, x) => s + x.d, 0) >= 0 ? 'up' : 'down'}">${sgn(side.rows.reduce((s, x) => s + (x.gp ? x.d : 0), 0), 1)}</td><td class="hs">${side.left}</td></tr></table>`;
 }
 function vWeek() {
   const m = me(), r = m.record || {}, o = D.teams.find(t => t.team === r.opp), mine = m.players.filter(p => !OUT[p.status]);
@@ -1030,13 +1059,30 @@ function vWeek() {
   const A = duelSide(m), B = duelSide(o), d = duelOdds(), lead = (r.live || 0) - (r.oppLive || 0);
   const clsLine = (s, t) => [['progression', '🟢 Vraie progression'], ['chanceux', '🔵 Chanceux'], ['malchanceux', '🟡 Malchanceux'], ['panne', '🔴 En panne']]
     .map(([k, l]) => { const L = s.cls(k); return L.length ? `<li><b>${l} :</b> ${L.map(p => pname(p, t)).join(', ')}</li>` : ''; }).join('');
-  const head = `<div class="grid" style="margin-bottom:14px">
-      <div class="kpi"><div class="v ${lead >= 0 ? 'up' : 'down'}">${f1(r.live || 0)} – ${f1(r.oppLive || 0)}</div><div class="l">${lead > 0 ? 'Tu mènes de ' + f1(lead) : lead < 0 ? 'Tu tires de l’arrière de ' + f1(-lead) : 'Égalité'} vs ${esc(o.team)}</div></div>
-      ${duelKpi()}
-      <div class="kpi"><div class="v">${A.left} – ${B.left}</div><div class="l">Matchs de patineurs restants (toi – lui)</div></div>
-      <div class="kpi"><div class="v">${tonight.length}</div><div class="l">De tes joueurs jouent ce soir</div></div>
-    </div>`;
-  const over = `<div class="card"><h2>Face-à-face de la semaine</h2><div class="fo2">${duelTable(m, A)}${duelTable(o, B)}</div>
+  const pw = d ? Math.round(d.p * 100) : null;
+  let planTxt = '';
+  try { const acq = D.espn || {}, left = acq.acqLimit != null && acq.acqUsed != null ? Math.max(0, acq.acqLimit - acq.acqUsed) : null;
+    const pl = left === 0 ? null : streamPlan(m, horizonDays(D.weekEnd), left == null ? 2 : Math.min(left, 3));
+    if (pl && pl.steps.length) planTxt = `<button class="card hero" data-go="todo" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;color:var(--ink);font:inherit;cursor:pointer;padding:12px 14px">
+      <svg viewBox="0 0 24 24" aria-hidden="true" style="width:20px;height:20px;flex:none;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>
+      <span style="flex:1"><b>${pl.steps.length} ajout${pl.steps.length > 1 ? 's' : ''} possible${pl.steps.length > 1 ? 's' : ''} cette semaine : <span class="up">+${f1(pl.gain)} FP</span></b><span class="small muted" style="display:block">${pl.steps.map(x => esc(x.w.name.split(' ').slice(-1)[0]) + ' → ' + esc(x.p.name.split(' ').slice(-1)[0])).join(' · ')} · voir « Que faire ? »</span></span>
+      <span class="muted" aria-hidden="true">›</span></button>`; } catch (e) {}
+  const head = `<div class="card" style="padding:16px">
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:end">
+        <div style="min-width:0"><div class="lbl" style="color:var(--accent)">Toi</div><div class="small" style="color:#C3CBD8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(m.team)}</div>
+          <div class="big" style="font-size:52px;line-height:1;color:var(--accent);margin-top:6px">${f1(r.live || 0)}</div></div>
+        <div class="big muted" style="font-size:20px;padding-bottom:10px">VS</div>
+        <div style="min-width:0;text-align:right"><div class="lbl" style="color:var(--opp)">Adversaire</div><div class="small" style="color:#C3CBD8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.team)}</div>
+          <div class="big" style="font-size:52px;line-height:1;color:var(--opp);margin-top:6px">${f1(r.oppLive || 0)}</div></div>
+      </div>
+      ${d ? `<div style="margin-top:14px;height:10px;border-radius:6px;background:var(--opp);overflow:hidden;display:flex"><div style="width:${pw}%;background:var(--accent)"></div></div>
+      <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:13px;gap:8px;flex-wrap:wrap"><div><b class="big" style="font-size:18px;color:var(--accent)">${pw} %</b> <span class="muted">de chances de gagner</span></div><div class="muted">projeté ${Math.round(d.me)} – ${Math.round(d.opp)} · toi ${Math.round(d.lo)} à ${Math.round(d.hi)} (80 %)</div></div>` : ''}
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:14px">
+        <div class="tile"><div class="lbl" style="font-size:10px">Matchs restants</div><div class="big" style="font-size:22px;white-space:nowrap"><span style="color:var(--accent)">${A.left}</span> <span class="muted" style="font-size:15px">vs</span> <span style="color:var(--opp)">${B.left}</span></div></div>
+        <div class="tile"><div class="lbl" style="font-size:10px">Écart</div><div class="big" style="font-size:22px;color:${lead >= 0 ? 'var(--good)' : 'var(--bad)'}">${sgn(lead, 1)}</div></div>
+        <div class="tile"><div class="lbl" style="font-size:10px">Ce soir</div><div class="big" style="font-size:22px">${tonight.length} <span class="muted" style="font-size:14px;font-family:inherit">joueur${tonight.length > 1 ? 's' : ''}</span></div></div>
+      </div></div>${planTxt}`;
+  const over = `<div class="card"><h2>Face-à-face</h2><div class="fo2">${duelTable(m, A)}${duelTable(o, B)}</div>
       <div class="legend"><span>FP réels cette semaine (stats LNH : tous ses matchs, même sur le banc). ± = réel − projection maison × matchs joués (survole pour l’attendu). Rst = matchs restants. 🟢🔵🟡🔴 = tendance de la saison.</span></div></div>`;
   return head + over + goalieDays(mine) + roleCard(m);
 }
@@ -1214,8 +1260,7 @@ function bindTrend() {
   $('#tfwho').onchange = e => { TF.who = e.target.value; render(); };
   $('#tfpos').onchange = e => { TF.pos = e.target.value; render(); };
   $('#tfdepth').onchange = e => { TF.depth = e.target.checked; render(); };
-  document.querySelectorAll('[data-radar]').forEach(b => b.onclick = () => { TR.other = b.dataset.radar; TR.give = {}; TR.get = {}; TAB = 'trade';
-    document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x.dataset.t === 'trade')); render(); window.scrollTo(0, 0); });
+  document.querySelectorAll('[data-radar]').forEach(b => b.onclick = () => { TR.other = b.dataset.radar; TR.give = {}; TR.get = {}; setTab('trade'); });
 }
 
 // ---------- Alignement jour par jour (streamers, gardiens, séries) ----------
