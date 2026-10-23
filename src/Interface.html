@@ -284,26 +284,25 @@ function vTeam() {
   </div>` + teamReport(m) + sec('Attaquants', 'F') + sec('Défenseurs', 'D') + sec('Gardiens', 'G');
 }
 
-// Une option d'ajout, présentée comme un résultat du simulateur : quoi, combien, quand, et ce que ça change
-function moveCard(n, x, h) {
-  const m = me(), w = x.w, p = x.p;
-  const lt = powerH(m.players.filter(q => q !== w).concat([p]), 'long') - powerH(m.players, 'long');
-  const big = h === 'court' ? `<b class="${x.gainWk > 0.05 ? 'up' : 'muted'}" style="font-size:18px">${sgn(x.gainWk)} FP</b> cette semaine` : `<b class="up" style="font-size:18px">+${f1(x.d)} FP/sem.</b> à long terme`;
-  const why = [];
-  if (h === 'court') {
-    if (x.usedDays && x.usedDays.length) why.push(`il entre dans ton alignement ${x.usedDays.map(dLabel).join(', ')}${x.usedDays.length > 1 ? '' : ''}`);
-    why.push(`2 semaines : <b class="${x.gain >= 0 ? 'up' : 'down'}">${sgn(x.gain)}</b>`);
-    why.push(`long terme : <b class="${lt >= 0 ? 'up' : 'down'}">${sgn(lt)} FP/sem.</b>`);
-  } else {
-    why.push(`sur la saison : <b class="up">+${Math.round(x.season)} FP</b>`);
-    why.push(`${esc(p.name)} : ${f2(p.fpg)} réel, ${f2(p.model)} projeté sur ${p.gp} MJ`);
-  }
-  const warn = h === 'court' && lt < -0.3 ? `<div class="small down" style="margin-top:3px">⚠ Tu t’affaiblis à long terme : ${esc(w.name)} vaut plus (${f2(w.model)} vs ${f2(p.model)}). Bon pour gagner cette semaine, à reprendre plus tard si possible.</div>` : '';
-  const tr = q => { const t = trend(q); return t && t.cls !== 'conforme' && TREND[t.cls] ? ` ${TREND[t.cls].e} <span class="small muted">${TREND[t.cls].l}</span>` : ''; };
-  return `<div style="padding:10px 0;border-bottom:1px solid var(--line)">
-    <div><span class="muted small">${n}.</span> Change <b>${pname(w, D.me)}</b> <span class="pos">${esc(w.pos)} · ${esc(w.nhl)}</span>${tr(w)} pour <b>${pname(p, '')}</b> <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span>${tr(p)} ${stChip(p.status)}</div>
-    <div style="margin-top:3px">${big} <span class="small muted">· projection ${f2(w.model)} → ${f2(p.model)} FP/match${h === 'court' ? ` · ses matchs : ${p.left} cette sem. + ${p.next} la prochaine` : ''}</span></div>
-    <div class="small muted" style="margin-top:2px">${why.join(' · ')}</div>${warn}</div>`;
+// Options d'ajout, groupées par joueur à retirer : son nom une seule fois, puis une ligne compacte par ajout possible
+function moveGroups(list, h) {
+  const m = me(), p0 = powerH(m.players, 'long');
+  const tr = q => { const t = trend(q); return t && t.cls !== 'conforme' && TREND[t.cls] ? ` <span title="${TREND[t.cls].l}">${TREND[t.cls].e}</span>` : ''; };
+  return byDrop(list).map(g => {
+    const w = g.w;
+    const rows = g.list.map(x => {
+      const p = x.p, lt = powerH(m.players.filter(q => q !== w).concat([p]), 'long') - p0;
+      const main = h === 'court' ? `<b class="${x.gainWk > 0.05 ? 'up' : 'muted'}">${sgn(x.gainWk)}</b> <span class="small muted">cette sem.</span>` : `<b class="up">+${f1(x.d)}</b> <span class="small muted">FP/sem.</span>`;
+      const det = h === 'court'
+        ? `${x.usedDays && x.usedDays.length ? x.usedDays.map(dLabel).join(', ') : '–'} · 2 sem. <b class="${x.gain >= 0 ? 'up' : 'down'}">${sgn(x.gain)}</b> · long terme <b class="${lt >= -0.3 ? (lt >= 0 ? 'up' : 'muted') : 'down'}">${sgn(lt)}/sem.</b>`
+        : `saison <b class="up">+${Math.round(x.season)}</b> · ${f2(p.fpg)} réel sur ${p.gp} MJ`;
+      return `<div style="display:flex;gap:10px;align-items:baseline;padding:6px 0;border-top:1px solid var(--line)">
+        <div style="flex:1 1 auto;min-width:0">${pname(p, '')} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span>${tr(p)} ${stChip(p.status)} <span class="small muted">· ${f2(p.model)}</span>
+          <div class="small muted">${det}</div></div>
+        <div style="flex:0 0 auto;text-align:right">${main}</div></div>`;
+    }).join('');
+    return `<div style="margin:10px 0 4px"><div style="padding:6px 8px;background:var(--chip);border-radius:8px">Change <b>${pname(w, D.me)}</b> <span class="pos">${esc(w.pos)} · ${esc(w.nhl)}</span>${tr(w)} ${stChip(w.status)} <span class="small muted">· projection ${f2(w.model)} FP/match</span> pour :</div>${rows}</div>`;
+  }).join('') + (h === 'court' ? '<div class="small muted" style="margin-top:4px">Les soirs listés = ceux où il entre dans ton alignement. Long terme en rouge = tu t’affaiblis pour la suite (bon pour gagner cette semaine seulement).</div>' : '');
 }
 // Ajouts groupés par joueur à retirer (un en-tête par joueur retiré, au lieu de le répéter à chaque ligne)
 function byDrop(list) {
@@ -364,13 +363,13 @@ function vTodo() {
       `<li>Prends ${pname(x.p, '')} <span class="pos">${esc(x.p.nhl)}</span>, retire ${pname(x.w, D.me)} : <b class="up">+${f1(x.gain)}</b> <span class="muted">(${x.days.map(d => dLabel(d)).join(', ')})</span>${(x.w.model || 0) > (x.p.model || 0) + 0.1 ? ` <span class="small down">· ⚠ à long terme, ${esc(x.w.name)} vaut plus (${f2(x.w.model)} vs ${f2(x.p.model)})</span>` : ''}</li>`).join('')}</ol></div>`
       : `<div class="muted small" style="margin-bottom:8px">${left === 0 ? 'Plus d’acquisition possible cette semaine.' : 'Aucun ajout ne remplit utilement tes places vides d’ici dimanche.'}</div>`}
     ${dropSel}
-    ${sugg.length ? `<div class="small muted" style="margin:6px 0 2px">Autres options, de la meilleure à la moins bonne pour ton duel :</div>${sugg.slice(0, 8).map((x, i) => moveCard(i + 1, x, 'court')).join('')}`
+    ${sugg.length ? `<div class="small muted" style="margin:6px 0 2px">Autres options, de la meilleure à la moins bonne pour ton duel :</div>${moveGroups(sugg.slice(0, 8), 'court')}`
       : '<div class="muted">Aucun ajout ne rapporte clairement plus que ton joueur le plus faible d’ici 2 semaines.</div>'}
     <div class="legend"><span>Classés selon le gain <b>cette semaine</b> (ton duel), comme le plan ; « Gain 2 sem. » ajoute la semaine prochaine. Calcul jour par jour : chaque soir, ton meilleur alignement possible (${D.config.lineup.F} F, ${D.config.lineup.D} D, ${D.config.lineup.UTIL} UTIL, ${D.config.lineup.G} G) avec les joueurs qui jouent. Un ajout ne rapporte que les soirs où il entre dans l’alignement.</span><span>Le plan respecte ta limite d’acquisitions de la semaine.</span></div>`;
   const lwhy = ['F', 'D'].map(k => lcands[k].length ? `<div class="small" style="margin:4px 0"><b>${k === 'F' ? 'Attaquants' : 'Défenseurs'}</b> — tes 3 plus faibles à long terme : ${lcands[k].map(p =>
       `${esc(p.name)} ${f2(lv(p))}${OUT[p.status] ? ' (blessé)' : ''}`).join(' · ')} → candidat : <b>${esc(lworst[k] ? lworst[k].name : '–')}</b></div>` : '').join('');
   const longCard = `<h2>Ajouts long terme : reste de la saison</h2>${dropSel}${lwhy}
-    ${lsugg.length ? lsugg.slice(0, 8).map((x, i) => moveCard(i + 1, x, 'long')).join('')
+    ${lsugg.length ? moveGroups(lsugg.slice(0, 8), 'long')
       : '<div class="muted">Aucun joueur libre n’améliore ton alignement à long terme.</div>'}
     <div class="legend"><span>Gain = hausse de ton meilleur alignement chaque semaine (projection maison, blessés comptés à 60 % puisqu’ils reviennent) × ${weeksLeft} semaines restantes. Un ajout qui finirait sur ton banc ne rapporte rien.</span></div>`;
   return `<div class="card">${hzBtns}${H === 'court' ? shortCard : longCard}</div>
