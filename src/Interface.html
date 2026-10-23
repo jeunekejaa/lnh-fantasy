@@ -284,6 +284,27 @@ function vTeam() {
   </div>` + teamReport(m) + sec('Attaquants', 'F') + sec('Défenseurs', 'D') + sec('Gardiens', 'G');
 }
 
+// Une option d'ajout, présentée comme un résultat du simulateur : quoi, combien, quand, et ce que ça change
+function moveCard(n, x, h) {
+  const m = me(), w = x.w, p = x.p;
+  const lt = powerH(m.players.filter(q => q !== w).concat([p]), 'long') - powerH(m.players, 'long');
+  const big = h === 'court' ? `<b class="${x.gainWk > 0.05 ? 'up' : 'muted'}" style="font-size:18px">${sgn(x.gainWk)} FP</b> cette semaine` : `<b class="up" style="font-size:18px">+${f1(x.d)} FP/sem.</b> à long terme`;
+  const why = [];
+  if (h === 'court') {
+    if (x.usedDays && x.usedDays.length) why.push(`il entre dans ton alignement ${x.usedDays.map(dLabel).join(', ')}${x.usedDays.length > 1 ? '' : ''}`);
+    why.push(`2 semaines : <b class="${x.gain >= 0 ? 'up' : 'down'}">${sgn(x.gain)}</b>`);
+    why.push(`long terme : <b class="${lt >= 0 ? 'up' : 'down'}">${sgn(lt)} FP/sem.</b>`);
+  } else {
+    why.push(`sur la saison : <b class="up">+${Math.round(x.season)} FP</b>`);
+    why.push(`${esc(p.name)} : ${f2(p.fpg)} réel, ${f2(p.model)} projeté sur ${p.gp} MJ`);
+  }
+  const warn = h === 'court' && lt < -0.3 ? `<div class="small down" style="margin-top:3px">⚠ Tu t’affaiblis à long terme : ${esc(w.name)} vaut plus (${f2(w.model)} vs ${f2(p.model)}). Bon pour gagner cette semaine, à reprendre plus tard si possible.</div>` : '';
+  const tr = q => { const t = trend(q); return t && t.cls !== 'conforme' && TREND[t.cls] ? ` ${TREND[t.cls].e} <span class="small muted">${TREND[t.cls].l}</span>` : ''; };
+  return `<div style="padding:10px 0;border-bottom:1px solid var(--line)">
+    <div><span class="muted small">${n}.</span> Change <b>${pname(w, D.me)}</b> <span class="pos">${esc(w.pos)} · ${esc(w.nhl)}</span>${tr(w)} pour <b>${pname(p, '')}</b> <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span>${tr(p)} ${stChip(p.status)}</div>
+    <div style="margin-top:3px">${big} <span class="small muted">· projection ${f2(w.model)} → ${f2(p.model)} FP/match${h === 'court' ? ` · ses matchs : ${p.left} cette sem. + ${p.next} la prochaine` : ''}</span></div>
+    <div class="small muted" style="margin-top:2px">${why.join(' · ')}</div>${warn}</div>`;
+}
 // Ajouts groupés par joueur à retirer (un en-tête par joueur retiré, au lieu de le répéter à chaque ligne)
 function byDrop(list) {
   const out = [], idx = new Map();
@@ -325,7 +346,7 @@ function vTodo() {
     lworst[k] = lcands[k][0];
   });
   if (forced) lworst[forced.grp] = forced;
-  const lsugg = D.waivers.filter(p => p.gp >= 3 && p.grp !== 'G' && !AVOID[p.name] && (!forced || p.grp === forced.grp)).map(p => {
+  const lsugg = D.waivers.filter(p => p.gp >= 3 && p.grp !== 'G' && !AVOID[p.name] && !isPanne(p) && (!forced || p.grp === forced.grp)).map(p => {
     const w = lworst[p.grp]; if (!w) return null;
     const d = powerH(allMine.filter(q => q !== w).concat([p]), 'long') - p0;
     return { p, w, d, season: d * weeksLeft };
@@ -343,17 +364,13 @@ function vTodo() {
       `<li>Prends ${pname(x.p, '')} <span class="pos">${esc(x.p.nhl)}</span>, retire ${pname(x.w, D.me)} : <b class="up">+${f1(x.gain)}</b> <span class="muted">(${x.days.map(d => dLabel(d)).join(', ')})</span>${(x.w.model || 0) > (x.p.model || 0) + 0.1 ? ` <span class="small down">· ⚠ à long terme, ${esc(x.w.name)} vaut plus (${f2(x.w.model)} vs ${f2(x.p.model)})</span>` : ''}</li>`).join('')}</ol></div>`
       : `<div class="muted small" style="margin-bottom:8px">${left === 0 ? 'Plus d’acquisition possible cette semaine.' : 'Aucun ajout ne remplit utilement tes places vides d’ici dimanche.'}</div>`}
     ${dropSel}
-    ${sugg.length ? `<div class="tbl"><table><tr><th>Ajouter</th><th>Ses matchs</th><th>Maison</th><th title="Matchs où l’ajout entre vraiment dans ton alignement cette semaine (place libre ou meilleur que le titulaire)">Utiles cette sem.</th><th title="Gain d’ici dimanche : ce qui compte pour ton duel en cours (même calcul que le plan)">Gain cette sem.</th><th title="Gain d’ici dimanche prochain (cette semaine + la prochaine)">Gain 2 sem.</th></tr>
-      ${byDrop(sugg).map(g => dropHead(g.w, 6) + g.list.map(x => `<tr><td>${pname(x.p, '')} <span class="pos">${esc(x.p.pos)} · ${esc(x.p.nhl)}</span> ${pChip(x.p)}</td><td>${x.p.left}+${x.p.next}</td><td>${f2(x.p.model)}</td>
-        <td>${x.useful}</td><td class="${x.gainWk > 0.05 ? 'up' : 'muted'}"><b>${sgn(x.gainWk)}</b></td><td class="muted">${sgn(x.gain)}</td></tr>`).join('')).join('')}</table></div>`
+    ${sugg.length ? `<div class="small muted" style="margin:6px 0 2px">Autres options, de la meilleure à la moins bonne pour ton duel :</div>${sugg.slice(0, 8).map((x, i) => moveCard(i + 1, x, 'court')).join('')}`
       : '<div class="muted">Aucun ajout ne rapporte clairement plus que ton joueur le plus faible d’ici 2 semaines.</div>'}
     <div class="legend"><span>Classés selon le gain <b>cette semaine</b> (ton duel), comme le plan ; « Gain 2 sem. » ajoute la semaine prochaine. Calcul jour par jour : chaque soir, ton meilleur alignement possible (${D.config.lineup.F} F, ${D.config.lineup.D} D, ${D.config.lineup.UTIL} UTIL, ${D.config.lineup.G} G) avec les joueurs qui jouent. Un ajout ne rapporte que les soirs où il entre dans l’alignement.</span><span>Le plan respecte ta limite d’acquisitions de la semaine.</span></div>`;
   const lwhy = ['F', 'D'].map(k => lcands[k].length ? `<div class="small" style="margin:4px 0"><b>${k === 'F' ? 'Attaquants' : 'Défenseurs'}</b> — tes 3 plus faibles à long terme : ${lcands[k].map(p =>
       `${esc(p.name)} ${f2(lv(p))}${OUT[p.status] ? ' (blessé)' : ''}`).join(' · ')} → candidat : <b>${esc(lworst[k] ? lworst[k].name : '–')}</b></div>` : '').join('');
   const longCard = `<h2>Ajouts long terme : reste de la saison</h2>${dropSel}${lwhy}
-    ${lsugg.length ? `<div class="tbl"><table><tr><th>Ajouter</th><th>MJ</th><th>Réel</th><th>Maison</th><th title="Ton meilleur alignement chaque semaine">Gain FP/sem.</th><th>Gain sur la saison</th></tr>
-      ${byDrop(lsugg).map(g => dropHead(g.w, 6) + g.list.map(x => `<tr><td>${pname(x.p, '')} <span class="pos">${esc(x.p.pos)} · ${esc(x.p.nhl)}</span> ${stChip(x.p.status)} ${pChip(x.p)}</td><td>${x.p.gp}</td><td>${f2(x.p.fpg)}</td><td>${f2(x.p.model)}</td>
-        <td class="up"><b>+${f1(x.d)}</b></td><td class="up">+${Math.round(x.season)}</td></tr>`).join('')).join('')}</table></div>`
+    ${lsugg.length ? lsugg.slice(0, 8).map((x, i) => moveCard(i + 1, x, 'long')).join('')
       : '<div class="muted">Aucun joueur libre n’améliore ton alignement à long terme.</div>'}
     <div class="legend"><span>Gain = hausse de ton meilleur alignement chaque semaine (projection maison, blessés comptés à 60 % puisqu’ils reviennent) × ${weeksLeft} semaines restantes. Un ajout qui finirait sur ton banc ne rapporte rien.</span></div>`;
   return `<div class="card">${hzBtns}${H === 'court' ? shortCard : longCard}</div>
@@ -1250,8 +1267,10 @@ function dropCandidates(m, forced) {
   return forced ? [forced] : m.players.filter(p => p.grp !== 'G' && !PROTECT[p.name] && p.status !== 'INJURY_RESERVE')
     .sort((a, b) => (a.model || 0) - (b.model || 0)).slice(0, 6);
 }
+const isPanne = p => { const t = trend(p); return !!(t && t.cls === 'panne'); };
 function faPool(days, exclude) {
-  return D.waivers.filter(p => p.grp !== 'G' && !AVOID[p.name] && !OUT[p.status] && p.gp >= 3 && !(exclude && exclude[p.name]) && days.some(d => playsOn(p, d)))
+  // pas de joueurs 🔴 en panne : le backtest montre qu'ils font en moyenne un peu moins que leur projection
+  return D.waivers.filter(p => p.grp !== 'G' && !AVOID[p.name] && !OUT[p.status] && p.gp >= 3 && !isPanne(p) && !(exclude && exclude[p.name]) && days.some(d => playsOn(p, d)))
     .sort((a, b) => (b.model || 0) - (a.model || 0)).slice(0, 150);
 }
 // meilleurs ajouts : pour chaque joueur libre, le meilleur joueur à retirer, gain = FP de l'alignement jour par jour
@@ -1265,7 +1284,7 @@ function streamSearch(m, days, forced, daysWk) {
       const r = m.players.filter(q => q !== w).concat([p]), gw = planFp(r, daysWk) - baseWk, g = planFp(r, days) - base;
       if (!best || gw > best.gainWk + 1e-9 || (Math.abs(gw - best.gainWk) < 1e-9 && g > best.gain)) best = { p: p, w: w, gain: g, gainWk: gw, r: r }; });
     if (best && (best.gainWk > 0.5 || best.gain > 0.5)) {
-      best.useful = daysWk.filter(d => dayLineup(best.r, d).starters.indexOf(p) >= 0).length;
+      best.usedDays = daysWk.filter(d => dayLineup(best.r, d).starters.indexOf(p) >= 0); best.useful = best.usedDays.length;
       out.push(best);
     }
   });
