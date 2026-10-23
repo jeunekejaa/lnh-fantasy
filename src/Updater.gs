@@ -30,6 +30,13 @@ function updateCode() {
     ui.alert('⬆️ Mise à jour impossible', codeHelp_(e.message), ui.ButtonSet.OK);
   }
 }
+// Bouton « ⬆️ Mettre à jour le code » de l'app (onglet Modèle) : même chose, sans fenêtre du classeur
+function updateCodeFromApp() {
+  const repo = PropertiesService.getScriptProperties().getProperty(CODE.REPO_PROP);
+  if (!repo) return JSON.stringify({ ok: false, err: 'Dépôt GitHub pas encore choisi : fais la première mise à jour du code depuis le menu du classeur.' });
+  try { const r = codeUpdate_(repo); r.ok = true; return JSON.stringify(r); }
+  catch (e) { return JSON.stringify({ ok: false, err: codeHelp_(e.message) }); }
+}
 function codeChangeRepo() {
   PropertiesService.getScriptProperties().deleteProperty(CODE.REPO_PROP);
   updateCode();

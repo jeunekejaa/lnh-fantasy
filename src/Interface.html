@@ -215,6 +215,13 @@ function render() {
   if (TAB === 'trade') bindTrade();
   if (TAB === 'trend') bindTrend();
   if (TAB === 'tx') bindTx();
+  if (TAB === 'about') { const b = $('#codeup'); if (b) b.onclick = () => {
+    b.disabled = true; b.textContent = 'Installation…'; const out = $('#codeupres');
+    google.script.run.withSuccessHandler(t => { const r = JSON.parse(t);
+        out.innerHTML = r.ok ? `✅ Version ${esc(r.bundle)} installée (${r.files.length} fichiers, app n° ${r.version}). <b>Rafraîchis la page</b> pour l’utiliser, puis fais une mise à jour des données.` : `⚠ ${esc(r.err)}`;
+        b.disabled = false; b.textContent = '⬆️ Mettre à jour le code'; })
+      .withFailureHandler(e => { out.textContent = '⚠ ' + (e && e.message || e); b.disabled = false; b.textContent = '⬆️ Mettre à jour le code'; })
+      .updateCodeFromApp(); }; }
   if (TAB === 'team') $('#teamsel').onchange = e => { TEAMV = e.target.value.replace(/ \(toi\)$/, ''); render(); };
   enableSorting();
 }
@@ -536,7 +543,9 @@ function vAbout() {
   const aTxt = bt && bt.lam != null && bt.lam < 1 ? `réelles, <b>passes secondaires pondérées à ${bt.lam}</b> (les primaires sont plus fiables)` : 'réelles';
   const pppTxt = bt && bt.ppb ? `réels ; la base suit ton <b>rôle en AN</b> cette saison vs l’an passé (${bt.ppMode === 'toi' ? 'temps en AN' : 'tentatives en AN'}, poids ${bt.ppb})` : 'réels';
   const gTxt = bt ? (bt.gk ? `réels, base analystes + moteur maison (FP/match et <b>GSAx</b> sur 3 saisons), biais ${bt.gk.b}` : 'réels') : 'réels, projection des analystes réduite de 0,5';
-  return `<div class="card"><h2>Comment marche la projection maison</h2>
+  return `<div class="card"><h2>⬆️ Code de l’app</h2><div class="small muted" style="margin-bottom:8px">Installe la dernière version du code poussée sur GitHub (même chose que le menu du classeur), puis rafraîchis la page.</div>
+      <button class="btn primary" id="codeup">⬆️ Mettre à jour le code</button><div id="codeupres" class="small" style="margin-top:8px"></div></div>
+    <div class="card"><h2>Comment marche la projection maison</h2>
   <p><b>Base d’avant-saison</b> = projections des <b>analystes</b> (GAF : la moyenne des projections d’experts) combinées au moteur maison (3 saisons passées, réglé sur 4 saisons de backtest). Puis, pour chaque stat : <b>(base × k + saison × matchs) ÷ (k + matchs)</b>. Plus k est petit, plus on croit vite la saison en cours — le poids du réel grandit tout seul avec les matchs joués.</p>
   <div class="tbl"><table><tr><th>Stat</th><th>k</th><th class="l">Ce qu’on utilise de la saison en cours</th></tr>
   <tr><td>Tirs</td><td>${k.sog}</td><td class="l">${sogTxt}</td></tr><tr><td>Mises en échec</td><td>${k.hit}</td><td class="l">réelles</td></tr>
