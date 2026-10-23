@@ -284,6 +284,13 @@ function vTeam() {
   </div>` + teamReport(m) + sec('Attaquants', 'F') + sec('Défenseurs', 'D') + sec('Gardiens', 'G');
 }
 
+// Ajouts groupés par joueur à retirer (un en-tête par joueur retiré, au lieu de le répéter à chaque ligne)
+function byDrop(list) {
+  const out = [], idx = new Map();
+  list.forEach(x => { if (!idx.has(x.w)) { idx.set(x.w, out.length); out.push({ w: x.w, list: [] }); } out[idx.get(x.w)].list.push(x); });
+  return out;
+}
+const dropHead = (w, n) => `<tr><td colspan="${n}" class="l" style="background:var(--chip);font-size:12.5px">Retirer <b>${pname(w, D.me)}</b> <span class="pos">${esc(w.pos)} · ${esc(w.nhl)}</span> ${stChip(w.status)} ${pChip(w)} · Maison <b>${f2(w.model)}</b> — et prendre :</td></tr>`;
 // Que faire ? : ajouts (court et long terme), gardiens, échanges suggérés
 function vTodo() {
   const m = me(), mine = m.players.filter(p => !OUT[p.status]);
@@ -336,17 +343,17 @@ function vTodo() {
       `<li>Prends ${pname(x.p, '')} <span class="pos">${esc(x.p.nhl)}</span>, retire ${pname(x.w, D.me)} : <b class="up">+${f1(x.gain)}</b> <span class="muted">(${x.days.map(d => dLabel(d)).join(', ')})</span>${(x.w.model || 0) > (x.p.model || 0) + 0.1 ? ` <span class="small down">· ⚠ à long terme, ${esc(x.w.name)} vaut plus (${f2(x.w.model)} vs ${f2(x.p.model)})</span>` : ''}</li>`).join('')}</ol></div>`
       : `<div class="muted small" style="margin-bottom:8px">${left === 0 ? 'Plus d’acquisition possible cette semaine.' : 'Aucun ajout ne remplit utilement tes places vides d’ici dimanche.'}</div>`}
     ${dropSel}
-    ${sugg.length ? `<div class="tbl"><table><tr><th>Ajouter</th><th>Ses matchs</th><th>Maison</th><th>Retirer</th><th>Maison</th><th title="Matchs où l’ajout entre vraiment dans ton alignement cette semaine (place libre ou meilleur que le titulaire)">Utiles cette sem.</th><th title="Gain d’ici dimanche : ce qui compte pour ton duel en cours (même calcul que le plan)">Gain cette sem.</th><th title="Gain d’ici dimanche prochain (cette semaine + la prochaine)">Gain 2 sem.</th></tr>
-      ${sugg.map(x => `<tr><td>${pname(x.p, '')} <span class="pos">${esc(x.p.pos)} · ${esc(x.p.nhl)}</span> ${pChip(x.p)}</td><td>${x.p.left}+${x.p.next}</td><td>${f2(x.p.model)}</td>
-        <td class="l">${pname(x.w, D.me)} <span class="pos">${esc(x.w.nhl)}</span></td><td>${f2(x.w.model)}</td><td>${x.useful}</td><td class="${x.gainWk > 0.05 ? 'up' : 'muted'}"><b>${sgn(x.gainWk)}</b></td><td class="muted">${sgn(x.gain)}</td></tr>`).join('')}</table></div>`
+    ${sugg.length ? `<div class="tbl"><table><tr><th>Ajouter</th><th>Ses matchs</th><th>Maison</th><th title="Matchs où l’ajout entre vraiment dans ton alignement cette semaine (place libre ou meilleur que le titulaire)">Utiles cette sem.</th><th title="Gain d’ici dimanche : ce qui compte pour ton duel en cours (même calcul que le plan)">Gain cette sem.</th><th title="Gain d’ici dimanche prochain (cette semaine + la prochaine)">Gain 2 sem.</th></tr>
+      ${byDrop(sugg).map(g => dropHead(g.w, 6) + g.list.map(x => `<tr><td>${pname(x.p, '')} <span class="pos">${esc(x.p.pos)} · ${esc(x.p.nhl)}</span> ${pChip(x.p)}</td><td>${x.p.left}+${x.p.next}</td><td>${f2(x.p.model)}</td>
+        <td>${x.useful}</td><td class="${x.gainWk > 0.05 ? 'up' : 'muted'}"><b>${sgn(x.gainWk)}</b></td><td class="muted">${sgn(x.gain)}</td></tr>`).join('')).join('')}</table></div>`
       : '<div class="muted">Aucun ajout ne rapporte clairement plus que ton joueur le plus faible d’ici 2 semaines.</div>'}
     <div class="legend"><span>Classés selon le gain <b>cette semaine</b> (ton duel), comme le plan ; « Gain 2 sem. » ajoute la semaine prochaine. Calcul jour par jour : chaque soir, ton meilleur alignement possible (${D.config.lineup.F} F, ${D.config.lineup.D} D, ${D.config.lineup.UTIL} UTIL, ${D.config.lineup.G} G) avec les joueurs qui jouent. Un ajout ne rapporte que les soirs où il entre dans l’alignement.</span><span>Le plan respecte ta limite d’acquisitions de la semaine.</span></div>`;
   const lwhy = ['F', 'D'].map(k => lcands[k].length ? `<div class="small" style="margin:4px 0"><b>${k === 'F' ? 'Attaquants' : 'Défenseurs'}</b> — tes 3 plus faibles à long terme : ${lcands[k].map(p =>
       `${esc(p.name)} ${f2(lv(p))}${OUT[p.status] ? ' (blessé)' : ''}`).join(' · ')} → candidat : <b>${esc(lworst[k] ? lworst[k].name : '–')}</b></div>` : '').join('');
   const longCard = `<h2>Ajouts long terme : reste de la saison</h2>${dropSel}${lwhy}
-    ${lsugg.length ? `<div class="tbl"><table><tr><th>Ajouter</th><th>MJ</th><th>Réel</th><th>Maison</th><th>Retirer</th><th>Maison</th><th title="Ton meilleur alignement chaque semaine">Gain FP/sem.</th><th>Gain sur la saison</th></tr>
-      ${lsugg.map(x => `<tr><td>${pname(x.p, '')} <span class="pos">${esc(x.p.pos)} · ${esc(x.p.nhl)}</span> ${stChip(x.p.status)} ${pChip(x.p)}</td><td>${x.p.gp}</td><td>${f2(x.p.fpg)}</td><td>${f2(x.p.model)}</td>
-        <td class="l">${pname(x.w, D.me)} <span class="pos">${esc(x.w.nhl)}</span> ${stChip(x.w.status)}</td><td>${f2(x.w.model)}</td><td class="up"><b>+${f1(x.d)}</b></td><td class="up">+${Math.round(x.season)}</td></tr>`).join('')}</table></div>`
+    ${lsugg.length ? `<div class="tbl"><table><tr><th>Ajouter</th><th>MJ</th><th>Réel</th><th>Maison</th><th title="Ton meilleur alignement chaque semaine">Gain FP/sem.</th><th>Gain sur la saison</th></tr>
+      ${byDrop(lsugg).map(g => dropHead(g.w, 6) + g.list.map(x => `<tr><td>${pname(x.p, '')} <span class="pos">${esc(x.p.pos)} · ${esc(x.p.nhl)}</span> ${stChip(x.p.status)} ${pChip(x.p)}</td><td>${x.p.gp}</td><td>${f2(x.p.fpg)}</td><td>${f2(x.p.model)}</td>
+        <td class="up"><b>+${f1(x.d)}</b></td><td class="up">+${Math.round(x.season)}</td></tr>`).join('')).join('')}</table></div>`
       : '<div class="muted">Aucun joueur libre n’améliore ton alignement à long terme.</div>'}
     <div class="legend"><span>Gain = hausse de ton meilleur alignement chaque semaine (projection maison, blessés comptés à 60 % puisqu’ils reviennent) × ${weeksLeft} semaines restantes. Un ajout qui finirait sur ton banc ne rapporte rien.</span></div>`;
   return `<div class="card">${hzBtns}${H === 'court' ? shortCard : longCard}</div>
