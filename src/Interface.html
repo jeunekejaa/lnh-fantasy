@@ -1,0 +1,1507 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LNH Fantasy</title>
+<style>
+:root{
+  --bg:#f6f7f9;--card:#ffffff;--ink:#14171c;--muted:#6b7380;--line:#e4e7ec;--accent:#0b6e4f;--accent-ink:#ffffff;
+  --good:#1a7f37;--good-bg:#e6f4ea;--bad:#b42318;--bad-bg:#fdecea;--warn:#9a6700;--warn-bg:#fff4d6;--blue:#1f5fbf;--blue-bg:#e5effd;--me:#eef6f2;--chip:#eef0f3;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#0f1115;--card:#171a20;--ink:#e8eaee;--muted:#9aa3af;--line:#2a2f38;--accent:#3fb68b;--accent-ink:#06130e;
+        --good:#4ac26b;--good-bg:#12291b;--bad:#ff7b72;--bad-bg:#2d1414;--warn:#e3b341;--warn-bg:#2b2410;--blue:#6aa8ff;--blue-bg:#14223a;--me:#13261f;--chip:#222730;}
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:12px 16px 0}
+.top{display:flex;align-items:center;gap:10px;justify-content:space-between}
+h1{font-size:18px;margin:0;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:12px}
+nav{display:flex;gap:4px;overflow-x:auto;margin-top:10px;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav button{flex:0 0 auto;border:0;background:none;color:var(--muted);font:inherit;font-weight:600;padding:8px 10px;border-bottom:2px solid transparent;cursor:pointer}
+nav button.on{color:var(--ink);border-bottom-color:var(--accent)}
+main{max-width:1100px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.card h2{font-size:15px;margin:0 0 10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.kpi .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.kpi .l{color:var(--muted);font-size:12px}
+.tbl{width:100%;overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{font-size:12px;color:var(--muted);font-weight:600;position:sticky;top:0;background:var(--card)}
+th:first-child,td:first-child,th.l,td.l{text-align:left}
+tr.me td{background:var(--me);font-weight:600}
+.chip{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:600;background:var(--chip);color:var(--muted)}
+.chip.good{background:var(--good-bg);color:var(--good)} .chip.blue{background:var(--blue-bg);color:var(--blue)} .chip.bad{background:var(--bad-bg);color:var(--bad)} .chip.warn{background:var(--warn-bg);color:var(--warn)}
+.pos{color:var(--muted);font-size:12px}
+.up{color:var(--good)} .down{color:var(--bad)}
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+select,input,button.btn{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:7px 10px}
+button.btn{cursor:pointer;font-weight:600}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.muted{color:var(--muted)} .small{font-size:12px}
+.bar{height:6px;background:var(--chip);border-radius:3px;overflow:hidden;min-width:60px}
+.bar>i{display:block;height:100%;background:var(--accent)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:760px){.two{grid-template-columns:1fr}}
+.pick{display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid var(--line);cursor:pointer}
+.pick input{width:18px;height:18px}
+.pick .n{flex:1}
+.delta{font-size:26px;font-weight:700}
+.warnbox{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px}
+.empty{color:var(--muted);text-align:center;padding:30px}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+@media (max-width:520px){.hide-s{display:none}}
+#prog{position:fixed;left:0;right:0;top:0;z-index:20;display:none;background:var(--card);border-bottom:1px solid var(--line);padding:10px 16px;box-shadow:0 2px 10px rgba(0,0,0,.08)}
+#prog .track{height:8px;background:var(--chip);border-radius:4px;overflow:hidden;margin-top:6px}
+#prog .fill{height:100%;width:0;background:var(--accent);border-radius:4px;transition:width .6s ease}
+#prog .row{display:flex;justify-content:space-between;font-size:13px}
+footer{color:var(--muted);font-size:11px;text-align:center;padding:20px 16px 40px}
+/* Fiche de joueur */
+.pn{cursor:pointer;font-weight:600;color:var(--ink);text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
+.pn:hover{text-decoration-color:var(--accent)}
+#ps{position:fixed;inset:0;z-index:30;display:none;background:rgba(0,0,0,.45);align-items:flex-start;justify-content:center;padding:24px 12px;overflow-y:auto}
+#ps.on{display:flex}
+#ps .sheet{background:var(--card);border:1px solid var(--line);border-radius:14px;width:100%;max-width:680px;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.25)}
+#ps .hd{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px}
+#ps .hd h2{margin:0;font-size:20px;letter-spacing:-.01em}
+#ps .x{border:0;background:var(--chip);color:var(--ink);border-radius:999px;width:32px;height:32px;font-size:16px;cursor:pointer;flex:0 0 auto}
+#ps h3{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:16px 0 8px}
+#ps .grid{grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
+#ps .kpi{padding:9px 10px}
+#ps .kpi .v{font-size:18px}
+#ps .note{font-size:12px;color:var(--muted);margin-top:6px}
+#ps .why{background:var(--chip);border-radius:10px;padding:10px 12px;margin-top:12px;font-size:13.5px}
+#ps .why ul{margin:6px 0 0;padding-left:18px}
+#ps .why li{margin:4px 0}
+#ps .why .verdict{margin-top:8px;font-weight:600}
+#ps .why{border-left:4px solid transparent}
+#ps .why.tone-progression{border-left-color:var(--good)} #ps .why.tone-chanceux{border-left-color:var(--blue)}
+#ps .why.tone-malchanceux{border-left-color:var(--warn)} #ps .why.tone-panne{border-left-color:var(--bad)}
+@media (max-width:520px){#ps{padding:0}#ps .sheet{border-radius:0;min-height:100%;border:0}}
+th.srt{cursor:pointer;user-select:none}
+th.srt:hover{color:var(--ink)}
+th.srt[data-dir]::after{content:attr(data-dir);margin-left:3px;color:var(--accent)}
+#ps table{table-layout:fixed}
+#ps th,#ps td{padding:6px 6px;white-space:normal;overflow-wrap:anywhere}
+#ps th{font-size:11px;line-height:1.25;vertical-align:bottom}
+#ps th .muted{display:block;font-weight:500}
+#ps th:first-child,#ps td:first-child{width:30%}
+#ps .tbl{overflow-x:visible}
+#ps select{max-width:100%;min-width:0;flex:1 1 220px}
+@media (max-width:520px){#ps th,#ps td{padding:5px 4px;font-size:12.5px}#ps th{font-size:10.5px}}
+.fo2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.fo{width:100%;font-size:12.5px;border-collapse:collapse}
+.fo th,.fo td{padding:3px 5px;white-space:nowrap}
+.fo td.l{white-space:normal}
+.fo tr.dim td{opacity:.55}
+.fo tr.tot td{border-top:2px solid var(--line);font-weight:600}
+@media (max-width:760px){.fo2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <div><h1>🏒 LNH Fantasy</h1><div class="sub" id="stamp">Chargement…</div></div>
+    <button class="btn" id="refresh" title="Relire les stats LNH, ESPN et MoneyPuck">↻<span class="hide-s"> Mettre à jour</span></button>
+  </div>
+  <nav id="tabs">
+    <button data-t="board" class="on">Classement</button>
+    <button data-t="team">Équipes</button>
+    <button data-t="week">Semaine</button>
+    <button data-t="tx">Transactions</button>
+    <button data-t="todo">Que faire ?</button>
+    <button data-t="trade">Simulateur d’échange</button>
+    <button data-t="waivers">Ballotage</button>
+    <button data-t="search">Chercher</button>
+    <button data-t="about">Modèle</button>
+  </nav>
+</header>
+<div id="prog"><div class="row"><span id="plabel">Mise à jour…</span><span id="ppct">0 %</span></div><div class="track"><div class="fill" id="pfill"></div></div></div>
+<div id="ps" role="dialog" aria-modal="true"><div class="sheet" id="psheet"></div></div>
+<main id="view"><div class="empty">Chargement des données…</div></main>
+<footer>Données : LNH · ESPN Fantasy · projections des analystes (GAF Aggregate Projections) · stats avancées <a href="https://moneypuck.com" target="_blank" rel="noopener" style="color:inherit">MoneyPuck.com</a></footer>
+
+<script>
+let D = null, TAB = 'board';
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const f1 = x => x == null ? '–' : (+x).toFixed(1);
+const f2 = x => x == null ? '–' : (+x).toFixed(2);
+const pct = x => x == null ? '–' : Math.round(x * 100) + ' %';
+const sgn = (x, d = 1) => x == null ? '–' : (x > 0 ? '+' : '') + (+x).toFixed(d);
+const OUT = { OUT: 1, INJURY_RESERVE: 1, SUSPENSION: 1, IR: 1 };
+
+// Barre de progression : le serveur publie son avancement, la page le lit chaque seconde
+let PT = null, PSTART = 0;
+function progress(on) {
+  const box = $('#prog');
+  if (!on) { clearInterval(PT); PT = null; $('#pfill').style.width = '100%'; $('#ppct').textContent = '100 %'; setTimeout(() => { box.style.display = 'none'; }, 500); $('#refresh').disabled = false; return; }
+  PSTART = Date.now(); box.style.display = 'block'; $('#pfill').style.width = '2%'; $('#ppct').textContent = '0 %'; $('#plabel').textContent = 'Démarrage…'; $('#refresh').disabled = true;
+  PT = setInterval(() => {
+    if (!(window.google && google.script && google.script.run)) return;
+    google.script.run.withSuccessHandler(txt => {
+      if (!txt || !PT) return;
+      const p = JSON.parse(txt);
+      if (p.t < PSTART - 5000) return;   // progression d'une ancienne mise à jour
+      $('#pfill').style.width = Math.max(2, p.pct) + '%'; $('#ppct').textContent = p.pct + ' %';
+      $('#plabel').textContent = p.label + ' (' + Math.round((Date.now() - PSTART) / 1000) + ' s)';
+    }).getProgress();
+  }, 1200);
+}
+function load(force) {
+  $('#stamp').textContent = force ? 'Mise à jour en cours…' : 'Chargement…';
+  if (force) progress(true);
+  const ok = txt => {
+    if (!txt) { if (force) progress(false); $('#view').innerHTML = '<div class="empty">Aucune donnée encore. Lance « Update » dans ton Google Sheets, puis recharge.</div>'; $('#stamp').textContent = ''; return; }
+    D = JSON.parse(txt); OWN = null; applyOvr(); render(); if (force) progress(false);
+  };
+  const ko = e => { if (force) progress(false); $('#stamp').textContent = 'Erreur : ' + (e && e.message || e); };
+  if (window.google && google.script && google.script.run) {
+    google.script.run.withSuccessHandler(ok).withFailureHandler(ko)[force ? 'refreshFromApp' : 'getAppData']();
+  } else if (window.MOCK) ok(JSON.stringify(window.MOCK));
+}
+$('#refresh').onclick = () => load(true);
+$('#tabs').onclick = e => { const b = e.target.closest('button'); if (!b) return;
+  TAB = b.dataset.t; document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b)); render(); window.scrollTo(0, 0); };
+
+const me = () => D.teams.find(t => t.team === D.me) || D.teams[0];
+const sigChip = s => s === 'malchanceux' ? '<span class="chip warn" title="Produit moins que ses tirs et ses chances ne le méritent">🟡 malchanceux</span>'
+  : s === 'chanceux' ? '<span class="chip blue" title="Produit plus que ses chances ne le méritent">🔵 chanceux</span>' : '';
+const stChip = s => !s || s === 'ACTIVE' ? '' : `<span class="chip ${OUT[s] ? 'bad' : 'warn'}">${esc({OUT:'absent',INJURY_RESERVE:'IR',SUSPENSION:'suspendu',DAY_TO_DAY:'incertain'}[s] || s)}</span>`;
+
+// ---------- modèle côté client (mêmes règles que le serveur) ----------
+function power(players) {
+  const L = D.config.lineup, gpw = D.config.gpw, ok = players.filter(p => !OUT[p.status]);
+  const v = p => p.model || 0, by = (a, b) => v(b) - v(a);
+  const F = ok.filter(p => p.grp === 'F').sort(by), Dd = ok.filter(p => p.grp === 'D').sort(by);
+  const util = F.slice(L.F).concat(Dd.slice(L.D)).sort(by).slice(0, L.UTIL);
+  const sk = F.slice(0, L.F).concat(Dd.slice(0, L.D), util).reduce((s, p) => s + v(p), 0) * gpw * D.config.injury;
+  const g = ok.filter(p => p.grp === 'G').map(p => v(p) * (p.share || D.config.share) * gpw).sort((a, b) => b - a).slice(0, L.G).reduce((s, x) => s + x, 0);
+  return sk + g;
+}
+function gauss() { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+function simulate(powers, N) {
+  const T = D.teams, idx = {}; T.forEach((t, i) => idx[t.team] = i);
+  const po = T.map(() => 0), wins = T.map(() => 0);
+  for (let s = 0; s < N; s++) {
+    const w = T.map(t => t.record ? t.record.w + t.record.tie / 2 : 0), pf = T.map(t => t.record ? t.record.pf : 0);
+    D.schedule.forEach(g => {
+      const a = idx[g.a], b = idx[g.b]; if (a == null || b == null) return;
+      const sa = g.liveA + powers[a] * g.frac + gauss() * D.config.sd * Math.sqrt(g.frac);
+      const sb = g.liveB + powers[b] * g.frac + gauss() * D.config.sd * Math.sqrt(g.frac);
+      if (sa > sb) w[a]++; else w[b]++; pf[a] += sa; pf[b] += sb;
+    });
+    T.map((t, i) => i).sort((x, y) => (w[y] - w[x]) || (pf[y] - pf[x])).forEach((i, r) => { if (r < D.playoffTeams) po[i]++; wins[i] += w[i]; });
+  }
+  return { po: po.map(x => x / N), wins: wins.map(x => x / N) };
+}
+
+// ---------- vues ----------
+function render() {
+  PREG = [];
+  $('#stamp').textContent = 'Mis à jour ' + D.updated + (D.weekEnd ? ' · semaine jusqu’au ' + D.weekEnd.slice(5).replace('-', '/') : '');
+  const warn = D.warn && D.warn.length ? `<div class="warnbox">⚠ ${D.warn.map(esc).join(' · ')}</div>` : '';
+  $('#view').innerHTML = warn + ({ board: vBoard, team: vTeam, week: vWeek, todo: vTodo, waivers: vWaivers, search: vSearch, trend: vTrend, tx: vTx, log: vLog, trade: vTrade, about: vAbout }[TAB])();
+  if (TAB === 'search') bindSearch();
+  if (TAB === 'todo') bindWeek();
+  if (TAB === 'todo') bindTodo();
+  if (TAB === 'waivers') bindWaivers();
+  if (TAB === 'trade') bindTrade();
+  if (TAB === 'trend') bindTrend();
+  if (TAB === 'tx') bindTx();
+  if (TAB === 'team') $('#teamsel').onchange = e => { TEAMV = e.target.value.replace(/ \(toi\)$/, ''); render(); };
+  enableSorting();
+}
+
+function vBoard() {
+  const T = D.teams.slice().sort((a, b) => {
+    const ra = a.record, rb = b.record; if (!ra || !rb) return b.power - a.power;
+    const pa = (ra.w + ra.tie / 2) / Math.max(1, ra.w + ra.l + ra.tie), pb = (rb.w + rb.tie / 2) / Math.max(1, rb.w + rb.l + rb.tie);
+    return (pb - pa) || (rb.pf - ra.pf);
+  });
+  const byPow = D.teams.slice().sort((a, b) => b.power - a.power).map(t => t.team);
+  const m = me(), r = m.record || {}, s = m.sim || {};
+  const kpis = `<div class="grid" style="margin-bottom:14px">
+    <div class="kpi"><div class="v">${r.w != null ? r.w + '-' + r.l : '–'}</div><div class="l">Ta fiche ESPN</div></div>
+    <div class="kpi"><div class="v">${pct(s.playoffs)}</div><div class="l">Chances de séries (top ${D.playoffTeams})</div></div>
+    <div class="kpi"><div class="v">${f1(s.wins)}</div><div class="l">Victoires projetées</div></div>
+    <div class="kpi"><div class="v">${byPow.indexOf(m.team) + 1}<span class="muted" style="font-size:14px">/${D.teams.length}</span></div><div class="l">Rang de force (projection maison)</div></div>
+    <div class="kpi"><div class="v">${r.live != null ? f1(r.live) + ' – ' + f1(r.oppLive) : '–'}</div><div class="l">Cette semaine vs ${esc(r.opp || '–')}</div></div>
+    ${duelKpi()}
+  </div>`;
+  const rows = T.map((t, i) => { const r = t.record || {}, s = t.sim || {};
+    return `<tr class="${t.team === D.me ? 'me' : ''}"><td>${i + 1}</td><td class="l"><span class="pn" data-team="${esc(t.team)}" title="Voir l’alignement">${esc(t.team)}</span></td>
+      <td>${r.w != null ? r.w + '-' + r.l : '–'}</td><td>${f1(r.pf)}</td>
+      <td>${r.apW != null ? r.apW + '-' + r.apL : '–'}</td>
+      <td>${r.live != null ? f1(r.live) : '–'}</td>
+      <td>${f1(t.power)}</td><td>${f1(t.powerReal)}</td>
+      <td>${f1(s.wins)}</td><td><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">${pct(s.playoffs)}<div class="bar" style="width:60px"><i style="width:${Math.round((s.playoffs || 0) * 100)}%"></i></div></div></td></tr>`; }).join('');
+  return kpis + `<div class="card"><h2>Classement et projections</h2><div class="tbl"><table>
+    <tr><th title="Rang au classement ESPN">#</th><th class="l">Équipe</th><th>Fiche</th><th>PF</th><th title="Fiche si tu affrontais toutes les équipes chaque semaine">All-play</th><th>Semaine</th>
+    <th title="FP par semaine attendus, projection maison, meilleur alignement, blessés exclus">Force</th><th title="Même calcul avec les stats réelles seulement">Force (réel)</th><th>V proj.</th><th>Séries</th></tr>${rows}</table></div>
+    <div class="legend"><span>Force = FP/semaine attendus (projection maison)</span><span>Séries et V proj. : ${D.config.sims} saisons simulées sur ton calendrier ESPN</span></div></div>`;
+}
+
+// Registre des joueurs affichés : un clic sur un nom ouvre sa fiche
+let PREG = [];
+const pname = (p, owner) => { PREG.push(owner !== undefined ? Object.assign({ owner: owner }, p) : p); return `<span class="pn" data-pi="${PREG.length - 1}">${esc(p.name)}</span>`; };
+function playerRows(list, opts = {}) {
+  return list.map(p => `<tr><td>${pname(p, p.owner !== undefined ? p.owner : ownerOf(p))} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span> ${stChip(p.status)} ${pChip(p)}</td>
+    <td>${p.gp || 0}</td><td>${f2(p.fpg)}</td><td>${f2(p.gaf)}</td><td><b>${f2(p.model)}</b></td>
+    <td class="${p.luck > 0 ? 'down' : p.luck < 0 ? 'up' : ''}" title="FP réels moins FP mérités (xG, chance sur la glace)">${p.grp === 'G' ? (p.gsax != null ? 'GSAx ' + sgn(p.gsax, 2) : '–') : sgn(p.luck, 2)}</td>
+    <td>${p.grp === 'G' ? pct(p.share) + (p.shareFixed ? ' <span class="chip" title="Rôle fixé à la main (GOALIE_ROLE dans App.gs)">fixé</span>' : '') : (p.toi ? f1(p.toi) + (p.pptoi ? ' <span class="muted">(' + f1(p.pptoi) + ' AN)</span>' : '') : '–')}</td>
+    <td>${p.today ? '<span class="chip good">ce soir</span> ' : ''}${p.left}</td><td>${p.next}</td>${opts.extra ? opts.extra(p) : ''}</tr>`).join('');
+}
+const PHEAD = (extra = '') => `<tr><th>Joueur</th><th>MJ</th><th title="FP par match cette saison">Réel</th><th title="Projection des analystes (moyenne GAF des experts, avant la saison)">Analystes</th><th title="Projection maison : analystes + moteur maison, mélangés à la saison en cours stat par stat">Maison</th><th title="Chance : réel − mérité. Négatif = malchanceux (va remonter)">Chance</th><th title="Temps de jeu (min/match), dont avantage numérique · gardiens : part des départs">TJ / départs</th><th>Matchs restants</th><th>Sem. proch.</th>${extra}</tr>`;
+
+let TEAMV = null;
+function vTeam() {
+  if (!TEAMV || !D.teams.find(t => t.team === TEAMV)) TEAMV = D.me;
+  const m = D.teams.find(t => t.team === TEAMV), g = k => m.players.filter(p => p.grp === k).sort((a, b) => b.model - a.model);
+  const r = m.record || {}, s = m.sim || {};
+  const pick = `<div class="controls"><select id="teamsel">${D.teams.map(t => `<option ${t.team === TEAMV ? 'selected' : ''}>${esc(t.team)}${t.team === D.me ? ' (toi)' : ''}</option>`).join('')}</select>
+    <span class="muted small" style="align-self:center">${r.w != null ? 'Fiche ' + r.w + '-' + r.l + ' · ' : ''}séries ${pct(s.playoffs)}</span></div>`;
+  const sec = (t, k) => `<div class="card"><h2>${t}</h2><div class="tbl"><table>${PHEAD()}${playerRows(g(k))}</table></div></div>`;
+  return pick + `<div class="grid" style="margin-bottom:14px">
+    <div class="kpi"><div class="v">${f1(m.power)}</div><div class="l">Force / semaine (maison)</div></div>
+    <div class="kpi"><div class="v">${f1(m.powerReal)}</div><div class="l">Force / semaine (stats réelles)</div></div>
+  </div>` + teamReport(m) + sec('Attaquants', 'F') + sec('Défenseurs', 'D') + sec('Gardiens', 'G');
+}
+
+// Que faire ? : ajouts (court et long terme), gardiens, échanges suggérés
+function vTodo() {
+  const m = me(), mine = m.players.filter(p => !OUT[p.status]);
+  const tonight = mine.filter(p => p.today);
+  // horizon : reste de cette semaine + semaine prochaine (un ajout doit valoir plus qu’un seul soir)
+  const val = p => (p.grp === 'G' ? p.model * (p.share || D.config.share) : p.model) * (p.left + p.next);
+  const worst = {}, cands = {};
+  // Candidat à retirer, par position : parmi tes 3 joueurs les plus faibles (projection maison),
+  // celui qui rapportera le moins sur 2 semaines (projection × matchs de son équipe).
+  // Tu peux imposer un autre joueur avec le menu « Joueur à remplacer ».
+  ['F', 'D', 'G'].forEach(k => {
+    cands[k] = mine.filter(p => p.grp === k).sort((a, b) => a.model - b.model).slice(0, 3);
+    worst[k] = cands[k].slice().sort((a, b) => val(a) - val(b))[0];
+  });
+  const forced = WK.drop ? m.players.find(p => p.name === WK.drop) : null;
+  if (forced) worst[forced.grp] = forced;
+  // Court terme : alignement réel jour par jour (places libres chaque soir), du jour jusqu'à dimanche prochain
+  const days = horizonDays(ymdAdd(D.weekEnd, 7)), daysWk = horizonDays(D.weekEnd);
+  const sugg = streamSearch(m, days, forced, daysWk);
+  const why = ['F', 'D'].map(k => cands[k].length ? `<div class="small" style="margin:4px 0"><b>${k === 'F' ? 'Attaquants' : 'Défenseurs'}</b> — tes 3 plus faibles : ${cands[k].map(p =>
+      `${esc(p.name)} ${f2(p.model)} × ${p.left + p.next} matchs = <b>${f1(val(p))}</b>`).join(' · ')} → candidat : <b>${esc(worst[k] ? worst[k].name : '–')}</b></div>` : '').join('');
+  const dropSel = `<div class="controls" style="margin-bottom:6px"><select id="wkdrop"><option value="">Joueur à remplacer : automatique</option>${m.players.filter(p => p.grp !== 'G').sort((a, b) => a.model - b.model)
+      .map(p => `<option ${WK.drop === p.name ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>`;
+  const totalLeft = mine.filter(p => p.grp !== 'G').reduce((s, p) => s + p.left, 0);
+  // Long terme : on remplace un de tes joueurs par l'ajout et on mesure ton meilleur alignement, semaine après semaine
+  const weeksLeft = new Set(D.schedule.filter(g => g.a === m.team || g.b === m.team).map(g => g.period)).size || 1;
+  const lv = p => hVal(p, 'long'), allMine = m.players, p0 = powerH(allMine, 'long');
+  const lcands = {}, lworst = {};
+  ['F', 'D'].forEach(k => {
+    lcands[k] = allMine.filter(p => p.grp === k && !PROTECT[p.name] && p.status !== 'INJURY_RESERVE').sort(   // un joueur sur la LBP ne prend pas de place
+      (a, b) => lv(a) - lv(b)).slice(0, 3);
+    lworst[k] = lcands[k][0];
+  });
+  if (forced) lworst[forced.grp] = forced;
+  const lsugg = D.waivers.filter(p => p.gp >= 3 && p.grp !== 'G' && !AVOID[p.name] && (!forced || p.grp === forced.grp)).map(p => {
+    const w = lworst[p.grp]; if (!w) return null;
+    const d = powerH(allMine.filter(q => q !== w).concat([p]), 'long') - p0;
+    return { p, w, d, season: d * weeksLeft };
+  }).filter(x => x && x.d > 0.1).sort((a, b) => b.d - a.d).slice(0, 10);
+  const H = WK.h || 'court';
+  const hzBtns = `<div class="controls" id="wkhz">${[['court', 'Court terme · cette semaine + la prochaine'], ['long', 'Long terme · reste de la saison']]
+      .map(([h, l]) => `<button class="btn ${H === h ? 'primary' : ''}" data-h="${h}">${l}</button>`).join('')}</div>`;
+  const acq = D.espn || {}, left = acq.acqLimit != null && acq.acqUsed != null ? Math.max(0, acq.acqLimit - acq.acqUsed) : null;
+  const plan = streamPlan(m, daysWk, left == null ? 2 : Math.min(left, 3));
+  const slotRow = slotsByDay(m.players, daysWk);
+  const shortCard = `<h2>Ajouts court terme : alignement jour par jour</h2>
+    <div class="small" style="margin-bottom:8px"><b>Places vides cette semaine</b> (avec ton alignement actuel) : ${slotRow}</div>
+    ${left != null ? `<div class="small muted" style="margin-bottom:8px">Acquisitions cette semaine : ${acq.acqUsed} sur ${acq.acqLimit} utilisée${acq.acqUsed > 1 ? 's' : ''} — il t’en reste <b>${left}</b>.</div>` : ''}
+    ${plan.steps.length ? `<div class="why" style="margin:0 0 10px"><b>Plan pour cette semaine</b> (${plan.steps.length} transaction${plan.steps.length > 1 ? 's' : ''}) : <b class="up">+${f1(plan.gain)} FP</b> d’ici dimanche<ol style="margin:6px 0 0;padding-left:18px">${plan.steps.map(x =>
+      `<li>Prends ${pname(x.p, '')} <span class="pos">${esc(x.p.nhl)}</span>, retire ${pname(x.w, D.me)} : <b class="up">+${f1(x.gain)}</b> <span class="muted">(${x.days.map(d => dLabel(d)).join(', ')})</span>${(x.w.model || 0) > (x.p.model || 0) + 0.1 ? ` <span class="small down">· ⚠ à long terme, ${esc(x.w.name)} vaut plus (${f2(x.w.model)} vs ${f2(x.p.model)})</span>` : ''}</li>`).join('')}</ol></div>`
+      : `<div class="muted small" style="margin-bottom:8px">${left === 0 ? 'Plus d’acquisition possible cette semaine.' : 'Aucun ajout ne remplit utilement tes places vides d’ici dimanche.'}</div>`}
+    ${dropSel}
+    ${sugg.length ? `<div class="tbl"><table><tr><th>Ajouter</th><th>Ses matchs</th><th>Maison</th><th>Retirer</th><th>Maison</th><th title="Matchs où l’ajout entre vraiment dans ton alignement cette semaine (place libre ou meilleur que le titulaire)">Utiles cette sem.</th><th title="Gain d’ici dimanche : ce qui compte pour ton duel en cours (même calcul que le plan)">Gain cette sem.</th><th title="Gain d’ici dimanche prochain (cette semaine + la prochaine)">Gain 2 sem.</th></tr>
+      ${sugg.map(x => `<tr><td>${pname(x.p, '')} <span class="pos">${esc(x.p.pos)} · ${esc(x.p.nhl)}</span> ${pChip(x.p)}</td><td>${x.p.left}+${x.p.next}</td><td>${f2(x.p.model)}</td>
+        <td class="l">${pname(x.w, D.me)} <span class="pos">${esc(x.w.nhl)}</span></td><td>${f2(x.w.model)}</td><td>${x.useful}</td><td class="${x.gainWk > 0.05 ? 'up' : 'muted'}"><b>${sgn(x.gainWk)}</b></td><td class="muted">${sgn(x.gain)}</td></tr>`).join('')}</table></div>`
+      : '<div class="muted">Aucun ajout ne rapporte clairement plus que ton joueur le plus faible d’ici 2 semaines.</div>'}
+    <div class="legend"><span>Classés selon le gain <b>cette semaine</b> (ton duel), comme le plan ; « Gain 2 sem. » ajoute la semaine prochaine. Calcul jour par jour : chaque soir, ton meilleur alignement possible (${D.config.lineup.F} F, ${D.config.lineup.D} D, ${D.config.lineup.UTIL} UTIL, ${D.config.lineup.G} G) avec les joueurs qui jouent. Un ajout ne rapporte que les soirs où il entre dans l’alignement.</span><span>Le plan respecte ta limite d’acquisitions de la semaine.</span></div>`;
+  const lwhy = ['F', 'D'].map(k => lcands[k].length ? `<div class="small" style="margin:4px 0"><b>${k === 'F' ? 'Attaquants' : 'Défenseurs'}</b> — tes 3 plus faibles à long terme : ${lcands[k].map(p =>
+      `${esc(p.name)} ${f2(lv(p))}${OUT[p.status] ? ' (blessé)' : ''}`).join(' · ')} → candidat : <b>${esc(lworst[k] ? lworst[k].name : '–')}</b></div>` : '').join('');
+  const longCard = `<h2>Ajouts long terme : reste de la saison</h2>${dropSel}${lwhy}
+    ${lsugg.length ? `<div class="tbl"><table><tr><th>Ajouter</th><th>MJ</th><th>Réel</th><th>Maison</th><th>Retirer</th><th>Maison</th><th title="Ton meilleur alignement chaque semaine">Gain FP/sem.</th><th>Gain sur la saison</th></tr>
+      ${lsugg.map(x => `<tr><td>${pname(x.p, '')} <span class="pos">${esc(x.p.pos)} · ${esc(x.p.nhl)}</span> ${stChip(x.p.status)} ${pChip(x.p)}</td><td>${x.p.gp}</td><td>${f2(x.p.fpg)}</td><td>${f2(x.p.model)}</td>
+        <td class="l">${pname(x.w, D.me)} <span class="pos">${esc(x.w.nhl)}</span> ${stChip(x.w.status)}</td><td>${f2(x.w.model)}</td><td class="up"><b>+${f1(x.d)}</b></td><td class="up">+${Math.round(x.season)}</td></tr>`).join('')}</table></div>`
+      : '<div class="muted">Aucun joueur libre n’améliore ton alignement à long terme.</div>'}
+    <div class="legend"><span>Gain = hausse de ton meilleur alignement chaque semaine (projection maison, blessés comptés à 60 % puisqu’ils reviennent) × ${weeksLeft} semaines restantes. Un ajout qui finirait sur ton banc ne rapporte rien.</span></div>`;
+  return `<div class="card">${hzBtns}${H === 'court' ? shortCard : longCard}</div>
+    ${goalieCompare(mine)}
+    ${suggestedTrades()}`;
+}
+
+// Gardiens : on juge sur la saison (FP par départ × part des départs), pas sur 2 semaines de calendrier
+function goalieCompare(mine) {
+  const wk = p => p.model * (p.share || D.config.share) * D.config.gpw;
+  const myG = mine.filter(p => p.grp === 'G').sort((a, b) => wk(b) - wk(a));
+  const fa = D.waivers.filter(p => p.grp === 'G' && !OUT[p.status]).sort((a, b) => wk(b) - wk(a)).slice(0, 6);
+  const row = p => `<tr><td>${pname(p)} <span class="pos">${esc(p.nhl)}</span></td><td>${f2(p.model)}</td><td>${pct(p.share)}${p.shareFixed ? ' <span class="chip">fixé</span>' : ''}</td><td><b>${f1(wk(p))}</b></td><td>${p.left}+${p.next}</td><td>${f1(p.fpg)} <span class="muted">(${p.gp})</span></td></tr>`;
+  const head = '<tr><th>Gardien</th><th>FP/départ</th><th>Part des départs</th><th>FP/sem. attendus</th><th>Matchs d’équipe</th><th>Réel (MJ)</th></tr>';
+  return `<div class="card"><h2>Gardiens : les tiens vs les meilleurs libres</h2><div class="tbl"><table>${head}
+    <tr><td colspan="6" class="muted small" style="text-align:left">Les tiens</td></tr>${myG.map(row).join('')}
+    <tr><td colspan="6" class="muted small" style="text-align:left">Libres</td></tr>${fa.map(row).join('')}</table></div>
+    <div class="legend"><span>Classés sur la saison : FP par départ × part des départs × ${D.config.gpw} matchs. La part des départs vient des matchs passés : un gardien qui vient de devenir partant est sous-estimé tant qu’on ne fixe pas son rôle (GOALIE_ROLE).</span></div></div>`;
+}
+
+let WK = { drop: '', h: 'court' };
+function bindWeek() {
+  const d = $('#wkdrop'); if (d) d.onchange = e => { WK.drop = e.target.value; render(); };
+  document.querySelectorAll('#wkhz button').forEach(b => b.onclick = () => { WK.h = b.dataset.h; render(); });
+}
+
+// Chercher un joueur : tous les alignements + tous les joueurs libres
+let SQ = '';
+const fold = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+function vSearch() {
+  const all = [];
+  D.teams.forEach(t => t.players.forEach(p => all.push(Object.assign({ owner: t.team }, p))));
+  D.waivers.forEach(p => all.push(Object.assign({ owner: '' }, p)));
+  const q = fold(SQ).trim();
+  const L = q.length < 2 ? [] : all.filter(p => fold(p.name).includes(q) || fold(p.nhl) === q).sort((a, b) => (b.model || 0) - (a.model || 0)).slice(0, 40);
+  const ownerCell = p => p.owner ? (p.owner === D.me ? '<span class="chip good">ton équipe</span>' : esc(p.owner)) : '<span class="chip warn">libre</span>';
+  return `<div class="card"><h2>Chercher un joueur</h2><div class="controls"><input id="sq" placeholder="Nom (ou équipe LNH, ex. MTL)" value="${esc(SQ)}" style="flex:1;min-width:220px" autocomplete="off"></div>
+    ${q.length < 2 ? '<div class="muted">Tape au moins 2 lettres. Les accents et majuscules ne comptent pas.</div>'
+      : L.length ? `<div class="tbl"><table>${PHEAD('<th class="l">Appartient à</th>')}${playerRows(L, { extra: p => `<td class="l">${ownerCell(p)}</td>` })}</table></div>`
+      : '<div class="empty">Aucun joueur trouvé (seuls les joueurs ayant joué un match cette saison sont listés).</div>'}</div>`;
+}
+function bindSearch() {
+  const i = $('#sq'); i.focus(); i.setSelectionRange(i.value.length, i.value.length);
+  i.oninput = e => { SQ = e.target.value; clearTimeout(i._t); i._t = setTimeout(render, 200); };
+}
+
+let WF = { pos: 'all', sort: 'model', q: '', sig: 'all' };
+function vWaivers() {
+  const pg = p => p.perGame ?? p.model;
+  const sorters = { model: (a, b) => pg(b) - pg(a), week: (a, b) => pg(b) * b.left - pg(a) * a.left, real: (a, b) => (b.fpg || 0) - (a.fpg || 0), luck: (a, b) => (a.luck ?? 9) - (b.luck ?? 9) };
+  let L = D.waivers.filter(p => p.gp >= 3 && (WF.pos === 'all' || p.grp === WF.pos) && (WF.sig === 'all' || p.signal === WF.sig) && (!WF.q || p.name.toLowerCase().includes(WF.q.toLowerCase())));
+  L = L.sort(sorters[WF.sort]).slice(0, 80);
+  return `<div class="card"><h2>Joueurs disponibles</h2><div class="controls">
+    <select id="wpos">${[['all','Toutes positions'],['F','Attaquants'],['D','Défenseurs'],['G','Gardiens']].map(([v, l]) => `<option value="${v}" ${WF.pos === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <select id="wsort">${[['model','Projection maison (par match d’équipe)'],['week','Maison × matchs restants'],['real','FP réels par match'],['luck','Les plus malchanceux']].map(([v, l]) => `<option value="${v}" ${WF.sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <select id="wsig">${[['all','Tous'],['malchanceux','🟡 Malchanceux'],['chanceux','🔵 Chanceux']].map(([v, l]) => `<option value="${v}" ${WF.sig === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <input id="wq" placeholder="Chercher un joueur" value="${esc(WF.q)}">
+  </div><div class="tbl"><table>${PHEAD()}${playerRows(L)}</table></div>
+  ${L.length ? '' : '<div class="empty">Aucun joueur.</div>'}</div>`;
+}
+function bindWaivers() {
+  ['wpos', 'wsort', 'wsig'].forEach(id => $('#' + id).onchange = e => { WF[{ wpos: 'pos', wsort: 'sort', wsig: 'sig' }[id]] = e.target.value; render(); });
+  const q = $('#wq'); q.oninput = e => { WF.q = e.target.value; clearTimeout(q._t); q._t = setTimeout(() => { render(); const n = $('#wq'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
+}
+
+// ---------- Échanges ----------
+// Jamais d'échange avec cette équipe ; joueurs que tu ne veux pas donner ; joueurs à ne jamais recevoir
+const NO_TRADE = /dark patterns/i, PROTECT = { 'Jimmy Snuggerud': 1 }, AVOID = { 'Carter Hart': 1 };
+// Disponibilité selon l'horizon : à court terme un blessé ne rapporte rien ; à long terme il finit par revenir
+const AVAIL = { court: { INJURY_RESERVE: 0, OUT: 0, SUSPENSION: 0, DAY_TO_DAY: 0.7 },
+                long: { INJURY_RESERVE: 0.6, OUT: 0.6, SUSPENSION: 0.5, DAY_TO_DAY: 0.95 } };
+const H_LABEL = { court: 'Court terme · 2 prochaines semaines', long: 'Long terme · reste de la saison' };
+let TR = { other: null, give: {}, get: {}, h: 'long' }, MOCKT = { key: '', list: null };
+// Valeur d'un joueur par match d'alignement, selon l'horizon (court : calendrier des 2 semaines × blessures)
+function hVal(p, h) {
+  const av = AVAIL[h][p.status], a = av == null ? 1 : av;
+  const gf = h === 'court' ? ((p.left || 0) + (p.next || 0)) / (2 * D.config.gpw) : 1;
+  return (p.model || 0) * a * gf;
+}
+// FP par semaine du meilleur alignement (court terme : moyenne des 2 prochaines semaines)
+function powerH(players, h) {
+  const L = D.config.lineup, gpw = D.config.gpw, v = p => hVal(p, h), by = (a, b) => v(b) - v(a);
+  const F = players.filter(p => p.grp === 'F').sort(by), Dd = players.filter(p => p.grp === 'D').sort(by);
+  const util = F.slice(L.F).concat(Dd.slice(L.D)).sort(by).slice(0, L.UTIL);
+  const sk = F.slice(0, L.F).concat(Dd.slice(0, L.D), util).reduce((s, p) => s + v(p), 0) * gpw * D.config.injury;
+  const g = players.filter(p => p.grp === 'G').map(p => v(p) * (p.share || D.config.share) * gpw).sort((a, b) => b - a).slice(0, L.G).reduce((s, x) => s + x, 0);
+  return sk + g;
+}
+// Valeur « perçue » par l'autre gérant : réputation (analystes) et production réelle, pas notre modèle
+function perceived(p) {
+  const rep = p.gaf != null ? p.gaf : p.model || 0;
+  const v = p.gp >= 5 && p.fpg != null ? 0.5 * rep + 0.5 * p.fpg : rep;
+  return v * (p.grp === 'G' ? (p.share || D.config.share) : 1) * (OUT[p.status] ? 0.75 : 1);
+}
+// Après l'échange : si l'alignement grossit, on libère le joueur le moins utile
+function swapRoster(list, out, inn, h) {
+  const r = list.filter(p => out.indexOf(p) < 0).concat(inn);
+  while (r.length > list.length) { let w = -1; r.forEach((p, i) => { if (inn.indexOf(p) < 0 && (w < 0 || hVal(p, h) < hVal(r[w], h))) w = i; }); r.splice(w, 1); }
+  return r;
+}
+function mockTrades(h) {
+  const m = me(), b0 = powerH(m.players, h), out = [];
+  const packs = (players, excl) => {
+    const top = players.filter(p => !excl[p.name]).sort((a, b) => hVal(b, h) - hVal(a, h)).slice(0, 13);
+    const L = top.map(p => [p]);
+    for (let i = 0; i < 9 && i < top.length; i++) for (let j = i + 1; j < 9 && j < top.length; j++) L.push([top[i], top[j]]);
+    return L;
+  };
+  const sum = (l, f) => l.reduce((s, p) => s + f(p), 0);
+  const mine = packs(m.players, PROTECT);
+  D.teams.filter(t => t !== m && !NO_TRADE.test(t.team)).forEach(o => {
+    const o0 = powerH(o.players, h);
+    packs(o.players, AVOID).forEach(get => mine.forEach(give => {
+      if (give.length === 2 && get.length === 2) return;
+      const dm = powerH(swapRoster(m.players, give, get, h), h) - b0;
+      if (dm < 0.5) return;
+      const dO = powerH(swapRoster(o.players, get, give, h), h) - o0;
+      if (dO < -2) return;                                   // il ne s'affaiblit pas (ou à peine) selon son alignement
+      const ratio = sum(give, perceived) / Math.max(0.01, sum(get, perceived));
+      if (ratio < 0.97) return;                              // à ses yeux, il reçoit au moins autant qu'il donne
+      out.push({ o: o, give: give, get: get, dm: dm, dO: dO, ratio: ratio });
+    }));
+  });
+  out.sort((a, b) => b.dm - a.dm);
+  const per = {}, usedGet = {}, pick = [];
+  out.forEach(t => {
+    if (pick.length >= 3 || (per[t.o.team] || 0) >= 1) return;
+    const k = t.get.map(p => p.name).join('+');
+    if (usedGet[k]) return;
+    per[t.o.team] = (per[t.o.team] || 0) + 1; usedGet[k] = 1; pick.push(t);
+  });
+  return { n: out.length, list: pick };
+}
+const tradeWhy = t => {
+  const w = [];
+  t.give.forEach(p => { if (p.signal === 'chanceux') w.push(`vends ${esc(p.name)} pendant qu’il surproduit`); });
+  t.get.forEach(p => { if (p.signal === 'malchanceux') w.push(`achète ${esc(p.name)} pendant qu’il est malchanceux`); });
+  t.get.forEach(p => { if (OUT[p.status] && TR.h === 'long') w.push(`${esc(p.name)} est blessé : son prix est bas, il revient pour la fin`); });
+  if (TR.h === 'court' && sum2(t.get, p => p.left + p.next) > sum2(t.give, p => p.left + p.next)) w.push('plus de matchs dans les 2 prochaines semaines');
+  if (t.dO > 0.5) w.push(`ça l’aide aussi (+${f1(t.dO)} FP/sem. selon son alignement)`);
+  return w;
+};
+const sum2 = (l, f) => l.reduce((s, p) => s + f(p), 0);
+function vTrade() {
+  const others = D.teams.filter(t => t.team !== D.me);
+  if (!TR.other || !others.find(t => t.team === TR.other)) TR.other = (others.find(t => !NO_TRADE.test(t.team)) || others[0]).team;
+  const m = me(), o = D.teams.find(t => t.team === TR.other);
+  const list = (t, sel, key) => t.players.slice().sort((a, b) => b.model - a.model).map(p => `<label class="pick"><input type="checkbox" data-k="${key}" data-n="${esc(p.name)}" ${sel[p.name] ? 'checked' : ''}>
+     <span class="n">${pname(p, t.team)} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span> ${stChip(p.status)} ${pChip(p)}</span><span class="small">${f2(p.model)}</span></label>`).join('');
+  return `<div class="card"><h2>Simulateur d’échange</h2><div class="controls">
+      <select id="tother">${others.map(t => `<option ${t.team === TR.other ? 'selected' : ''}>${esc(t.team)}</option>`).join('')}</select>
+      <button class="btn primary" id="tgo">Calculer</button><button class="btn" id="treset">Effacer</button></div>
+    <div class="two"><div><div class="muted small" style="margin-bottom:4px">Tu donnes</div>${list(m, TR.give, 'give')}</div>
+      <div><div class="muted small" style="margin-bottom:4px">Tu reçois de ${esc(o.team)}</div>${list(o, TR.get, 'get')}</div></div></div>
+    <div class="card" id="tres"><div class="muted">Coche des joueurs des deux côtés, puis « Calculer ».</div></div>`;
+}
+function bindTrade() {
+  $('#tother').onchange = e => { TR = Object.assign(TR, { other: e.target.value, give: {}, get: {} }); render(); };
+  $('#treset').onclick = () => { TR.give = {}; TR.get = {}; render(); };
+  document.querySelectorAll('.pick input').forEach(i => i.onchange = () => { TR[i.dataset.k][i.dataset.n] = i.checked; });
+  $('#tgo').onclick = calcTrade;
+}
+function calcTrade() {
+  const m = me(), o = D.teams.find(t => t.team === TR.other);
+  const give = m.players.filter(p => TR.give[p.name]), get = o.players.filter(p => TR.get[p.name]);
+  if (!give.length && !get.length) return;
+  const mNew = swapRoster(m.players, give, get, 'long'), oNew = swapRoster(o.players, get, give, 'long');
+  const d = h => ({ m: powerH(swapRoster(m.players, give, get, h), h) - powerH(m.players, h), o: powerH(swapRoster(o.players, get, give, h), h) - powerH(o.players, h) });
+  const dc = d('court'), dl = d('long');
+  const base = D.teams.map(t => powerH(t.players, 'long'));
+  const after = D.teams.map((t, i) => t.team === m.team ? powerH(mNew, 'long') : t.team === o.team ? powerH(oNew, 'long') : base[i]);
+  const po = playoffDays(), poB = po.length ? planFp(m.players, po) : 0, poA = po.length ? planFp(mNew, po) : 0;
+  $('#tres').innerHTML = '<div class="muted">Simulation de 1 500 saisons…</div>';
+  setTimeout(() => {
+    const s0 = simulate(base, 1500), s1 = simulate(after, 1500);
+    const im = D.teams.indexOf(m), io = D.teams.indexOf(o);
+    const sum = l => l.reduce((s, p) => s + (p.model || 0), 0);
+    const spots = give.length - get.length;
+    const ratio = get.length ? give.reduce((s, p) => s + perceived(p), 0) / Math.max(0.01, get.reduce((s, p) => s + perceived(p), 0)) : null;
+    const box = (h, x) => `<div style="${TR.h === h ? '' : 'opacity:.7'}"><div class="muted small">${H_LABEL[h]}${TR.h === h ? ' · <b>choisi</b>' : ''}</div>
+      <div class="delta ${x.m >= 0 ? 'up' : 'down'}">${sgn(h === 'court' ? x.m * 2 : x.m)} ${h === 'court' ? 'FP sur 2 sem.' : 'FP/sem.'}</div>
+      <div class="small">${esc(o.team)} : ${sgn(h === 'court' ? x.o * 2 : x.o)}</div></div>`;
+    $('#tres').innerHTML = `<h2>Résultat</h2><div class="two">${box('court', dc)}${box('long', dl)}</div>
+      ${po.length ? `<div class="small" style="margin-top:10px"><b>Pendant tes semaines de séries</b> (${dShort(po[0])} → ${dShort(po[po.length - 1])}) : tes FP attendus ${f1(poB)} → <b class="${poA >= poB ? 'up' : 'down'}">${f1(poA)}</b> (${sgn(poA - poB)}) · matchs : tu donnes ${give.reduce((t, p) => t + po.filter(d => playsOn(p, d)).length, 0)}, tu reçois ${get.reduce((t, p) => t + po.filter(d => playsOn(p, d)).length, 0)}</div>` : ''}
+      <div class="small" style="margin-top:10px">Séries : toi ${pct(s0.po[im])} → <b>${pct(s1.po[im])}</b> (victoires ${f1(s0.wins[im])} → ${f1(s1.wins[im])}) · ${esc(o.team)} ${pct(s0.po[io])} → <b>${pct(s1.po[io])}</b></div>
+      <div class="legend"><span>Projection maison échangée : tu donnes ${f2(sum(give))}, tu reçois ${f2(sum(get))} (FP/match)</span>
+      ${ratio != null ? `<span>Acceptabilité : à ses yeux (analystes + stats réelles), il reçoit ${Math.round(ratio * 100)} % de ce qu’il donne${ratio < 0.97 ? ' — il risque de refuser' : ''}</span>` : ''}
+      ${spots < 0 ? `<span>Tu reçois plus de joueurs que tu en donnes : ton joueur le moins utile est libéré dans le calcul.</span>` : spots > 0 ? `<span>Tu libères ${spots} place(s) : la force n’inclut pas le joueur que tu ajouteras.</span>` : ''}
+      <span>Force = ton meilleur alignement chaque semaine ; un échange qui n’améliore que ton banc ne change rien.</span></div>`;
+  }, 30);
+}
+
+function vAbout() {
+  const k = D.config.k, bt = D.config.bt || null;
+  const pct = x => Math.round(x * 100) + ' %';
+  const sogTxt = bt && bt.rho ? `tirs réels, et ${pct(bt.rho)} via les <b>tentatives de tir</b> × son % de tirs cadrés habituel` : 'tirs réels';
+  const aTxt = bt && bt.lam != null && bt.lam < 1 ? `réelles, <b>passes secondaires pondérées à ${bt.lam}</b> (les primaires sont plus fiables)` : 'réelles';
+  const pppTxt = bt && bt.ppb ? `réels ; la base suit ton <b>rôle en AN</b> cette saison vs l’an passé (${bt.ppMode === 'toi' ? 'temps en AN' : 'tentatives en AN'}, poids ${bt.ppb})` : 'réels';
+  const gTxt = bt ? (bt.gk ? `réels, base analystes + moteur maison (FP/match et <b>GSAx</b> sur 3 saisons), biais ${bt.gk.b}` : 'réels') : 'réels, projection des analystes réduite de 0,5';
+  return `<div class="card"><h2>Comment marche la projection maison</h2>
+  <p><b>Base d’avant-saison</b> = projections des <b>analystes</b> (GAF : la moyenne des projections d’experts) combinées au moteur maison (3 saisons passées, réglé sur 4 saisons de backtest). Puis, pour chaque stat : <b>(base × k + saison × matchs) ÷ (k + matchs)</b>. Plus k est petit, plus on croit vite la saison en cours — le poids du réel grandit tout seul avec les matchs joués.</p>
+  <div class="tbl"><table><tr><th>Stat</th><th>k</th><th class="l">Ce qu’on utilise de la saison en cours</th></tr>
+  <tr><td>Tirs</td><td>${k.sog}</td><td class="l">${sogTxt}</td></tr><tr><td>Mises en échec</td><td>${k.hit}</td><td class="l">réelles</td></tr>
+  <tr><td>Tirs bloqués</td><td>${k.blk}</td><td class="l">réels</td></tr><tr><td>Buts</td>${!bt || bt.gsrc === 'xg' ? `<td>${k.gx} <span class="muted">(${k.g} sans xG)</span></td><td class="l"><b>buts attendus (xG, MoneyPuck)</b> au lieu des buts réels</td>` : bt.gsrc === 'tirs' ? `<td>${k.g}</td><td class="l"><b>tirs × % de réussite habituel</b> au lieu des buts réels (a mieux prédit que les buts attendus au backtest)</td>` : `<td>${k.g}</td><td class="l">buts réels (ont mieux prédit que les buts attendus et les tirs au backtest)</td>`}</tr>
+  <tr><td>Passes</td><td>${k.a}</td><td class="l">${aTxt}, corrigées de la chance de l’équipe sur la glace (buts réels vs attendus)</td></tr>
+  <tr><td>Points en AN</td><td>${k.ppp}</td><td class="l">${pppTxt}</td></tr>
+  <tr><td>Gardiens (FP/match)</td><td>${k.gstart}</td><td class="l">${gTxt} ; × part des départs de son équipe</td></tr></table></div>
+  <p><b>Chance</b> = FP réels − FP mérités (mêmes stats, mais buts attendus et passes corrigées). Sous −${D.config.luck} : 🟡 malchanceux, va probablement remonter. Au-dessus de +${D.config.luck} : 🔵 chanceux, va probablement redescendre (5 matchs minimum).</p>
+  <p><b>Force</b> = meilleur alignement (${D.config.lineup.F} F, ${D.config.lineup.D} D, ${D.config.lineup.UTIL} UTIL, ${D.config.lineup.G} G) × ${D.config.gpw} matchs × ${Math.round(D.config.injury * 100)} % de matchs joués. <b>Séries</b> : ${D.config.sims} saisons simulées sur ton vrai calendrier ESPN, avec ±${D.config.sd} FP de hasard par semaine.</p>
+  <p class="muted small">${bt ? `Réglages appris le ${bt.date} par le backtest 2025-26 à 4 dates (28 oct., 1er déc., 15 janv., 1er mars) : prédire le reste de la saison à partir des stats jusque-là. Détail : feuille « Backtest ».` : 'Valeurs de k réglées par un backtest sur 2025-26 (561 patineurs, 35 gardiens) : prédire le reste de la saison à partir des 3 premières semaines. Erreur moyenne : modèle maison 0,33 FP/match, analystes seuls 0,36, début de saison seul 0,53.'}</p></div>`;
+}
+
+// ---------- fiche de joueur ----------
+let OWN = null;
+function ownerOf(p) {
+  if (!OWN) { OWN = {}; D.teams.forEach(t => t.players.forEach(q => { OWN[q.name] = t.team; })); }
+  return OWN[p.name] || '';
+}
+$('#view').addEventListener('click', e => {
+  const tm = e.target.closest('[data-team]');
+  if (tm) { TEAMV = tm.dataset.team; TAB = 'team'; document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x.dataset.t === 'team')); render(); window.scrollTo(0, 0); return; }
+});
+$('#view').addEventListener('click', e => { const el = e.target.closest('[data-pi]'); if (el) { e.preventDefault(); e.stopPropagation(); openSheet(PREG[+el.dataset.pi]); } });
+$('#ps').addEventListener('click', e => { if (e.target.id === 'ps' || e.target.closest('.x')) closeSheet(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+function bindSheet() {
+  const sv = $('#ovsave'); if (sv) sv.onclick = () => saveOvr(CURP);
+  const cl = $('#ovclear'); if (cl) cl.onclick = () => saveOvr(CURP, true);
+  const nb = $('#newsbtn'); if (nb) nb.onclick = () => loadNews(CURP);
+  document.querySelectorAll('#psmode button').forEach(b => b.onclick = () => { PSV.mode = b.dataset.m; rerenderSheet(); });
+  const w = $('#pswk'); if (w) w.onchange = e => { const W = weekList()[+e.target.value]; PSV.ws = W ? W.s : null; rerenderSheet(); };
+}
+function rerenderSheet() { const y = $('#ps').scrollTop; $('#psheet').innerHTML = sheetHtml(CURP); bindSheet(); $('#ps').scrollTop = y; }
+function closeSheet() { $('#ps').classList.remove('on'); document.body.style.overflow = ''; }
+function openSheet(p) {
+  if (!p) return;
+  CURP = p;
+  $('#psheet').innerHTML = sheetHtml(p);
+  bindSheet();
+  $('#ps').classList.add('on'); $('#ps').scrollTop = 0; document.body.style.overflow = 'hidden';
+}
+const kp = (v, l, t) => `<div class="kpi"${t ? ` title="${esc(t)}"` : ''}><div class="v">${v}</div><div class="l">${l}</div></div>`;
+const f0 = x => x == null ? '–' : Math.round(x).toString();
+// Prévision par match / par saison / par semaine (choix gardé d'une fiche à l'autre)
+let PSV = { mode: 'match', ws: null };   // ws = lundi de la semaine choisie (par défaut : cette semaine)
+// Semaines lundi → dimanche, du début de saison à la fin : calendrier du serveur, sinon (ancienne version) cette semaine + la prochaine
+const weekList = () => D.weeks && D.weeks.length ? D.weeks
+  : [{ s: ymdAdd(D.weekEnd, -6), e: D.weekEnd || '', fb: 'cur' }, { s: ymdAdd(D.weekEnd, 1), e: ymdAdd(D.weekEnd, 7), fb: 'next' }];
+function ymdAdd(d, k) { if (!d) return ''; const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + k); return x.toISOString().slice(0, 10); }
+const todayStr = () => (D.updated || '').slice(0, 10);
+const wkKind = w => (w.e && w.e < todayStr() ? 'past' : w.s && w.s <= todayStr() ? 'cur' : 'fut');
+const curWeekIdx = () => { const W = weekList(), i = W.findIndex(w => wkKind(w) === 'cur'); return i < 0 ? 0 : i; };
+const wkIdx = () => { const i = PSV.ws ? weekList().findIndex(w => w.s === PSV.ws) : -1; return i >= 0 ? i : curWeekIdx(); };
+const wkTot = (p, w) => (w.n ? w.n[p.nhl] || 0 : w.fb === 'next' ? p.next || 0 : null);   // matchs de son équipe cette semaine-là
+const wkGames = (p, i) => { const w = weekList()[i]; if (!w) return 0; const k = wkKind(w); return k === 'cur' ? (p.left || 0) : (wkTot(p, w) || 0); };
+const MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+const dShort = d => { const x = new Date(d + 'T12:00:00'); return x.getDate() + ' ' + MOIS[x.getMonth()]; };
+const wkLabel = w => (wkKind(w) === 'cur' ? 'Cette semaine' : 'Sem. du ' + dShort(w.s)) + (w.e ? ` (lun. ${dShort(w.s)} → dim. ${dShort(w.e)})` : '');
+function wkOption(p, w, i, unit) {
+  const k = wkKind(w), tot = wkTot(p, w), pl = n => n + ' match' + (n > 1 ? 's' : '');
+  const t = k === 'past' ? `${pl(tot || 0)} joué${(tot || 0) > 1 ? 's' : ''}` : k === 'cur' ? `${p.left || 0} restant${(p.left || 0) > 1 ? 's' : ''}${tot != null ? ' sur ' + tot : ''}` : pl(tot || 0);
+  return `<option value="${i}" ${wkIdx() === i ? 'selected' : ''}>${k === 'past' ? '✓ ' : ''}${wkLabel(w)} · ${t}${unit || ''}</option>`;
+}
+// Calendrier de l'équipe du joueur : [date, adversaire, 1 = à domicile]
+const JOURS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+const teamGames = p => (D.teamGames && D.teamGames[p.nhl]) || [];
+const gamesBetween = (p, a, b) => (a && b ? teamGames(p).filter(g => g[0] >= a && g[0] <= b) : []);
+function oppTag(t) {
+  const m = D.opp && D.opp.t && D.opp.t[t]; if (!m || Math.abs(m - 1) < 0.03) return '';
+  return m > 1 ? ` <span title="Défense adverse faible : attaque +${Math.round((m - 1) * 100)} %">🎯</span>` : ` <span title="Défense adverse solide : attaque −${Math.round((1 - m) * 100)} %">🧱</span>`;
+}
+function gameChip(g, done) {
+  const d = new Date(g[0] + 'T12:00:00'), today = g[0] === todayStr();
+  return `<span class="chip ${today ? 'good' : ''}" style="margin:2px 2px 2px 0${done ? ';opacity:.55' : ''}">${done ? '✓ ' : ''}${JOURS[d.getDay()]} ${d.getDate()} ${MOIS[d.getMonth()]} · ${g[2] ? 'vs' : '@'} ${esc(g[1])}${oppTag(g[1])}${today ? ' · ce soir' : ''}</span>`;
+}
+function nextGames(p) {
+  const up = teamGames(p).filter(g => g[0] >= todayStr()).slice(0, 10);
+  if (!up.length) return D.teamGames ? '' : '<div class="note">Mets les données à jour pour voir les adversaires et les dates.</div>';
+  return `<div class="small muted" style="margin:10px 0 4px">Prochains matchs de ${esc(p.nhl)} (vs = à domicile, @ = à l’étranger)</div><div>${up.map(g => gameChip(g, false)).join('')}</div>`;
+}
+// Stats réelles d'une semaine : ses matchs un par un (lus sur le serveur au premier besoin, puis gardés)
+let GL = {};
+const SCO = { g: 3, a: 2, ppp: 0.5, shp: 0.5, sog: 0.2, hit: 0.2, blk: 0.4, w: 3, ga: -1, sv: 0.2, so: 3, otl: 1 };
+function realWeek(p, w) {
+  if (!p.id) return 'na';
+  let g = GL[p.id];
+  if (g === undefined) {
+    GL[p.id] = 'loading';
+    if (window.google && google.script && google.script.run) {
+      const done = v => { GL[p.id] = v; if (CURP && CURP.id === p.id && $('#ps').classList.contains('on')) rerenderSheet(); };
+      google.script.run.withSuccessHandler(t => done(JSON.parse(t || '[]'))).withFailureHandler(() => done('err')).playerGames(p.id, p.grp);
+    } else GL[p.id] = 'err';
+    return GL[p.id];
+  }
+  if (typeof g === 'string') return g;
+  const K = p.grp === 'G' ? ['w', 'ga', 'sv', 'so', 'otl'] : ['g', 'a', 'ppp', 'shp', 'sog', 'hit', 'blk'];
+  const gs = g.filter(x => x.d >= w.s && x.d <= w.e), sums = K.map(k => gs.reduce((t, x) => t + (x[k] || 0), 0));
+  return { n: gs.length, s: sums, fp: K.reduce((t, k, i) => t + SCO[k] * sums[i], 0) };
+}
+// Tableau « par semaine » commun aux patineurs et aux gardiens
+// rows : [[nom, f(tableau de stats)]] ; rates : { gaf (analystes), maison, rythme } (tableaux par match ou null) ; fp : mêmes clés (FP par match) ;
+// mult : matchs (patineur) ou départs par match d'équipe (gardien)
+function weekBranch(p, rows, rates, fp, mult, unitWord) {
+  const W = weekList(), i = wkIdx(), w = W[i], k = wkKind(w);
+  const nLeft = wkGames(p, i), tot = wkTot(p, w), u = n => f1(n * mult);
+  const R = k === 'fut' ? null : realWeek(p, w), rv = R && typeof R === 'object' ? R : null;
+  const realCell = f => (rv ? f1(f(rv.s)) : R === 'loading' ? '…' : '–');
+  const proj = (arr, f) => (arr ? f1((k === 'cur' && rv ? f(rv.s) : 0) + f(arr) * nLeft * mult) : '–');
+  const projFp = v => (v != null ? f1((k === 'cur' && rv ? rv.fp : 0) + v * nLeft * mult) : '–');
+  const label = `${wkLabel(w)}`;
+  let head, cells, fpRow, note;
+  if (k === 'past') {
+    head = ['Stat', 'Analystes', 'Maison', 'Rythme actuel', 'Réel'];
+    cells = f => [proj(rates.gaf, f), proj(rates.maison, f), proj(rates.rythme, f), `<b>${realCell(f)}</b>`];
+    fpRow = [projFp(fp.gaf), projFp(fp.maison), projFp(fp.rythme), `<b>${rv ? f1(rv.fp) : R === 'loading' ? '…' : '–'}</b>`];
+    note = `Semaine terminée : ${tot || 0} match${(tot || 0) > 1 ? 's' : ''} de son équipe${rv ? `, ${rv.n} ${unitWord}${rv.n > 1 ? 's' : ''} pour lui` : ''}. Analystes, Maison et rythme actuel montrent ce que chacun (tel qu’aujourd’hui) attendrait pour ${u(nLeft)} ${unitWord}s.`;
+  } else if (k === 'cur') {
+    head = ['Stat', 'Analystes', 'Maison <span class="muted">fin de sem.</span>', 'Rythme actuel', 'Réel à date'];
+    cells = f => [proj(rates.gaf, f), `<b>${proj(rates.maison, f)}</b>`, proj(rates.rythme, f), realCell(f)];
+    fpRow = [projFp(fp.gaf), `<b>${projFp(fp.maison)}</b>`, projFp(fp.rythme), rv ? f1(rv.fp) : R === 'loading' ? '…' : '–'];
+    note = `Fin de semaine = réel à date + projection × ${u(nLeft)} ${unitWord}${nLeft * mult >= 2 ? 's' : ''} restant${nLeft * mult >= 2 ? 's' : ''}${tot != null ? ` (${tot} matchs de son équipe cette semaine)` : ''}.${R === 'loading' ? ' Lecture de ses matchs…' : ''}`;
+  } else {
+    head = [`Stat <span class="muted">· ${u(nLeft)} ${unitWord}${nLeft * mult >= 2 ? 's' : ''}</span>`, 'Analystes', 'Maison', 'Rythme actuel'];
+    cells = f => [proj(rates.gaf, f), `<b>${proj(rates.maison, f)}</b>`, proj(rates.rythme, f)];
+    fpRow = [projFp(fp.gaf), `<b>${projFp(fp.maison)}</b>`, projFp(fp.rythme)];
+    note = 'Attendu = stats par match × matchs de son équipe cette semaine-là' + (mult < 1 ? ' × sa part des départs.' : ' (s’il joue tous les matchs).');
+  }
+  if (OUT[p.status] && k !== 'past') note += ' ⚠ Blessé ou absent : il ne jouera peut-être pas ces matchs.';
+  const gl = gamesBetween(p, w.s, w.e);
+  if (gl.length) note = `<b>Matchs :</b> ${gl.map(g => gameChip(g, k === 'past' || g[0] < todayStr())).join(' ')}<br>` + note;
+  return { head: head, cells: cells, fpRow: fpRow, note: note };
+}
+function modeBar(p, unit) {
+  const W = weekList();
+  return `<div class="controls" id="psmode" style="margin-top:10px">${[['match', 'Par match'], ['saison', 'Par saison'], ['semaine', 'Par semaine']].map(([v, l]) =>
+      `<button class="btn ${PSV.mode === v ? 'primary' : ''}" data-m="${v}">${l}</button>`).join('')}
+    ${PSV.mode === 'semaine' ? `<select id="pswk">${W.map((w, i) => wkOption(p, w, i, unit)).join('')}</select>` : ''}</div>`;
+}
+function projTable(p, x, s, r, gp, eg) {
+  // lignes : B, A, PTS, PPP, DN, tirs, MÉ, TB (indices des stats : g, a, ppp, shp, sog, hit, blk)
+  const ROWS = [['Buts', i => i[0]], ['Passes', i => i[1]], ['Points', i => i[0] + i[1]], ['Pts en AN', i => i[2]], ['Pts en DN', i => i[3]],
+                ['Tirs', i => i[4]], ['Mises en échec', i => i[5]], ['Tirs bloqués', i => i[6]]];
+  const real = gp ? s.map(v => v / gp) : null, G = x.gr, P = x.pr;
+  let head, cells, fpRow, note = '';
+  if (PSV.mode === 'match') {
+    head = ['Par match', 'Analystes', 'Maison', 'Rythme actuel'];
+    cells = f => [G ? f2(f(G)) : '–', `<b>${f2(f(r))}</b>`, real ? f2(f(real)) : '–'];
+    fpRow = [f2(p.gaf), `<b>${f2(p.model)}</b>`, f2(p.fpg)];
+    note = 'Selon rythme actuel = ses stats réelles par match cette saison.';
+  } else if (PSV.mode === 'saison') {
+    const tot = gp + eg;   // mêmes matchs pour toutes les colonnes : déjà joués + attendus d'ici la fin
+    head = ['Sur la saison', 'Analystes', 'Maison <span class="muted">fin de saison</span>', 'Rythme actuel', 'Réel à date'];
+    cells = f => [G ? f0(f(G) * tot) : '–', `<b>${f0(f(s) + f(r) * eg)}</b>`, real ? f0(f(real) * tot) : '–', f0(f(s))];
+    fpRow = [p.gaf != null ? f0(p.gaf * tot) : '–', `<b>${f0((p.fpg || 0) * gp + p.model * eg)}</b>`, p.fpg != null ? f0(p.fpg * tot) : '–', f0((p.fpg || 0) * gp)];
+    note = `Saison de ${f0(tot)} matchs (${gp} joués + ${f1(eg)} attendus). Maison = réel à date + projection pour le reste. Selon rythme actuel = s’il garde exactement ses stats par match de cette saison jusqu’à la fin.`;
+  } else {
+    ({ head, cells, fpRow, note } = weekBranch(p, ROWS, { gaf: G, moteur: P, maison: r, rythme: real },
+      { gaf: p.gaf, moteur: p.pj, maison: p.model, rythme: p.gp ? p.fpg : null }, 1, 'match'));
+  }
+  return modeBar(p) + `<div class="tbl"><table><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr>
+    ${ROWS.map(([n, f]) => `<tr><td>${n}</td>${cells(f).map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}
+    <tr><td><b>FP</b></td>${fpRow.map(c => `<td>${c}</td>`).join('')}</tr></table></div>${note ? `<div class="note">${note}</div>` : ''}`;
+}
+let CURP = null;
+function sheetHtml(p) {
+  const x = p.x || {}, S = D.config, isG = p.grp === 'G';
+  const owner = p.owner === undefined ? ownerOf(p) : p.owner;
+  const own = owner ? (owner === D.me ? '<span class="chip good">ton équipe</span>' : `<span class="chip">${esc(owner)}</span>`) : '<span class="chip warn">libre</span>';
+  const head = `<div class="hd"><div><h2>${esc(p.name)}</h2><div class="muted small" style="margin-top:4px">${esc(p.pos)} · ${esc(p.nhl)} · ${p.gp || 0} MJ ${own} ${stChip(p.status)} ${pChip(p)}</div></div><button class="x" aria-label="Fermer">✕</button></div>`;
+  const wk = `<h3>Calendrier</h3><div class="grid">${kp(p.left + (p.today ? ' <span class="chip good">ce soir</span>' : ''), 'Matchs restants cette semaine')}${kp(p.next, 'Matchs la semaine prochaine')}
+    ${kp(f1((p.perGame ?? p.model) * p.left), 'FP attendus d’ici dimanche', 'Projection maison × matchs restants cette semaine')}${kp(f1((p.perGame ?? p.model) * p.next), 'FP attendus sem. proch.')}</div>
+    ${nextGames(p)}`;
+  if (isG) return head + goalieSheet(p, x) + wk + ovrBox(p) + newsBox(p) + foot();
+  const s = x.s || [0, 0, 0, 0, 0, 0, 0], r = x.r, gp = p.gp || 0;
+  const pts = s[0] + s[1], fp = (p.fpg || 0) * gp;
+  // reste de la saison : matchs de son équipe × part des matchs réellement joués (blessures, repos)
+  const eg = (x.tl || 0) * (S.injury || 0.94);
+  const live = `<h3>Cette saison · en direct</h3><div class="grid">${kp(s[0], 'Buts')}${kp(s[1], 'Passes')}${kp(pts, 'Points')}${kp(s[2], 'Pts en AN')}${kp(s[3], 'Pts en DN')}
+    ${kp(s[4], 'Tirs')}${kp(s[5], 'Mises en échec')}${kp(s[6], 'Tirs bloqués')}${kp(f1(fp), 'FP')}${kp(f2(p.fpg), 'FP / match')}</div>`;
+  let proj = '';
+  if (r) {
+    const endPts = pts + (r[0] + r[1]) * eg, endFp = fp + p.model * eg;
+    proj = `<h3>Prévision · projection maison</h3><div class="grid">${kp(f2(p.model), 'FP / match (reste)')}${kp(f0(endPts), 'Points fin de saison')}
+      ${kp(f0(s[0] + r[0] * eg), 'Buts fin de saison')}${kp(f0(endFp), 'FP fin de saison')}${kp(f1(eg), 'Matchs attendus d’ici la fin', `${x.tl} matchs de son équipe × ${Math.round((S.injury || 0.94) * 100)} % joués`)}</div>
+      ${projTable(p, x, s, r, gp, eg)}
+      ${explainSkater(p, x, s, gp)}
+      <div class="note">Maison = base d’avant-saison (analystes + moteur maison) mélangée à la saison en cours, stat par stat (k du backtest). Le poids du réel grandit avec les matchs joués.</div>`;
+  }
+  const a = x.adv;
+  let adv = '';
+  if (a) {
+    const fin = a.ixg > 0 ? s[0] - a.ixg : null, onl = a.onxg > 0 ? a.ong / a.onxg : null;
+    adv = `<h3>Stats avancées · MoneyPuck</h3><div class="grid">
+      ${kp(f1(a.toi / a.gp / 60), 'Temps de jeu (min/match)')}${kp(f1(a.pptoi / a.gp / 60), 'Temps en AN (min/match)')}
+      ${kp(f1(a.ixg), 'Buts attendus (xG)', 'Valeur des tirs selon leur qualité (distance, angle, rebond…)')}${kp(sgn(fin, 1), 'Buts − xG', 'Positif = marque plus que ses chances (finition ou chance)')}
+      ${kp(a.a1 + ' / ' + a.a2, 'Passes 1res / 2es')}${kp(a.att, 'Tentatives de tir', 'Tirs cadrés + ratés + bloqués')}
+      ${kp(a.att ? pct(a.sogm / a.att) : '–', 'Tirs cadrés / tentative')}${kp(a.ppatt, 'Tentatives en AN (5c4)')}
+      ${kp(a.ong + ' / ' + f1(a.onxg), 'Buts / xG de l’équipe quand il est sur la glace', 'Au-dessus de 1 : l’équipe marque plus que ses chances quand il joue (chance sur la glace)')}${kp(onl ? onl.toFixed(2) : '–', 'Ratio buts / xG sur la glace')}
+      ${kp(f2(p.deserved), 'FP mérités / match', 'Mêmes stats, mais buts attendus et passes corrigées de la chance sur la glace')}${kp(sgn(p.luck, 2), 'Chance (réel − mérité)')}</div>`;
+  } else adv = '<h3>Stats avancées</h3><div class="muted small">Pas encore de données MoneyPuck pour ce joueur.</div>';
+  return head + live + proj + adv + wk + ovrBox(p) + newsBox(p) + foot();
+}
+function goalieSheet(p, x) {
+  const s = x.s || [0, 0, 0, 0, 0], gp = p.gp || 0, S = D.config;
+  const svp = s[2] + s[1] ? s[2] / (s[2] + s[1]) : null;
+  const eStarts = (x.tl || 0) * (p.share || S.share);
+  const live = `<h3>Cette saison · en direct</h3><div class="grid">${kp(gp, 'Matchs')}${kp(s[0], 'Victoires')}${kp(s[4], 'Défaites (prol.)')}${kp(s[3], 'Blanchissages')}
+    ${kp(s[2], 'Arrêts')}${kp(s[1], 'Buts accordés')}${kp(svp == null ? '–' : svp.toFixed(3).replace(/^0/, ''), '% d’arrêts')}${kp(gp ? f2(s[1] / gp) : '–', 'Buts accordés / match')}
+    ${kp(f1((p.fpg || 0) * gp), 'FP')}${kp(f2(p.fpg), 'FP / match')}</div>`;
+  const proj = `<h3>Projection maison</h3><div class="grid">${kp(f2(p.model), 'FP / match joué')}${kp(pct(p.share) + (p.shareFixed ? ' <span class="chip">fixé</span>' : ''), 'Part des départs')}
+    ${kp(f2(p.perGame), 'FP / match de son équipe')}${kp(f1(eStarts), 'Départs attendus d’ici la fin')}${kp(f0((p.fpg || 0) * gp + p.model * eStarts), 'FP fin de saison')}
+    ${kp(f2(x.base), 'Base d’avant-saison', 'Analystes (corrigés) + moteur maison (FP/match et GSAx sur 3 saisons)')}${kp(f2(p.gaf), 'Analystes')}</div>
+    <div class="note">Les FP d’un gardien sur quelques matchs sont surtout du hasard : le modèle croit peu la saison en cours (k ${x.k || '–'}).</div>`;
+  const adv = x.xga != null ? `<h3>Stats avancées · MoneyPuck</h3><div class="grid">${kp(f1(x.xga), 'Buts attendus contre (xGA)')}${kp(x.ga, 'Buts accordés')}
+    ${kp(sgn(x.xga - x.ga, 1), 'GSAx (buts sauvés au-delà des attentes)', 'Positif = il a accordé moins de buts que la qualité des tirs le laissait prévoir')}${kp(sgn(p.gsax, 2), 'GSAx / match')}</div>`
+    : '<h3>Stats avancées</h3><div class="muted small">Pas encore de données MoneyPuck pour ce gardien.</div>';
+  const wkb = x.r ? goalieTable(p, x, s, gp, eStarts) : '';
+  return live + proj + wkb + explainGoalie(p, x, s, gp) + adv;
+}
+// Gardiens : V, BA, ARR, BL, DP et FP — par match joué, sur la saison ou pour une semaine (départs attendus)
+function goalieTable(p, x, s, gp, eStarts) {
+  const N = ['Victoires', 'Buts accordés', 'Arrêts', 'Blanchissages', 'Défaites (prol.)'], r = x.r, G = x.gr, share = p.share || D.config.share;
+  const real = gp ? s.map(v => v / gp) : null;
+  let head, cell, fpRow, note = '', fmt = f1;
+  if (PSV.mode === 'match') {
+    fmt = f2; head = ['Par match joué', 'Analystes', 'Maison', 'Rythme actuel'];
+    cell = i => [G ? f2(G[i]) : '–', `<b>${f2(r[i])}</b>`, real ? f2(real[i]) : '–'];
+    fpRow = [f2(p.gaf), `<b>${f2(p.model)}</b>`, f2(p.fpg)];
+  } else if (PSV.mode === 'saison') {
+    const tot = gp + eStarts;
+    head = ['Sur la saison', 'Analystes', 'Maison <span class="muted">fin de saison</span>', 'Rythme actuel', 'Réel à date'];
+    cell = i => [G ? f0(G[i] * tot) : '–', `<b>${f0(s[i] + r[i] * eStarts)}</b>`, real ? f0(real[i] * tot) : '–', f0(s[i])];
+    fpRow = [p.gaf != null ? f0(p.gaf * tot) : '–', `<b>${f0((p.fpg || 0) * gp + p.model * eStarts)}</b>`, p.fpg != null ? f0(p.fpg * tot) : '–', f0((p.fpg || 0) * gp)];
+    note = `Saison de ${f0(tot)} départs (${gp} joués + ${f1(eStarts)} attendus = ${x.tl} matchs de son équipe × ${pct(share)} des départs).`;
+  } else {
+    const wb = weekBranch(p, N.map((nm, i) => [nm, a => a[i]]), { gaf: G, moteur: null, maison: r, rythme: real },
+      { gaf: p.gaf, moteur: p.pj, maison: p.model, rythme: p.gp ? p.fpg : null }, share, 'départ');
+    head = wb.head; fpRow = wb.fpRow; note = wb.note; cell = i => wb.cells(a => a[i]);
+  }
+  return `<h3>Prévision · projection maison</h3>` + modeBar(p, ' d’équipe') + `<div class="tbl"><table><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr>
+    ${N.map((nm, i) => `<tr><td>${nm}</td>${cell(i).map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}
+    <tr><td><b>FP</b></td>${fpRow.map(c => `<td>${c}</td>`).join('')}</tr></table></div>
+    <div class="note">${note ? note + ' ' : ''}Maison = stats des analystes mélangées à la saison (k ${x.k || '–'}), ajustées pour donner exactement les FP maison.</div>`;
+}
+const foot = () => `<div class="note" style="margin-top:14px">Stats en date de la dernière mise à jour (${esc(D.updated)}). Sources : LNH · analystes (GAF) · MoneyPuck.com</div>`;
+
+// ---------- Tri des tableaux : clic sur un en-tête de colonne (2e clic = ordre inverse) ----------
+let SORTS = {};
+const sortKey = (tbl, i) => TAB + ':' + (TAB === 'team' ? TEAMV : '') + ':' + i;
+function cellVal(td, col) {
+  const t = (td ? td.innerText : '').replace(/\u2212/g, '-').replace(/\s+/g, ' ').trim();
+  if (/^\d+$/.test(t)) return +t;                                          // rang, nombre entier
+  if (!col) return t.replace(/^\d+\.\s*/, '').toLowerCase();               // 1re colonne : noms (A→Z)
+  if (t === '–' || t === '') return null;
+  let m = t.match(/^(\d+)\s*-\s*(\d+)(?:\s*-\s*(\d+))?$/);            // fiche 3-1 (ou 3-1-0)
+  if (m) return +m[1] - +m[2] + (+m[1] + +m[2]) * 1e-4;
+  m = t.replace(/^[^\d+\-.]+/, '').match(/^[-+]?\d+(?:[.,]\d+)?/);        // « ce soir 3 », « GSAx +0.71 », « 88 % »
+  return m ? parseFloat(m[0].replace(',', '.')) : t.toLowerCase();
+}
+function sortTable(tbl, col, dir) {
+  const rows = Array.from(tbl.querySelectorAll('tr')).slice(1);
+  if (rows.some(r => r.querySelector('td[colspan]'))) return;
+  rows.sort((a, b) => {
+    const x = cellVal(a.children[col], col), y = cellVal(b.children[col], col);
+    if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+    const c = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'fr');
+    return dir === 'asc' ? c : -c;
+  });
+  const parent = rows[0] ? rows[0].parentNode : null;
+  rows.forEach(r => parent.appendChild(r));
+  tbl.querySelectorAll('th').forEach((th, i) => { if (i === col) th.dataset.dir = dir === 'asc' ? '▲' : '▼'; else delete th.dataset.dir; });
+}
+function enableSorting() {
+  document.querySelectorAll('#view table').forEach((tbl, ti) => {
+    const head = tbl.querySelector('tr'); if (!head || !head.querySelector('th')) return;
+    if (Array.from(tbl.querySelectorAll('tr')).slice(1).some(r => r.querySelector('td[colspan]'))) return;
+    head.querySelectorAll('th').forEach((th, ci) => {
+      th.classList.add('srt'); if (!th.title) th.title = 'Trier';
+      th.onclick = () => {
+        const k = sortKey(tbl, ti), cur = SORTS[k];
+        const first = ci === 0 || th.classList.contains('l') ? 'asc' : 'desc';   // rang et noms : croissant ; chiffres : du plus grand au plus petit
+        const dir = cur && cur.col === ci ? (cur.dir === 'asc' ? 'desc' : 'asc') : first;
+        SORTS[k] = { col: ci, dir: dir }; sortTable(tbl, ci, dir);
+      };
+    });
+    const k = SORTS[sortKey(tbl, ti)]; if (k) sortTable(tbl, k.col, k.dir);
+  });
+}
+
+// ---------- « Pourquoi ces écarts ? » : lecture des stats (LNH + MoneyPuck) en mots ----------
+const n1 = x => (Math.round(x * 10) / 10).toString().replace('.', ',');
+const n2 = x => (Math.round(x * 100) / 100).toFixed(2).replace('.', ',');
+const pc = x => Math.round(x * 100) + ' %';
+// Analyse fusionnée : tendance (processus vs résultats) + lecture des stats en mots + verdict
+function explainSkater(p, x, s, gp) {
+  if (!gp || !s) return '';
+  const a = x.adv, G = x.gr, isD = p.grp === 'D', t = trend(p);
+  const per = i => s[i] / gp, J = [], R = [];
+  const part = k => (t ? t.parts.find(q => q.k === k) : null);
+  const vs = (q, d) => (q ? ` <span class="muted">(${d ? 'vs ' + n1(q.base) + ', ' : ''}${sgnPct(q.r - 1)})</span>` : '');
+  // ---- Son jeu ----
+  if (a && a.gp) {
+    const toi = a.toi / a.gp / 60, pp = a.pptoi / a.gp / 60;
+    const role = isD ? (toi >= 23 ? 'rôle de 1er défenseur' : toi >= 20 ? 'gros rôle' : toi >= 17 ? 'rôle moyen' : 'petit rôle')
+                     : (toi >= 19 ? 'rôle de 1er trio' : toi >= 16.5 ? 'rôle de top-6' : toi >= 13.5 ? 'rôle de 3e trio' : 'petit rôle');
+    J.push(`<b>Temps de jeu :</b> ${n1(toi)} min/match${vs(part('toi'), true)} — ${role}${pp >= 2.5 ? `, 1re vague en AN (${n1(pp)} min)` : pp >= 1.2 ? `, un peu d’AN (${n1(pp)} min)` : ', presque pas d’AN'}.`);
+  }
+  roleLines(p).forEach(z => J.push(z));
+  if (G && G[4] > 0.3) {
+    const r = per(4) / G[4], q = part('sog');
+    J.push(`<b>Tirs :</b> ${n1(per(4))}/match${q ? vs(q, true) : ` <span class="muted">(analystes ${n1(G[4])})</span>`}${r >= 1.15 ? ' — il tire plus que prévu : un vrai signal, le volume de tirs se maintient.' : r <= 0.85 ? ' — il tire moins que prévu.' : ''}`);
+  }
+  if (a && a.gp && a.ixg > 0) {
+    const xps = a.sogm > 0 ? a.ixg / a.sogm : null;
+    J.push(`<b>Buts attendus (xG) :</b> ${n2(a.ixg / a.gp)}/match${vs(part('xg'), true)}${xps == null ? '' : xps >= 0.12 ? ' — ses tirs viennent de près du filet.' : xps <= 0.06 ? ' — surtout des tirs de loin.' : ''}`);
+  }
+  const qon = part('on');
+  if (qon) J.push(`<b>Chances de l’équipe quand il joue :</b> ${n1(qon.now)} xG/match${vs(qon, true)}.`);
+  if (G) {
+    const ph = per(5) + per(6) * 2, gh = G[5] + G[6] * 2;
+    if (gh > 0.5 && Math.abs(ph - gh) / gh >= 0.3) J.push(`<b>Jeu physique :</b> ${n1(per(5))} mises en échec et ${n1(per(6))} tirs bloqués/match, ${ph > gh ? 'plus' : 'moins'} que prévu (${n1(G[5])} et ${n1(G[6])}) — ces stats se stabilisent vite.`);
+  }
+  // ---- Ses résultats ----
+  if (p.fpg != null) R.push(`<b>Production :</b> ${n2(p.fpg)} FP/match${p.gaf != null ? ` vs ${n2(p.gaf)} prévus par les analystes (${sgnPct(p.fpg / p.gaf - 1)})` : ''}${G && G[0] + G[1] > 0.15 ? ` · ${n2(per(0) + per(1))} point/match (analystes ${n2(G[0] + G[1])})` : ''}.`);
+  if (a && a.ixg > 0.3) {
+    const d = s[0] - a.ixg;
+    R.push(d <= -1.5 ? `<b>Finition :</b> ${s[0]} but${s[0] > 1 ? 's' : ''} pour ${n1(a.ixg)} xG — il ne trouve pas le fond du filet : surtout de la malchance, ça devrait remonter.`
+      : d >= 1.5 ? `<b>Finition :</b> ${s[0]} buts pour ${n1(a.ixg)} xG — il marque plus que ses chances : rarement durable.`
+      : `<b>Finition :</b> ${s[0]} but${s[0] > 1 ? 's' : ''} pour ${n1(a.ixg)} xG — normale.`);
+  } else if (s[4] >= 8) {
+    const sh = s[0] / s[4], norm = isD ? 0.05 : 0.1;
+    if (sh >= norm * 1.8) R.push(`<b>Finition :</b> ${pc(sh)} de ses tirs entrent (normal ≈ ${pc(norm)}) — ça va probablement redescendre.`);
+    else if (sh <= norm * 0.4) R.push(`<b>Finition :</b> ${pc(sh)} de ses tirs entrent (normal ≈ ${pc(norm)}) — ça va probablement remonter.`);
+  }
+  if (a && a.onxg >= 3) {
+    const r = a.ong / a.onxg;
+    if (r >= 1.3) R.push(`<b>Chance de l’équipe sur la glace :</b> ${a.ong} buts pour ${n1(a.onxg)} xG quand il joue — ça gonfle ses passes, ça devrait se calmer.`);
+    else if (r <= 0.75) R.push(`<b>Malchance de l’équipe sur la glace :</b> ${a.ong} buts seulement pour ${n1(a.onxg)} xG quand il joue — ses passes devraient remonter.`);
+  }
+  if (a && a.a1 + a.a2 >= 4 && a.a2 / (a.a1 + a.a2) >= 0.6) R.push(`<b>Passes :</b> ${a.a2} secondaires sur ${a.a1 + a.a2} — elles dépendent plus des coéquipiers et de la chance.`);
+  if (p.luck != null && Math.abs(p.luck) >= 0.3) R.push(`<b>Chance :</b> ${sgn(p.luck, 2)} FP/match (réel − mérité selon les xG et la chance sur la glace).`);
+  if (!J.length && !R.length) return '';
+  // ---- Verdict ----
+  const real = p.fpg, m = p.model, an = p.gaf, cls = t ? t.cls : null;
+  const tail = real != null && m != null ? (real - m > 0.25 ? ` Il devrait redescendre de son rythme actuel (${n2(real)} → ${n2(m)} FP/match).` : m - real > 0.25 ? ` Il devrait remonter (${n2(real)} → ${n2(m)} FP/match).` : ` Le modèle croit à peu près son rythme actuel (${n2(m)} FP/match).`) : '';
+  const vsA = an != null && m != null ? (m > an + 0.1 ? `au-dessus des analystes (Maison ${n2(m)} vs ${n2(an)})` : m < an - 0.1 ? `sous les analystes (Maison ${n2(m)} vs ${n2(an)})` : `au niveau des analystes (Maison ${n2(m)} vs ${n2(an)})`) : '';
+  const V = {
+    progression: `Son jeu a vraiment progressé : le modèle le projette ${vsA} pour le reste de la saison.${t && t.note ? ' Une partie de son début vient quand même de la chance.' : ''}${tail}`,
+    chanceux: `Ses résultats dépassent ce que son jeu justifie.${tail} À vendre pendant qu’il produit.`,
+    malchanceux: `Son jeu est là, les résultats vont suivre.${tail} À garder, ou à acheter pendant que son prix est bas.`,
+    panne: `Son jeu a reculé : le modèle le projette ${vsA}.${tail} Ça peut durer tant que son rôle ne revient pas.`,
+    conforme: `Il produit à peu près ce qui était prévu.${tail}`
+  };
+  const T = cls ? TREND[cls] : null;
+  const head = T ? `<b>Analyse : ${T.e} ${T.l}</b>${t.note ? ` <span class="muted">(${t.note})</span>` : ''}<div class="small muted" style="margin-top:2px">${T.t}</div>`
+                 : `<b>Analyse</b>${gp < 5 ? ' <span class="muted">(moins de 5 matchs : pas encore de tendance)</span>' : ''}`;
+  const sec = (title, sub, L) => (L.length ? `<div style="margin-top:8px"><b>${title}</b>${sub ? ` <span class="muted">${sub}</span>` : ''}<ul>${L.map(z => `<li>${z}</li>`).join('')}</ul></div>` : '');
+  const procTxt = t ? `— ${sgnPct(t.proc)} vs ${t.base}` : '';
+  return `<div class="why tone-${cls || 'none'}">${head}${gp < 6 && gp >= 5 ? '<div class="small muted">Petit échantillon : à prendre avec un grain de sel.</div>' : ''}
+    ${sec('Son jeu', procTxt + ' <span class="small">(stable, donc prédictif)</span>', J)}${sec('Ses résultats', '<span class="small">(bruités sur quelques semaines)</span>', R)}
+    <div class="verdict">${V[cls || 'conforme']}</div></div>`;
+}
+// ---------- Échanges ciblés (long terme · reste de la saison) — dans « Que faire ? » ----------
+// Tu coches qui tu veux bouger (un joueur ou un « package ») ; on cherche le meilleur retour chez 5 équipes différentes :
+// 1 ou 2 joueurs de l'autre équipe (jusqu'à 3 si tu en donnes 3 et plus), échange gagnant pour toi et acceptable pour lui.
+let TS = { give: {}, res: null, key: '' };
+function findTrades(give, h) {
+  const m = me(), b0 = powerH(m.players, h), sum = (l, f) => l.reduce((s, p) => s + f(p), 0), byTeam = [];
+  const maxGet = Math.min(3, Math.max(2, give.length));
+  D.teams.filter(t => t !== m && !NO_TRADE.test(t.team)).forEach(o => {
+    // on ne vise pas les joueurs 🔴 en panne (le backtest : ils font en moyenne un peu moins que la Maison prévoit)
+    const cls = p => { const t = trend(p); return t ? t.cls : null; };
+    const o0 = powerH(o.players, h), top = o.players.filter(p => !AVOID[p.name] && cls(p) !== 'panne').sort((a, b) => hVal(b, h) - hVal(a, h)).slice(0, 14), packs = top.map(p => [p]);
+    for (let a = 0; a < top.length; a++) for (let b = a + 1; b < top.length; b++) {
+      packs.push([top[a], top[b]]);
+      if (maxGet >= 3) for (let c = b + 1; c < Math.min(top.length, 10); c++) packs.push([top[a], top[b], top[c]]);
+    }
+    let best = null, nOk = 0;
+    packs.forEach(get => {
+      const dm = powerH(swapRoster(m.players, give, get, h), h) - b0;
+      if (dm < 0.3) return;
+      const dO = powerH(swapRoster(o.players, get, give, h), h) - o0;
+      if (dO < -2) return;
+      const ratio = sum(give, perceived) / Math.max(0.01, sum(get, perceived));
+      if (ratio < 0.97) return;
+      nOk++;
+      // à gain presque égal, on préfère les 🟡 malchanceux (prix bas, ils vont remonter) : +0,2 FP/sem. de préférence chacun
+      const score = dm + 0.2 * get.filter(p => cls(p) === 'malchanceux').length;
+      if (!best || score > best.score) best = { o: o, give: give, get: get, dm: dm, dO: dO, ratio: ratio, score: score };
+    });
+    if (best) { best.n = nOk; byTeam.push(best); }
+  });
+  return byTeam.sort((a, b) => b.score - a.score).slice(0, 5);
+}
+function suggestedTrades() {
+  const m = me(), give = m.players.filter(p => TS.give[p.name]);
+  const pick = m.players.slice().sort((a, b) => (b.model || 0) - (a.model || 0)).map(p => {
+    const prot = PROTECT[p.name];
+    return `<label class="pick"><input type="checkbox" data-tg="${esc(p.name)}" ${TS.give[p.name] ? 'checked' : ''} ${prot ? 'disabled' : ''}>
+      <span class="n">${pname(p, D.me)} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span> ${stChip(p.status)} ${pChip(p)}${prot ? ' <span class="chip">protégé</span>' : ''}</span><span class="small">${f2(p.model)}</span></label>`; }).join('');
+  const key = give.map(p => p.name).sort().join('+') + '|' + D.updated;
+  const chips = l => l.map(p => `${pname(p)} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span> ${stChip(p.status)} ${pChip(p)} <span class="small muted">${f2(p.model)}</span>`).join(' + ');
+  let res = '';
+  if (TS.res && TS.key === key) {
+    res = !TS.res.length ? '<div class="empty">Aucune équipe ne fait un échange à la fois gagnant pour toi et acceptable pour elle avec ce package. Essaie d’ajouter ou d’enlever un joueur.</div>'
+      : TS.res.map((t, i) => `<div style="padding:10px 0;border-bottom:1px solid var(--line)">
+        <div class="small muted">${i + 1}. Avec <b>${esc(t.o.team)}</b> <span class="small">(${t.n} retour${t.n > 1 ? 's' : ''} possible${t.n > 1 ? 's' : ''} chez lui)</span></div>
+        <div style="margin:4px 0">Tu reçois : ${chips(t.get)}</div>
+        <div class="small"><span class="up"><b>Toi ${sgn(t.dm)} FP/sem.</b></span> · lui ${sgn(t.dO)} · à ses yeux il reçoit ${Math.round(t.ratio * 100)} % de ce qu’il donne</div>
+        ${tradeWhy(t).length ? `<div class="small muted">Pourquoi : ${tradeWhy(t).join(' · ')}</div>` : ''}
+        <button class="btn" style="margin-top:6px" data-mock="${i}">Analyser dans le simulateur</button></div>`).join('');
+  }
+  return `<div class="card"><h2>Échanges ciblés <span class="muted small">(long terme · reste de la saison)</span></h2>
+    <div class="small muted" style="margin-bottom:6px">Coche le ou les joueurs que tu veux bouger (plusieurs = un package), puis « Trouver ». Meilleur retour chez 5 équipes différentes.</div>
+    <div class="controls"><button class="btn primary" id="tsgo" ${give.length ? '' : 'disabled'}>Trouver${give.length ? ' (' + give.length + ' joueur' + (give.length > 1 ? 's' : '') + ')' : ''}</button><button class="btn" id="tsreset">Effacer</button></div>
+    ${give.length ? `<div class="small" style="margin:4px 0 8px">Tu offres : ${give.map(p => esc(p.name)).join(' + ')}</div>` : ''}
+    <div id="tsres">${res}</div>
+    <details ${give.length && TS.res && TS.key === key ? '' : 'open'} style="margin-top:8px"><summary class="small">Tes joueurs</summary><div style="margin-top:6px">${pick}</div></details>
+    <div class="legend"><span>« Acceptable » = selon la réputation (projections des analystes) et les stats réelles qu’il voit, il reçoit au moins autant qu’il donne, et son alignement ne s’affaiblit pas. Gain = ton meilleur alignement par semaine, projection maison. Les joueurs 🔴 en panne ne sont jamais proposés ; à gain presque égal, les 🟡 malchanceux passent devant.</span>
+    <span>Jamais avec « ${esc((D.teams.find(t => NO_TRADE.test(t.team)) || {}).team || '—')} » · Snuggerud protégé</span></div></div>`;
+}
+function bindTodo() {
+  document.querySelectorAll('[data-tg]').forEach(c => c.onchange = () => { TS.give[c.dataset.tg] = c.checked; TS.res = null; render(); });
+  const go = $('#tsgo'); if (go) go.onclick = () => {
+    const give = me().players.filter(p => TS.give[p.name]); if (!give.length) return;
+    $('#tsres').innerHTML = '<div class="muted">Recherche chez toutes les équipes…</div>';
+    setTimeout(() => { TS.res = findTrades(give, 'long'); TS.key = give.map(p => p.name).sort().join('+') + '|' + D.updated; render(); const r = $('#tsres'); if (r) r.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 30);
+  };
+  const rs = $('#tsreset'); if (rs) rs.onclick = () => { TS = { give: {}, res: null, key: '' }; render(); };
+  document.querySelectorAll('[data-mock]').forEach(b => b.onclick = () => {
+    const t = TS.res[+b.dataset.mock];
+    TR.h = 'long'; TR.other = t.o.team; TR.give = {}; TR.get = {};
+    t.give.forEach(p => { TR.give[p.name] = true; }); t.get.forEach(p => { TR.get[p.name] = true; });
+    TAB = 'trade'; document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x.dataset.t === 'trade'));
+    render(); calcTrade(); const r = $('#tres'); if (r) r.scrollIntoView({ behavior: 'smooth' });
+  });
+}
+// ---------- Semaine : le duel de la semaine ----------
+function wkOf(p) { const w = D.wk && D.wk.p && p.id != null ? D.wk.p[p.id] : null; return w ? { gp: w[0], fp: w[1] } : { gp: 0, fp: 0 }; }
+function duelSide(t) {
+  const rows = t.players.map(p => { const w = wkOf(p), exp = (p.model || 0) * w.gp; return { p: p, gp: w.gp, fp: w.fp, d: w.fp - exp, exp: exp }; })
+    .sort((a, b) => b.fp - a.fp || (b.p.model || 0) - (a.p.model || 0));
+  const out = t.players.filter(p => !OUT[p.status]), left = out.filter(p => p.grp !== 'G').reduce((s, p) => s + (p.left || 0), 0);
+  const cls = k => t.players.filter(p => { const x = trend(p); return x && x.cls === k; });
+  return { rows: rows, left: left, cls: cls };
+}
+function duelTable(t, side) {
+  const dot = p => { const x = trend(p); return x && x.cls !== 'conforme' && TREND[x.cls] ? `<span title="${TREND[x.cls].l}">${TREND[x.cls].e}</span>` : ''; };
+  return `<table class="fo"><tr><th class="l">${esc(t.team)}${t.team === D.me ? ' <span class="chip good">toi</span>' : ''}</th><th title="Matchs joués cette semaine">MJ</th><th title="FP réels cette semaine (tous ses matchs, même sur le banc)">FP</th><th title="FP réels − projection maison × matchs joués">±</th><th title="Matchs restants cette semaine">Rst</th></tr>
+    ${side.rows.map(x => `<tr${OUT[x.p.status] ? ' class="dim"' : ''}><td class="l">${dot(x.p)} ${pname(x.p, t.team)} <span class="pos">${esc(x.p.pos)}</span>${OUT[x.p.status] ? ' ' + stChip(x.p.status) : ''}</td><td>${x.gp}</td><td><b>${f1(x.fp)}</b></td>
+      <td class="${x.d >= 1 ? 'up' : x.d <= -1 ? 'down' : 'muted'}" title="attendu ${f1(x.exp)}">${x.gp ? sgn(x.d, 1) : ''}</td><td>${x.p.grp === 'G' ? '' : x.p.left || 0}</td></tr>`).join('')}
+    <tr class="tot"><td class="l">Total</td><td>${side.rows.reduce((s, x) => s + x.gp, 0)}</td><td><b>${f1(side.rows.reduce((s, x) => s + x.fp, 0))}</b></td><td class="${side.rows.reduce((s, x) => s + x.d, 0) >= 0 ? 'up' : 'down'}">${sgn(side.rows.reduce((s, x) => s + (x.gp ? x.d : 0), 0), 1)}</td><td>${side.left}</td></tr></table>`;
+}
+function vWeek() {
+  const m = me(), r = m.record || {}, o = D.teams.find(t => t.team === r.opp), mine = m.players.filter(p => !OUT[p.status]);
+  const tonight = mine.filter(p => p.today);
+  if (!o) return `<div class="card"><h2>Duel de la semaine</h2><div class="empty">Pas de duel trouvé cette semaine (mets les données à jour).</div></div>${goalieDays(mine)}${roleCard(m)}`;
+  const A = duelSide(m), B = duelSide(o), d = duelOdds(), lead = (r.live || 0) - (r.oppLive || 0);
+  const clsLine = (s, t) => [['progression', '🟢 Vraie progression'], ['chanceux', '🔵 Chanceux'], ['malchanceux', '🟡 Malchanceux'], ['panne', '🔴 En panne']]
+    .map(([k, l]) => { const L = s.cls(k); return L.length ? `<li><b>${l} :</b> ${L.map(p => pname(p, t)).join(', ')}</li>` : ''; }).join('');
+  const head = `<div class="grid" style="margin-bottom:14px">
+      <div class="kpi"><div class="v ${lead >= 0 ? 'up' : 'down'}">${f1(r.live || 0)} – ${f1(r.oppLive || 0)}</div><div class="l">${lead > 0 ? 'Tu mènes de ' + f1(lead) : lead < 0 ? 'Tu tires de l’arrière de ' + f1(-lead) : 'Égalité'} vs ${esc(o.team)}</div></div>
+      ${duelKpi()}
+      <div class="kpi"><div class="v">${A.left} – ${B.left}</div><div class="l">Matchs de patineurs restants (toi – lui)</div></div>
+      <div class="kpi"><div class="v">${tonight.length}</div><div class="l">De tes joueurs jouent ce soir</div></div>
+    </div>`;
+  const over = `<div class="card"><h2>Face-à-face de la semaine</h2><div class="fo2">${duelTable(m, A)}${duelTable(o, B)}</div>
+      <div class="legend"><span>FP réels cette semaine (stats LNH : tous ses matchs, même sur le banc). ± = réel − projection maison × matchs joués (survole pour l’attendu). Rst = matchs restants. 🟢🔵🟡🔴 = tendance de la saison.</span></div></div>`;
+  return head + over + goalieDays(mine) + roleCard(m);
+}
+// ---------- Rôles sur la glace (feuilles de présences, 3 derniers matchs vs 3 d'avant) — info seulement, pas dans la projection ----------
+function roleOf(p) { return D.roles && p && p.id != null ? D.roles[p.id] || D.roles[String(p.id)] : null; }
+function ppUnit(r) { return !r || r.pp === 99 || r.share < 0.12 ? 0 : r.share >= 0.45 && r.pp <= 5 ? 1 : 2; }
+function roleChange(p) {
+  const r = roleOf(p); if (!r) return null;
+  const now = ppUnit(r), prev = r.sharePrev == null ? null : ppUnit({ pp: r.ppPrev == null ? 99 : r.ppPrev, share: r.sharePrev });
+  const m0 = (r.matesPrev || []).slice().sort().join('|'), m1 = (r.mates || []).slice().sort().join('|');
+  const newMates = r.matesPrev && m0 !== m1 ? (r.mates || []).filter(x => (r.matesPrev || []).indexOf(x) < 0) : [];
+  return { r: r, now: now, prev: prev, up: prev != null && now && (prev === 0 || now < prev), down: prev != null && prev && (now === 0 || now > prev), newMates: newMates };
+}
+function roleLines(p) {
+  const c = roleChange(p); if (!c) return [];
+  const r = c.r, L = [], U = ['pas sur l’AN', '1re vague', '2e vague'];
+  if (p.inj) L.push(`<b>🚨 Joue peut-être blessé :</b> ${n1(r.toi / 60)} min/match sur ses 3 derniers matchs, 20 % et plus sous son temps habituel. Le modèle baisse sa projection (réglage retenu par le backtest).`);
+  L.push(`<b>Avantage numérique (3 derniers matchs) :</b> ${U[c.now]}${c.now ? ` — ${Math.round(r.ppm / 6) / 10} min/match, ${Math.round(r.share * 100)} % du temps d’AN de son équipe` : ''}${c.up ? ' <span class="chip good">promu</span>' : c.down ? ' <span class="chip bad">rétrogradé</span>' : ''}.`);
+  if (r.mates && r.mates.length) L.push(`<b>À 5 c. 5 avec :</b> ${r.mates.map(esc).join(' et ')}${c.newMates.length ? ` <span class="chip blue">nouveau</span> <span class="muted">(avant : ${(r.matesPrev || []).map(esc).join(', ')})</span>` : ''}.`);
+  return L;
+}
+function roleCard(m) {
+  if (!D.roles) return '';
+  const pool = m.players.filter(p => p.grp !== 'G').map(p => ({ p: p, w: D.me })).concat((D.waivers || []).filter(p => p.grp !== 'G' && !AVOID[p.name] && (p.model || 0) >= 1).map(p => ({ p: p, w: '' })));
+  const rows = pool.map(x => Object.assign(x, { c: roleChange(x.p) })).filter(x => x.c && (x.c.up || x.c.down)).sort((a, b) => (b.p.model || 0) - (a.p.model || 0)).slice(0, 20);
+  if (!rows.length) return `<div class="card"><h2>Changements de rôle</h2><div class="muted small">Aucune promotion ou rétrogradation sur l’AN dans tes joueurs ou les meilleurs joueurs libres (3 derniers matchs vs 3 d’avant).</div></div>`;
+  return `<div class="card"><h2>Changements de rôle sur l’AN</h2><div class="small muted" style="margin-bottom:6px">3 derniers matchs vs 3 d’avant (feuilles de présences LNH). À titre d’info : le modèle ne s’en sert pas directement.</div>
+    <table><tr><th class="l">Joueur</th><th>Maison</th><th>AN</th><th class="l">Avec</th></tr>${rows.map(x => `<tr><td class="l">${pname(x.p, x.w)} ${x.w ? '<span class="chip">toi</span>' : '<span class="chip warn">libre</span>'}</td><td>${f2(x.p.model)}</td>
+      <td>${x.c.up ? '<span class="chip good">' : '<span class="chip bad">'}${['—', 'PP1', 'PP2'][x.c.prev]} → ${['—', 'PP1', 'PP2'][x.c.now]}</span></td><td class="l small">${(x.c.r.mates || []).map(esc).join(', ')}</td></tr>`).join('')}</table></div>`;
+}
+// ---------- Journal de bord : alignements ESPN jour par jour ----------
+function bestLineup(rows) {
+  const ok = rows.filter(r => D.journal.ir.indexOf(r[2]) < 0), by = g => ok.filter(r => r[3] === g).sort((a, b) => b[1] - a[1]);
+  const G = by('G').slice(0, 2), Dd = by('D'), F = by('F'), pick = F.slice(0, 10).concat(Dd.slice(0, 6));
+  const rest = F.slice(10).concat(Dd.slice(6)).sort((a, b) => b[1] - a[1]).slice(0, 2);
+  return pick.concat(rest, G);
+}
+function vLog() {
+  const J = D.journal;
+  if (!J || !J.days || !J.days.length) return `<div class="card"><h2>Journal de bord</h2><div class="empty">Mets les données à jour pour lire tes alignements ESPN des 4 dernières semaines.</div></div>`;
+  const out = J.bench.concat(J.ir);
+  const days = J.days.map(d => {
+    const act = d.rows.filter(r => out.indexOf(r[2]) < 0), actP = act.reduce((s, r) => s + r[1], 0);
+    const best = bestLineup(d.rows), bestP = best.reduce((s, r) => s + r[1], 0);
+    const benched = d.rows.filter(r => J.bench.indexOf(r[2]) >= 0 && best.indexOf(r) >= 0 && r[1] > 0).sort((a, b) => b[1] - a[1]);
+    const swapped = act.filter(r => best.indexOf(r) < 0).sort((a, b) => a[1] - b[1]);
+    return { d: d.d, act: actP, best: bestP, lost: Math.max(0, bestP - actP), benched: benched, swapped: swapped };
+  }).reverse();
+  const tot = days.reduce((s, x) => s + x.lost, 0), totA = days.reduce((s, x) => s + x.act, 0);
+  // par semaine (lundi → dimanche)
+  const wk = {}; days.forEach(x => { const dt = new Date(x.d + 'T12:00:00'), mon = ymdAdd(x.d, -((dt.getDay() + 6) % 7)); (wk[mon] = wk[mon] || { a: 0, l: 0 }); wk[mon].a += x.act; wk[mon].l += x.lost; });
+  const top = days.filter(x => x.lost >= 0.5).slice().sort((a, b) => b.lost - a.lost).slice(0, 5);
+  return `<div class="grid" style="margin-bottom:14px">
+      <div class="kpi"><div class="v">${f1(totA)}</div><div class="l">FP alignés (${days.length} jours)</div></div>
+      <div class="kpi"><div class="v down">${f1(tot)}</div><div class="l">FP laissés sur le banc</div></div>
+      <div class="kpi"><div class="v">${totA + tot ? Math.round(totA / (totA + tot) * 100) : 100} %</div><div class="l">Efficacité de l’alignement</div></div>
+    </div>
+    <div class="card"><h2>Par semaine</h2><table><tr><th class="l">Semaine du</th><th>FP alignés</th><th>Laissés sur le banc</th></tr>${Object.keys(wk).sort().reverse().map(k => `<tr><td class="l">${dLabel(k)}</td><td>${f1(wk[k].a)}</td><td class="${wk[k].l >= 3 ? 'down' : ''}">${f1(wk[k].l)}</td></tr>`).join('')}</table></div>
+    ${top.length ? `<div class="card"><h2>Les pires soirs</h2><ul>${top.map(x => `<li><b>${dLabel(x.d)}</b> : −${f1(x.lost)} FP — ${x.benched.map(r => `${esc(r[0])} (${f1(r[1])}) sur le banc`).join(', ')}${x.swapped.length ? ` au lieu de ${x.swapped.map(r => `${esc(r[0])} (${f1(r[1])})`).join(', ')}` : ''}</li>`).join('')}</ul>
+      <div class="small muted">Calcul après coup : avec les points réels de chaque soir, le meilleur alignement possible (10 A, 6 D, 2 UTIL, 2 G). Les blessés en réserve ne comptent pas.</div></div>` : ''}
+    <div class="card"><h2>Jour par jour</h2><table><tr><th class="l">Jour</th><th>Alignés</th><th>Meilleur possible</th><th>Perdu</th><th class="l">Sur le banc</th></tr>${days.map(x => `<tr><td class="l">${dLabel(x.d)}</td><td>${f1(x.act)}</td><td>${f1(x.best)}</td><td class="${x.lost >= 1 ? 'down' : ''}">${x.lost >= 0.05 ? '−' + f1(x.lost) : '0'}</td>
+      <td class="l small">${x.benched.map(r => `${esc(r[0])} ${f1(r[1])}`).join(', ')}</td></tr>`).join('')}</table></div>`;
+}
+function explainGoalie(p, x, s, gp) {
+  if (!gp || !s) return '';
+  const L = [], sv = s[2] + s[1] ? s[2] / (s[2] + s[1]) : null, G = x.gr;
+  if (p.share != null) L.push(`<b>Rôle :</b> il a fait ${pc(p.share)} des départs de son équipe${p.share >= 0.65 ? ' : c’est le partant' : p.share <= 0.4 ? ' : c’est le substitut' : ' : partage du filet'}.`);
+  if (x.xga != null && x.mgp) {
+    const d = x.xga - x.ga;
+    L.push(d >= 2 ? `<b>Il arrête plus que prévu :</b> ${x.ga} buts accordés pour ${n1(x.xga)} attendus selon la qualité des tirs (GSAx +${n1(d)}). C’est du bon travail… ou de la chance : chez les gardiens, ça varie beaucoup d’un mois à l’autre.`
+      : d <= -2 ? `<b>Il accorde plus que prévu :</b> ${x.ga} buts pour ${n1(x.xga)} attendus (GSAx ${n1(d)}). Ça devrait se replacer, mais un gardien en difficulté peut perdre des départs.`
+      : `<b>Arrêts normaux :</b> ${x.ga} buts accordés pour ${n1(x.xga)} attendus.`);
+  }
+  if (sv != null) L.push(`<b>% d’arrêts :</b> ${sv.toFixed(3).replace(/^0/, '')} (moyenne de la ligue ≈ ,900).`);
+  if (G && G[0] > 0) { const w = s[0] / gp; if (Math.abs(w - G[0]) >= 0.15) L.push(`<b>Victoires :</b> ${n2(w)} par match joué contre ${n2(G[0])} prévus : ${w > G[0] ? 'son équipe gagne plus que prévu devant lui' : 'son équipe gagne moins que prévu devant lui'}.`); }
+  const v = p.fpg != null ? `Le modèle croit très peu la saison d’un gardien après quelques matchs (k ${x.k || '–'}) : réel ${n2(p.fpg)} FP/match, Maison ${n2(p.model)}.` : '';
+  return `<div class="why"><b>Pourquoi ces écarts ?</b>${gp < 6 ? ` (seulement ${gp} matchs)` : ''}<ul>${L.map(t => `<li>${t}</li>`).join('')}</ul>${v ? `<div class="verdict">${v}</div>` : ''}</div>`;
+}
+
+// ---------- Tendances : panne, malchanceux, chanceux ou vraie progression ----------
+// Processus (ce que le joueur contrôle, stable) : temps de jeu, tirs, buts attendus (xG), chances de l'équipe sur la glace,
+//   comparés à SA saison passée (MoneyPuck + LNH) et, pour les tirs, aux analystes.
+// Résultats (bruités) : FP réels vs analystes, et chance = FP réels − FP mérités (xG, chance sur la glace).
+const TREND = {
+  progression: { e: '🟢', l: 'vraie progression', c: 'good', t: 'Produit plus que prévu ET son jeu (temps de glace, tirs, chances) a vraiment progressé : ça devrait durer.' },
+  chanceux:    { e: '🔵', l: 'chanceux', c: 'blue', t: 'Produit plus que ce que son jeu justifie : ça devrait redescendre. À vendre.' },
+  malchanceux: { e: '🟡', l: 'malchanceux', c: 'warn', t: 'Son jeu est là (tirs, chances), mais les résultats ne suivent pas : ça devrait remonter. À garder ou à acheter.' },
+  panne:       { e: '🔴', l: 'en panne', c: 'bad', t: 'Produit moins que prévu ET son jeu a vraiment reculé (moins de glace, de tirs ou de chances) : ça peut durer.' },
+  conforme:    { e: '', l: 'conforme', c: '', t: 'Produit à peu près ce qui était prévu.' }
+};
+let TRC = new WeakMap();
+const TRC_RESET = () => { TRC = new WeakMap(); };
+function trend(p) {
+  if (TRC.has(p)) return TRC.get(p);
+  let out = null;
+  const x = p.x;
+  if (p.grp !== 'G' && x && x.s && (p.gp || 0) >= 5) {
+    const a = x.adv, ly = x.ly, G = x.gr, gp = p.gp, s = x.s, parts = [];
+    const avg = (u, v) => (u != null && v != null ? (u + v) / 2 : u != null ? u : v);
+    const add = (k, label, now, base, w, unit) => { if (now != null && base > 0) parts.push({ k, label, now, base, w, unit, r: now / base }); };
+    if (a && a.gp) add('toi', 'Temps de jeu', a.toi / a.gp / 60, ly && ly.toi, 0.25, ' min');
+    add('sog', 'Tirs', s[4] / gp, avg(ly && ly.sog, G && G[4]), 0.3, '/match');
+    if (a && a.gp) add('xg', 'Buts attendus', a.ixg / a.gp, ly && ly.xg, 0.3, '/match');
+    if (a && a.gp) add('on', 'Chances de l’équipe quand il joue', a.onxg / a.gp, ly && ly.onxg, 0.15, ' xG/match');
+    if (parts.length) {
+      const ws = parts.reduce((t, q) => t + q.w, 0);
+      const proc = Math.exp(parts.reduce((t, q) => t + q.w * Math.log(Math.max(0.2, Math.min(5, q.r))), 0) / ws) - 1;
+      const exp = p.gaf != null ? p.gaf : p.model, perf = p.fpg != null && exp ? p.fpg / exp - 1 : 0, luck = p.luck || 0;
+      let cls = 'conforme', note = '';
+      // seuils plus exigeants sur un petit échantillon (5 matchs : ×1,6 ; 15 matchs et plus : ×1)
+      const z = Math.max(1, Math.min(1.6, 1.6 - (gp - 5) * 0.06));
+      if (perf >= 0.12 * z) { cls = proc >= 0.08 * z ? 'progression' : 'chanceux'; if (cls === 'progression' && luck >= 0.5) note = 'mais aussi un peu chanceux'; }
+      else if (perf <= -0.12 * z) { cls = proc <= -0.08 * z ? 'panne' : 'malchanceux'; if (cls === 'panne' && luck <= -0.5) note = 'et un peu malchanceux en plus'; }
+      else if (proc <= -0.15 * z && luck >= 0.4 * z) { cls = 'panne'; note = 'masquée par la chance pour l’instant'; }
+      else if (proc >= 0.15 * z && luck <= -0.4 * z) { cls = 'progression'; note = 'pas encore visible dans les points (malchance)'; }
+      else if (luck >= 0.7 * z) cls = 'chanceux';
+      else if (luck <= -0.7 * z) cls = 'malchanceux';
+      const score = cls === 'progression' ? proc + Math.max(0, perf) / 2 : cls === 'panne' ? -proc - Math.min(0, perf) / 2
+                  : cls === 'chanceux' ? Math.max(luck / 2, perf) : cls === 'malchanceux' ? Math.max(-luck / 2, -perf) : 0;
+      out = { cls, note, proc, perf, luck, parts, score, base: ly ? 'sa saison passée' + (G ? ' et les analystes' : '') : 'les analystes' };
+    }
+  }
+  TRC.set(p, out);
+  return out;
+}
+const pChip = p => ovChip(p) + (p.inj ? '<span class="chip bad" title="Temps de jeu −20 % sur ses 3 derniers matchs : joue peut-être blessé">🚨</span>' : '') + pChip0(p);
+const ovChip = p => (p._ov ? `<span class="chip" title="Mon info : ${esc([p._ov.out ? 'absent jusqu’au ' + p._ov.out : '', p._ov.start ? 'partant le ' + p._ov.start : '', p._ov.role || '', p._ov.note || ''].filter(Boolean).join(' · '))}">📝</span> ` : '');
+const pChip0 = p => { const t = trend(p); if (!t) return sigChip(p.signal); if (t.cls === 'conforme') return '';
+  const T = TREND[t.cls]; return `<span class="chip ${T.c}" title="${esc(T.t)}">${T.e} ${T.l}</span>`; };
+const sgnPct = r => (r >= 0 ? '+' : '−') + Math.round(Math.abs(r) * 100) + ' %';
+function trendBox(p) {
+  const t = trend(p); if (!t) return '';
+  const T = TREND[t.cls];
+  const rows = t.parts.map(q => `<li>${q.label} : <b>${n1(q.now)}${q.unit}</b> vs ${n1(q.base)} (${sgnPct(q.r - 1)})</li>`).join('');
+  return `<div class="why" style="margin-top:0"><b>Tendance : ${T.e} ${T.l}</b>${t.note ? ` <span class="muted">(${t.note})</span>` : ''}<div class="small muted" style="margin-top:2px">${T.t}</div>
+    <ul><li><b>Son jeu (processus)</b> vs ${t.base} : <b>${sgnPct(t.proc)}</b><ul style="margin:2px 0 0">${rows}</ul></li>
+    <li><b>Ses résultats</b> : ${n2(p.fpg)} FP/match vs ${n2(p.gaf != null ? p.gaf : p.model)} prévus par les analystes (${sgnPct(t.perf)}) · chance ${sgn(t.luck, 2)} FP/match</li>
+    <li><b>Projection maison</b> pour le reste : <b>${n2(p.model)}</b> FP/match</li></ul></div>`;
+}
+let TF = { cls: 'all', who: 'all', pos: 'all', depth: false };
+function vTrend() {
+  const all = [];
+  D.teams.forEach(t => t.players.forEach(p => all.push(Object.assign({ owner: t.team }, p))));
+  D.waivers.forEach(p => all.push(Object.assign({ owner: '' }, p)));
+  // joueurs qui comptent en fantasy : au moins ~1,6 FP/match selon les analystes, la maison ou le réel (sinon, du bruit de 4e trio)
+  const relevant = p => Math.max(p.gaf || 0, p.model || 0, p.fpg || 0) >= 1.6 || (p.owner && p.owner !== '');
+  let L = all.map(p => ({ p, t: trend(p) })).filter(o => o.t && o.t.cls !== 'conforme' && (TF.depth || relevant(o.p)));
+  L = L.filter(o => (TF.cls === 'all' || o.t.cls === TF.cls) && (TF.pos === 'all' || o.p.grp === TF.pos) &&
+    (TF.who === 'all' || (TF.who === 'me' ? o.p.owner === D.me : TF.who === 'fa' ? !o.p.owner : o.p.owner && o.p.owner !== D.me)));
+  L.sort((a, b) => b.t.score - a.t.score);
+  const counts = {}; all.forEach(p => { const t = trend(p); if (t && (TF.depth || relevant(p))) counts[t.cls] = (counts[t.cls] || 0) + 1; });
+  const btn = (k, l) => `<button class="btn ${TF.cls === k ? 'primary' : ''}" data-tc="${k}">${l}</button>`;
+  const own = p => p.owner ? (p.owner === D.me ? '<span class="chip good">toi</span>' : esc(p.owner)) : '<span class="chip warn">libre</span>';
+  const d = (t, k) => { const q = t.parts.find(z => z.k === k); return q ? `<span class="${q.r >= 1.05 ? 'up' : q.r <= 0.95 ? 'down' : ''}">${sgnPct(q.r - 1)}</span>` : '–'; };
+  const rows = L.slice(0, 150).map(({ p, t }) => `<tr><td>${pname(p, p.owner)} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span></td>
+    <td class="l"><span class="chip ${TREND[t.cls].c}">${TREND[t.cls].e} ${TREND[t.cls].l}</span>${t.note ? `<div class="small muted">${t.note}</div>` : ''}</td><td>${p.gp}</td>
+    <td>${f2(p.fpg)}</td><td>${f2(p.gaf)}</td><td><b>${f2(p.model)}</b></td>
+    <td class="${t.proc >= 0.05 ? 'up' : t.proc <= -0.05 ? 'down' : ''}"><b>${sgnPct(t.proc)}</b></td><td>${d(t, 'toi')}</td><td>${d(t, 'sog')}</td><td>${d(t, 'xg')}</td><td>${d(t, 'on')}</td>
+    <td class="${t.luck > 0.2 ? 'down' : t.luck < -0.2 ? 'up' : ''}">${sgn(t.luck, 2)}</td><td class="l">${own(p)}</td></tr>`).join('');
+  return radarCard() + `<div class="card"><h2>Tendances : qui est vraiment meilleur, qui est juste chanceux ?</h2>
+    <div class="controls">${btn('all', 'Toutes')}${btn('progression', `🟢 Vraie progression (${counts.progression || 0})`)}${btn('chanceux', `🔵 Chanceux (${counts.chanceux || 0})`)}${btn('malchanceux', `🟡 Malchanceux (${counts.malchanceux || 0})`)}${btn('panne', `🔴 En panne (${counts.panne || 0})`)}</div>
+    <div class="controls"><select id="tfwho">${[['all', 'Tous les joueurs'], ['me', 'Mon équipe'], ['fa', 'Joueurs libres'], ['others', 'Autres équipes']].map(([v, l]) => `<option value="${v}" ${TF.who === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <label class="small muted" style="align-self:center"><input type="checkbox" id="tfdepth" ${TF.depth ? 'checked' : ''}> inclure les joueurs de profondeur</label>
+      <select id="tfpos">${[['all', 'Toutes positions'], ['F', 'Attaquants'], ['D', 'Défenseurs']].map(([v, l]) => `<option value="${v}" ${TF.pos === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    ${L.length ? `<div class="tbl"><table><tr><th>Joueur</th><th class="l">Tendance</th><th>MJ</th><th title="FP par match cette saison">Réel</th><th title="Projection des analystes">Analystes</th><th title="Projection maison pour le reste de la saison">Maison</th>
+      <th title="Son jeu : temps de jeu, tirs, buts attendus, chances de l’équipe quand il joue — vs sa saison passée (et les analystes pour les tirs)">Processus</th><th title="Temps de jeu vs saison passée">TJ</th><th title="Tirs par match vs saison passée et analystes">Tirs</th><th title="Buts attendus par match vs saison passée">xG</th><th title="Chances de l’équipe quand il est sur la glace vs saison passée">Équipe</th>
+      <th title="FP réels − FP mérités (buts attendus, chance sur la glace)">Chance</th><th class="l">Appartient à</th></tr>${rows}</table></div>`
+      : '<div class="empty">Aucun joueur dans cette catégorie.</div>'}
+    <div class="legend"><span><b>Processus</b> = son jeu (temps de glace, tirs, buts attendus, chances de l’équipe quand il joue) comparé à sa saison passée : stable, donc prédictif.</span>
+      <span><b>Chance</b> = FP réels − FP mérités. Les résultats (buts, % de tirs, passes) varient beaucoup sur quelques semaines.</span>
+      <span>🟢 résultats ↑ et jeu ↑ · 🔵 résultats ↑ sans le jeu · 🟡 jeu correct, résultats ↓ · 🔴 résultats ↓ et jeu ↓ · Minimum 5 matchs ; recrues sans saison passée : comparées aux analystes seulement.</span></div></div>`;
+}
+function bindTrend() {
+  document.querySelectorAll('[data-tc]').forEach(b => b.onclick = () => { TF.cls = b.dataset.tc; render(); });
+  $('#tfwho').onchange = e => { TF.who = e.target.value; render(); };
+  $('#tfpos').onchange = e => { TF.pos = e.target.value; render(); };
+  $('#tfdepth').onchange = e => { TF.depth = e.target.checked; render(); };
+  document.querySelectorAll('[data-radar]').forEach(b => b.onclick = () => { TR.other = b.dataset.radar; TR.give = {}; TR.get = {}; TAB = 'trade';
+    document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x.dataset.t === 'trade')); render(); window.scrollTo(0, 0); });
+}
+
+// ---------- Alignement jour par jour (streamers, gardiens, séries) ----------
+let TGSET = null, TGDATA = null;
+function playsOn(p, d) {
+  if (TGDATA !== D) { TGDATA = D; TGSET = {}; Object.keys(D.teamGames || {}).forEach(t => { TGSET[t] = new Set(D.teamGames[t].map(g => g[0])); }); }
+  if (d === todayStr()) return !!p.today;                 // ce soir : seulement si le match n'a pas commencé
+  const st = TGSET[p.nhl]; return !!(st && st.has(d));
+}
+function horizonDays(endISO) { const out = [], t = todayStr(); if (!t || !endISO) return out; for (let d = t; d <= endISO; d = ymdAdd(d, 1)) out.push(d); return out; }
+const dLabel = d => { const x = new Date(d + 'T12:00:00'); return JOURS[x.getDay()] + ' ' + x.getDate(); };
+// disponibilité : absent = 0 ; incertain = 60 % les 2 premiers jours, 90 % ensuite
+function avail(p, d) {
+  if (OUT[p.status]) return 0;
+  if (p.status === 'DAY_TO_DAY') return d <= ymdAdd(todayStr(), 1) ? 0.6 : 0.9;
+  return 1;
+}
+// Adversaire du soir (retenu par le backtest par match) : la partie offensive de la projection suit la défense adverse
+function offShare(p) {
+  const r = p.x && p.x.r;
+  if (r) { const o = 3 * r[0] + 2 * r[1] + 0.5 * r[2] + 0.5 * r[3] + 0.2 * r[4], t = o + 0.2 * r[5] + 0.4 * r[6]; if (t > 0) return o / t; }
+  return p.grp === 'D' ? 0.6 : 0.85;
+}
+function oppMult(p, d) {
+  if (!D.opp || !D.opp.t || p.grp === 'G') return 1;
+  const g = teamGames(p).find(x => x[0] === d); if (!g) return 1;
+  const m = D.opp.t[g[1]]; return m ? 1 + (m - 1) * offShare(p) : 1;
+}
+// meilleur alignement d'un soir : F, D, UTIL, G (gardien = FP/départ × part des départs)
+function dayLineup(players, d) {
+  const L = D.config.lineup, v = p => (p.model || 0) * avail(p, d) * oppMult(p, d), by = (a, b) => v(b) - v(a);
+  const sk = players.filter(p => p.grp !== 'G' && v(p) > 0 && playsOn(p, d));
+  const F = sk.filter(p => p.grp === 'F').sort(by), Dd = sk.filter(p => p.grp === 'D').sort(by);
+  const util = F.slice(L.F).concat(Dd.slice(L.D)).sort(by).slice(0, L.UTIL);
+  const starters = F.slice(0, L.F).concat(Dd.slice(0, L.D), util);
+  const gv = p => (p.model || 0) * gShare(p, d) * avail(p, d);
+  const G = players.filter(p => p.grp === 'G' && gv(p) > 0 && playsOn(p, d)).sort((a, b) => gv(b) - gv(a)).slice(0, L.G);
+  return { fp: starters.reduce((t, p) => t + v(p), 0) + G.reduce((t, p) => t + gv(p), 0), starters: starters, goalies: G,
+           free: { F: Math.max(0, L.F - Math.min(L.F, F.length)), D: Math.max(0, L.D - Math.min(L.D, Dd.length)),
+                   U: Math.max(0, L.UTIL - util.length), G: Math.max(0, L.G - G.length) } };
+}
+const planFp = (players, days) => days.reduce((t, d) => t + dayLineup(players, d).fp, 0);
+function slotsByDay(players, days) {
+  return days.map(d => { const x = dayLineup(players, d), n = x.free.F + x.free.D + x.free.U;
+    return `<span class="chip ${n >= 3 ? 'warn' : ''}" style="margin:2px 2px 2px 0">${dLabel(d)} · ${n ? n + ' vide' + (n > 1 ? 's' : '') : 'complet'}${x.free.G ? ' · ' + x.free.G + ' G' : ''}</span>`; }).join('');
+}
+function dropCandidates(m, forced) {
+  return forced ? [forced] : m.players.filter(p => p.grp !== 'G' && !PROTECT[p.name] && p.status !== 'INJURY_RESERVE')
+    .sort((a, b) => (a.model || 0) - (b.model || 0)).slice(0, 6);
+}
+function faPool(days, exclude) {
+  return D.waivers.filter(p => p.grp !== 'G' && !AVOID[p.name] && !OUT[p.status] && p.gp >= 3 && !(exclude && exclude[p.name]) && days.some(d => playsOn(p, d)))
+    .sort((a, b) => (b.model || 0) - (a.model || 0)).slice(0, 150);
+}
+// meilleurs ajouts : pour chaque joueur libre, le meilleur joueur à retirer, gain = FP de l'alignement jour par jour
+function streamSearch(m, days, forced, daysWk) {
+  // gain sur 2 semaines (jusqu'à dimanche prochain) ET sur cette semaine seulement (ton duel en cours)
+  daysWk = daysWk || days;
+  const base = planFp(m.players, days), baseWk = planFp(m.players, daysWk), drops = dropCandidates(m, forced), out = [];
+  faPool(days).forEach(p => {
+    let best = null;
+    drops.forEach(w => {
+      const r = m.players.filter(q => q !== w).concat([p]), gw = planFp(r, daysWk) - baseWk, g = planFp(r, days) - base;
+      if (!best || gw > best.gainWk + 1e-9 || (Math.abs(gw - best.gainWk) < 1e-9 && g > best.gain)) best = { p: p, w: w, gain: g, gainWk: gw, r: r }; });
+    if (best && (best.gainWk > 0.5 || best.gain > 0.5)) {
+      best.useful = daysWk.filter(d => dayLineup(best.r, d).starters.indexOf(p) >= 0).length;
+      out.push(best);
+    }
+  });
+  return out.sort((a, b) => b.gainWk - a.gainWk || b.gain - a.gain).slice(0, 12);
+}
+// plan de la semaine : les meilleures transactions, l'une après l'autre, dans la limite d'acquisitions
+function streamPlan(m, days, n) {
+  let roster = m.players.slice(), gain = 0;
+  const steps = [], used = {};
+  for (let i = 0; i < n; i++) {
+    const base = planFp(roster, days), drops = dropCandidates({ players: roster }), pool = faPool(days, used);
+    let best = null;
+    pool.forEach(p => drops.forEach(w => {
+      const r = roster.filter(q => q !== w).concat([p]), g = planFp(r, days) - base;
+      if (!best || g > best.gain) best = { p: p, w: w, gain: g, r: r };
+    }));
+    if (!best || best.gain < 1) break;
+    best.days = days.filter(d => dayLineup(best.r, d).starters.indexOf(best.p) >= 0);
+    steps.push(best); used[best.p.name] = 1; roster = best.r; gain += best.gain;
+  }
+  return { steps: steps, gain: gain };
+}
+// Gardiens, soir par soir : qui aligner (partant probable × FP par départ), et les gardiens libres qui jouent ces soirs-là
+function goalieDays(mine) {
+  const days = horizonDays(D.weekEnd);
+  if (!days.length || !D.teamGames) return '';
+  const opp = (p, d) => { const g = teamGames(p).find(x => x[0] === d); return g ? (g[2] ? 'vs ' : '@ ') + g[1] : ''; };
+  const ev = (p, d) => (p.model || 0) * gShare(p, d);
+  const fa = D.waivers.filter(p => p.grp === 'G' && !OUT[p.status]);
+  const rows = days.map(d => {
+    const G = mine.filter(p => p.grp === 'G' && playsOn(p, d)).sort((a, b) => ev(b, d) - ev(a, d));
+    const start = G.slice(0, D.config.lineup.G), bench = G.slice(D.config.lineup.G);
+    const free = D.config.lineup.G - start.length;
+    const best = free > 0 ? fa.filter(p => playsOn(p, d)).sort((a, b) => ev(b, d) - ev(a, d)).slice(0, 2) : [];
+    const cell = (p, on) => `${pname(p, on ? D.me : '')} <span class="pos">${opp(p, d)}</span> <span class="muted">· ${startLbl(p, d)} · ${f1(ev(p, d))} FP</span>`;
+    return `<tr><td>${dLabel(d)}</td><td class="l">${start.length ? start.map(p => '✅ ' + cell(p, true)).join('<br>') : '<span class="muted">aucun</span>'}${bench.length ? '<br>' + bench.map(p => '🪑 ' + cell(p, true)).join('<br>') : ''}</td>
+      <td class="l">${best.length ? best.map(p => cell(p, false)).join('<br>') : '<span class="muted">—</span>'}</td></tr>`;
+  }).join('');
+  return `<div class="card"><h2>Gardiens soir par soir : qui aligner</h2><div class="tbl"><table><tr><th>Soir</th><th class="l">Tes gardiens (✅ aligner · 🪑 banc)</th><th class="l">Libres qui jouent ce soir-là</th></tr>${rows}</table></div>
+    <div class="legend"><span>FP attendus = FP par départ (maison) × chances d’être le partant (sa part des départs). Les libres ne sont proposés que les soirs où tu as une place de gardien vide.</span></div></div>`;
+}
+
+// ---------- Semaines de séries (ESPN) ----------
+function playoffDays() {
+  const E = D.espn; if (!E || !E.regCount) return [];
+  const rounds = Math.ceil(Math.log2(Math.max(2, E.poTeams || D.playoffTeams || 8))), lastP = E.regCount + rounds * (E.poLen || 1), out = [];
+  if (E.periods && E.curScoringDay) {
+    Object.keys(E.periods).map(Number).filter(p => p > E.regCount && p <= lastP).forEach(p => (E.periods[p] || []).forEach(id => out.push(ymdAdd(todayStr(), id - E.curScoringDay))));
+  } else if (D.weeks && D.weeks.length && E.cur) {
+    const W = weekList(), ci = curWeekIdx();
+    for (let p = E.regCount + 1; p <= lastP; p++) { const w = W[ci + (p - E.cur)]; if (w && w.s) for (let d = w.s; d <= w.e; d = ymdAdd(d, 1)) out.push(d); }
+  }
+  return out.filter(d => d > todayStr()).sort();
+}
+// ---------- Radar par gérant ----------
+function radarCard() {
+  const rows = D.teams.filter(t => t.team !== D.me).map(t => {
+    const L = t.players.map(p => ({ p: p, t: trend(p) })).filter(o => o.t && (o.t.cls === 'chanceux' || o.t.cls === 'malchanceux') && (o.p.model || 0) >= 1.6);
+    const lucky = L.filter(o => o.t.cls === 'chanceux'), unl = L.filter(o => o.t.cls === 'malchanceux');
+    return { t: t, lucky: lucky, unl: unl };
+  }).filter(r => r.lucky.length || r.unl.length).sort((a, b) => (b.unl.length + b.lucky.length) - (a.unl.length + a.lucky.length));
+  if (!rows.length) return '';
+  const nm = (o, team) => `${pname(o.p, team)} <span class="muted small">${f2(o.p.model)}</span>`;
+  return `<div class="card"><h2>Radar par gérant</h2><div class="tbl"><table><tr><th>Gérant</th><th class="l">🟡 Ses malchanceux (à acheter à rabais)</th><th class="l">🔵 Ses chanceux (lui en vendre pareils… ou éviter)</th><th></th></tr>
+    ${rows.map(r => `<tr><td>${esc(r.t.team)}${NO_TRADE.test(r.t.team) ? ' <span class="chip">pas d’échange</span>' : ''}</td><td class="l">${r.unl.map(o => nm(o, r.t.team)).join('<br>') || '—'}</td><td class="l">${r.lucky.map(o => nm(o, r.t.team)).join('<br>') || '—'}</td>
+      <td>${NO_TRADE.test(r.t.team) ? '' : `<button class="btn" data-radar="${esc(r.t.team)}">Simuler un échange</button>`}</td></tr>`).join('')}</table></div>
+    <div class="legend"><span>Un gérant voit les FP réels : ses 🟡 lui semblent décevants (prix bas), alors que le modèle les voit remonter. Ses 🔵 lui semblent excellents (prix haut) : bon moment pour lui proposer tes propres 🔵.</span></div></div>`;
+}
+// ---------- Rapport sur une équipe ----------
+function teamReport(m) {
+  const val = p => (p.model || 0), L = D.config.lineup;
+  const ok = m.players.filter(p => !OUT[p.status]);
+  const F = ok.filter(p => p.grp === 'F').sort((a, b) => val(b) - val(a)).slice(0, L.F), Dd = ok.filter(p => p.grp === 'D').sort((a, b) => val(b) - val(a)).slice(0, L.D);
+  const G = ok.filter(p => p.grp === 'G').sort((a, b) => val(b) * (b.share || 0) - val(a) * (a.share || 0)).slice(0, L.G);
+  const startSum = F.concat(Dd).reduce((t, p) => t + val(p), 0);
+  const top3 = F.concat(Dd).sort((a, b) => val(b) - val(a)).slice(0, 3), dep = startSum ? top3.reduce((t, p) => t + val(p), 0) / startSum : 0;
+  const rankOf = f => { const vals = D.teams.map(t => f(t)).sort((a, b) => b - a); return vals.indexOf(f(m)) + 1; };
+  const sumPos = (t, g, n) => t.players.filter(p => p.grp === g && !OUT[p.status]).map(val).sort((a, b) => b - a).slice(0, n).reduce((x, y) => x + y, 0);
+  const rF = rankOf(t => sumPos(t, 'F', L.F)), rD = rankOf(t => sumPos(t, 'D', L.D));
+  const rG = rankOf(t => t.players.filter(p => p.grp === 'G' && !OUT[p.status]).map(p => val(p) * (p.share || 0)).sort((a, b) => b - a).slice(0, L.G).reduce((x, y) => x + y, 0));
+  const hurt = m.players.filter(p => OUT[p.status] || p.status === 'DAY_TO_DAY');
+  const cl = k => m.players.filter(p => { const t = trend(p); return t && t.cls === k; });
+  const lucky = cl('chanceux'), down = cl('panne'), unl = cl('malchanceux'), prog = cl('progression');
+  const T = D.teams.length, rk = r => `<b>${r}</b><span class="muted">/${T}</span>`;
+  const isOpp = (me().record || {}).opp === m.team;
+  return `<div class="card"><h2>Rapport : ${esc(m.team)}${isOpp ? ' <span class="chip warn">ton adversaire cette semaine</span>' : ''}</h2><div class="grid">
+    ${kp(rk(rF), 'Attaquants (rang)')}${kp(rk(rD), 'Défenseurs (rang)')}${kp(rk(rG), 'Gardiens (rang)')}
+    ${kp(pct(dep), 'Dépend de ses 3 meilleurs', 'Part de la production de son alignement qui vient de ses 3 meilleurs patineurs : plus c’est haut, plus une blessure le fait mal')}</div>
+    <ul class="small" style="margin:10px 0 0;padding-left:18px">
+      <li><b>Ses 3 piliers :</b> ${top3.map(p => `${pname(p, m.team)} (${f2(p.model)})`).join(', ')}</li>
+      ${hurt.length ? `<li><b>Blessés / incertains :</b> ${hurt.map(p => `${pname(p, m.team)} ${stChip(p.status)}`).join(', ')}</li>` : ''}
+      ${prog.length ? `<li><b>🟢 Vraie progression :</b> ${prog.map(p => pname(p, m.team)).join(', ')}</li>` : ''}
+      ${unl.length ? `<li><b>🟡 Malchanceux (vont remonter : à garder ou à acheter) :</b> ${unl.map(p => pname(p, m.team)).join(', ')}</li>` : ''}
+      ${lucky.length ? `<li><b>🔵 Chanceux (vont redescendre : à vendre pendant qu’ils produisent) :</b> ${lucky.map(p => pname(p, m.team)).join(', ')}</li>` : ''}
+      ${down.length ? `<li><b>🔴 En panne :</b> ${down.map(p => pname(p, m.team)).join(', ')}</li>` : ''}
+    </ul></div>`;
+}
+
+// ---------- « Mon info » : corrections manuelles (gardées sur le serveur) ----------
+function applyOvr() {
+  const O = D.ovr || {}, t = todayStr();
+  const all = []; D.teams.forEach(tm => tm.players.forEach(p => all.push(p))); D.waivers.forEach(p => all.push(p));
+  all.forEach(p => {
+    const o = O[p.name]; p._ov = o || null;
+    if (p._st0 === undefined) p._st0 = p.status;
+    p.status = o && o.out && o.out >= t ? 'OUT' : p._st0;
+  });
+  TRC_RESET();
+}
+const norm = x => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z]/g, '');
+// part des départs d'un gardien ce soir-là : « Mon info » > DailyFaceoff (confirmé / probable) > sa part habituelle
+function starterOf(p, d) {
+  const day = D.starters && D.starters[d], s = day && day[p.nhl]; if (!s) return null;
+  const me = norm(s.n) === norm(p.name), st = /confirm/i.test(s.s) ? 'c' : /likely|expected|probable/i.test(s.s) ? 'l' : null;
+  return st ? { me: me, st: st, n: s.n } : null;
+}
+function startLbl(p, d) {
+  const s = starterOf(p, d), g = gShare(p, d);
+  if (p._ov && p._ov.start === d) return 'partant <b>confirmé</b> (ton info)';
+  if (s) return s.me ? (s.st === 'c' ? 'partant <b>confirmé</b>' : 'partant <b>probable</b> (' + pct(g) + ')') : `<span class="down">${s.st === 'c' ? 'pas partant' : 'probablement pas partant'}</span> <span class="small">(${esc(s.n)} ${s.st === 'c' ? 'confirmé' : 'probable'})</span>`;
+  return 'partant ' + pct(g);
+}
+const gShare = (p, d) => {
+  if (p._ov && p._ov.start === d) return 1;
+  const s = starterOf(p, d);
+  if (s) return s.me ? (s.st === 'c' ? 1 : 0.85) : (s.st === 'c' ? 0 : 0.15);
+  return p.share || D.config.share;
+};
+function ovrBox(p) {
+  const o = p._ov || {}, isG = p.grp === 'G';
+  const roles = [['', '—'], ['pp1', 'Promu en 1re vague d’AN'], ['top', 'Promu au 1er trio / 1re paire'], ['down', 'Rétrogradé']];
+  return `<h3>Mon info <span class="muted" style="text-transform:none;letter-spacing:0">(ce que les stats ne voient pas encore)</span></h3>
+    <div class="controls" style="align-items:center">
+      <label class="small">Absent jusqu’au <input type="date" id="ovout" value="${esc(o.out || '')}"></label>
+      ${isG ? `<label class="small">Partant confirmé le <input type="date" id="ovstart" value="${esc(o.start || '')}"></label>` : ''}
+      <select id="ovrole">${roles.map(([v, l]) => `<option value="${v}" ${o.role === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <input id="ovnote" placeholder="Note (ex. DailyFaceoff)" value="${esc(o.note || '')}" style="flex:1;min-width:140px">
+      <button class="btn primary" id="ovsave">Enregistrer</button>${p._ov ? '<button class="btn" id="ovclear">Effacer</button>' : ''}</div>
+    <div class="note">${o.t ? `Enregistré le ${esc(o.t)}. ` : ''}« Absent » le retire de tes alignements et de ta force jusqu’à cette date. « Partant confirmé » met ses chances de départ à 100 % ce soir-là. Le rôle est affiché pour mémoire : il ne change pas la projection (pas encore prouvé par le backtest).</div>`;
+}
+function saveOvr(p, clear) {
+  const o = clear ? null : { out: ($('#ovout') || {}).value || '', start: ($('#ovstart') || {}).value || '', role: ($('#ovrole') || {}).value || '', note: ($('#ovnote') || {}).value || '' };
+  const done = txt => { D.ovr = JSON.parse(txt || '{}'); applyOvr(); render(); openSheet(D.teams.flatMap(t => t.players).concat(D.waivers).find(q => q.name === p.name) || p); };
+  if (window.google && google.script && google.script.run) google.script.run.withSuccessHandler(done).withFailureHandler(e => alert('Erreur : ' + (e && e.message))).saveOverride(p.name, o);
+  else { const O = Object.assign({}, D.ovr || {}); if (o && (o.out || o.start || o.role || o.note)) O[p.name] = Object.assign(o, { t: todayStr() }); else delete O[p.name]; done(JSON.stringify(O)); }
+}
+// ---------- Nouvelles (fil ESPN LNH) ----------
+let NEWS = {};
+function newsBox(p) {
+  const n = NEWS[p.name];
+  const body = n === undefined ? '<button class="btn" id="newsbtn">Voir les nouvelles</button>' : n === 'loading' ? '<span class="muted">Lecture…</span>'
+    : !n.length ? '<span class="muted small">Aucune nouvelle récente trouvée dans le fil ESPN.</span>'
+    : `<ul class="small" style="padding-left:18px;margin:0">${n.map(a => `<li><b>${a.u ? `<a href="${esc(a.u)}" target="_blank" rel="noopener" style="color:inherit">${esc(a.h)}</a>` : esc(a.h)}</b> <span class="muted">${esc(a.t)}</span>${a.d ? `<div class="muted">${esc(a.d)}</div>` : ''}</li>`).join('')}</ul>`;
+  return `<h3>Nouvelles</h3>${body}`;
+}
+function loadNews(p) {
+  NEWS[p.name] = 'loading'; rerenderSheet();
+  const done = t => { try { NEWS[p.name] = JSON.parse(t || '[]'); } catch (e) { NEWS[p.name] = []; } if (CURP && CURP.name === p.name) rerenderSheet(); };
+  if (window.google && google.script && google.script.run) google.script.run.withSuccessHandler(done).withFailureHandler(() => done('[]')).playerNews(p.name);
+  else done('[]');
+}
+// ---------- Transactions de la ligue : évaluation gagnant / perdant ----------
+function findP(name) { for (const t of D.teams) { const q = t.players.find(p => p.name === name); if (q) return q; } return D.waivers.find(p => p.name === name) || null; }
+let TXSIM = {};
+function evalTrade(tx) {
+  if (TXSIM[tx.id]) return TXSIM[tx.id];
+  const teams = {}; tx.items.forEach(i => { if (i.from) teams[i.from] = 1; if (i.to) teams[i.to] = 1; });
+  const res = { teams: [] }, before = {};
+  Object.keys(teams).forEach(tn => {
+    const T = D.teams.find(t => t.team === tn); if (!T) return;
+    const got = tx.items.filter(i => i.to === tn).map(i => findP(i.name)).filter(Boolean), gave = tx.items.filter(i => i.from === tn).map(i => findP(i.name)).filter(Boolean);
+    const now = T.players, was = now.filter(p => got.indexOf(p) < 0).concat(gave.filter(p => now.indexOf(p) < 0));
+    before[tn] = was;
+    res.teams.push({ team: tn, got: got, gave: gave, dLong: powerH(now, 'long') - powerH(was, 'long'), dShort: (powerH(now, 'court') - powerH(was, 'court')) * 2,
+                     perc: gave.reduce((t, p) => t + perceived(p), 0) ? got.reduce((t, p) => t + perceived(p), 0) / gave.reduce((t, p) => t + perceived(p), 0) : null });
+  });
+  const pAfter = D.teams.map(t => powerH(t.players, 'long')), pBefore = D.teams.map(t => before[t.team] ? powerH(before[t.team], 'long') : powerH(t.players, 'long'));
+  const s0 = simulate(pBefore, 800), s1 = simulate(pAfter, 800);
+  res.teams.forEach(r => { const i = D.teams.findIndex(t => t.team === r.team); r.po0 = s0.po[i]; r.po1 = s1.po[i]; });
+  const im = D.teams.findIndex(t => t.team === D.me); res.me0 = s0.po[im]; res.me1 = s1.po[im];
+  return (TXSIM[tx.id] = res);
+}
+function tradeVerdict(res) {
+  const T = res.teams.slice().sort((a, b) => b.dLong - a.dLong); if (T.length < 2) return '';
+  const W = T[0], Lz = T[T.length - 1], S = res.teams.slice().sort((a, b) => b.dShort - a.dShort)[0];
+  const gap = W.dLong - Lz.dLong;
+  let v = gap < 1 ? 'Échange équilibré selon le modèle.' : `<b>${esc(W.team)}</b> gagne à long terme (${sgn(W.dLong)} FP/sem. contre ${sgn(Lz.dLong)}).`;
+  if (S.team !== W.team && S.dShort > 1) v += ` Mais <b>${esc(S.team)}</b> gagne ses 2 prochaines semaines (${sgn(S.dShort)} FP).`;
+  const fooled = T.find(r => r.perc != null && r.perc >= 1.05 && r.dLong < -0.5);
+  if (fooled) v += ` À ses yeux, ${esc(fooled.team)} a reçu plus qu’il a donné (${Math.round(fooled.perc * 100)} %), mais le modèle dit qu’il s’affaiblit : classique achat d’un joueur au sommet de sa chance.`;
+  return v;
+}
+function vTx() {
+  const tx = D.tx || [];
+  if (!tx.length) return `<div class="card"><h2>Transactions de la ligue</h2><div class="empty">${D.tx ? 'Aucune transaction dans les 14 derniers jours.' : 'Mets les données à jour pour lire les transactions ESPN.'}</div>${txSeenNote()}</div>`;
+  const pl = (l, team) => l.map(p => `${pname(p, team)} <span class="muted small">${f2(p.model)}</span> ${pChip(p)}`).join(', ') || '—';
+  const trades = tx.filter(t => t.trade).map(t => {
+    const r = evalTrade(t);
+    const rows = r.teams.map(x => `<tr><td>${esc(x.team)}${x.team === D.me ? ' <span class="chip good">toi</span>' : ''}</td><td class="l">${pl(x.got, x.team)}</td><td class="l">${pl(x.gave, '')}</td>
+      <td class="${x.dShort >= 0 ? 'up' : 'down'}">${sgn(x.dShort)}</td><td class="${x.dLong >= 0 ? 'up' : 'down'}"><b>${sgn(x.dLong)}</b></td><td>${pct(x.po0)} → <b>${pct(x.po1)}</b></td>
+      <td>${x.perc != null ? Math.round(x.perc * 100) + ' %' : '–'}</td></tr>`).join('');
+    return `<div class="card"><h2>🔁 Échange · ${esc(t.date)}</h2><div class="tbl"><table><tr><th>Équipe</th><th class="l">Reçoit</th><th class="l">Donne</th><th title="FP sur les 2 prochaines semaines">Court terme</th><th title="FP par semaine, reste de la saison">Long terme</th><th>Séries</th><th title="Ce qu'il reçoit / ce qu'il donne, selon la réputation (analystes) et les stats réelles">À ses yeux</th></tr>${rows}</table></div>
+      <div class="verdict" style="margin-top:8px">${tradeVerdict(r)}</div>
+      <div class="small muted" style="margin-top:4px">Tes chances de séries : ${pct(r.me0)} → <b>${pct(r.me1)}</b>${Math.abs(r.me1 - r.me0) >= 0.02 ? (r.me1 < r.me0 ? ' — cet échange renforce un rival' : ' — cet échange t’aide') : ''}.</div></div>`;
+  }).join('');
+  const moves = tx.filter(t => !t.trade).map(t => {
+    const add = t.items.filter(i => i.kind === 'ADD').map(i => findP(i.name) ? `${pname(findP(i.name), i.to)} <span class="muted small">${f2(findP(i.name).model)}</span> ${pChip(findP(i.name))}` : esc(i.name)).join(', ');
+    const drop = t.items.filter(i => i.kind === 'DROP').map(i => findP(i.name) ? `${pname(findP(i.name), '')} <span class="muted small">${f2(findP(i.name).model)}</span>` : esc(i.name)).join(', ');
+    return `<tr><td>${esc(t.date)}</td><td>${esc(t.team)}${t.team === D.me ? ' <span class="chip good">toi</span>' : ''}</td><td class="l">${add || '—'}</td><td class="l">${drop || '—'}</td></tr>`;
+  }).join('');
+  return trades + (moves ? `<div class="card"><h2>Ajouts et retraits</h2><div class="tbl"><table><tr><th>Quand</th><th>Équipe</th><th class="l">Ajoute</th><th class="l">Retire</th></tr>${moves}</table></div></div>` : '') +
+    `<div class="legend"><span>Échanges évalués avec les alignements actuels : avant = on remet les joueurs à leur ancienne équipe. Court terme = FP sur 2 semaines (calendrier, blessés) ; long terme = FP/semaine du meilleur alignement ; séries = 800 saisons simulées.</span></div>` + txSeenNote();
+}
+function txSeenNote() {
+  const t = D.txSeen; if (!t || !Object.keys(t).length) return '';
+  return `<div class="small muted" style="margin-top:6px">Lu chez ESPN : ${Object.keys(t).sort().map(k => `${esc(k)} ×${t[k]}`).join(' · ')}</div>`;
+}
+function bindTx() {}
+
+// ---------- Probabilité de gagner le duel de la semaine (en direct) ----------
+const SCOW = { s: [3, 2, 0.5, 0.5, 0.2, 0.2, 0.4], g: [3, -1, 0.2, 3, 1] };
+function volParams() { const v = D.config && D.config.bt && D.config.bt.vol; return v ? { phi: v.phi, sm: v.sm, cal: true } : { phi: 1.2, sm: 0.3, cal: false }; }
+function varGame(p) {   // variance des FP d'un match (loi de Poisson élargie par phi), à partir de ses taux par match projetés
+  const r = p.x && p.x.r, V = volParams(); if (!r) return V.phi * 4 * Math.max(0.5, p.model || 1);
+  const w = p.grp === 'G' ? SCOW.g : SCOW.s;
+  return V.phi * r.reduce((t, x, i) => t + w[i] * w[i] * Math.max(0, x || 0), 0);
+}
+function weekOutlook(team) {
+  const days = horizonDays(D.weekEnd), V = volParams(), games = new Map();
+  let mean = 0, varr = 0;
+  days.forEach(d => {
+    const L = dayLineup(team.players, d);
+    L.starters.forEach(p => { const a = avail(p, d); mean += (p.model || 0) * a * oppMult(p, d); varr += varGame(p) * a; games.set(p, (games.get(p) || 0) + a); });
+    L.goalies.forEach(p => { const sh = gShare(p, d) * avail(p, d), m = p.model || 0; mean += m * sh; varr += sh * (varGame(p) + m * m) - (sh * m) ** 2; games.set(p, (games.get(p) || 0) + sh); });
+  });
+  games.forEach(n => { varr += (V.sm * n) ** 2; });
+  return { mean: mean, sd: Math.sqrt(varr) };
+}
+const normCdf = z => { const t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989423 * Math.exp(-z * z / 2);
+  const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return z > 0 ? 1 - p : p; };
+function duelOdds() {
+  const m = me(), r = m.record || {}, o = D.teams.find(t => t.team === r.opp);
+  if (!o || r.live == null) return null;
+  const a = weekOutlook(m), b = weekOutlook(o), mu = (r.live + a.mean) - (r.oppLive + b.mean), sd = Math.sqrt(a.sd ** 2 + b.sd ** 2);
+  return { p: sd > 0 ? normCdf(mu / sd) : (mu > 0 ? 1 : 0), me: r.live + a.mean, opp: r.oppLive + b.mean, lo: r.live + a.mean - 1.28 * a.sd, hi: r.live + a.mean + 1.28 * a.sd, oppName: o.team };
+}
+function duelKpi() {
+  const d = duelOdds(); if (!d) return '';
+  return `<div class="kpi" title="Ton pointage actuel + tes matchs restants cette semaine (alignement jour par jour), contre ton adversaire. ${volParams().cal ? 'Fourchettes calibrées par le backtest.' : 'Fourchettes non calibrées (lance le backtest).'}"><div class="v ${d.p >= 0.5 ? 'up' : 'down'}">${pct(d.p)}</div>
+    <div class="l">Chances de gagner ta semaine vs ${esc(d.oppName)} · projeté ${f1(d.me)} – ${f1(d.opp)} (toi : ${f1(d.lo)} à ${f1(d.hi)} à 80 %)</div></div>`;
+}
+
+load(false);
+</script>
+</body>
+</html>
