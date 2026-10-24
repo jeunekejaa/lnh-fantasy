@@ -256,6 +256,8 @@ function render() {
   if (TAB === 'tx') bindTx();
   if (TAB === 'team') $('#teamsel').onchange = e => { TEAMV = e.target.value.replace(/ \(toi\)$/, ''); render(); };
   document.querySelectorAll('[data-sub],[data-go]').forEach(b => b.onclick = () => setTab(b.dataset.sub || b.dataset.go));
+  document.querySelectorAll('[data-wk]').forEach(b => b.onclick = () => { WKV.per = (WKV.per || D.currentPeriod) + (+b.dataset.wk); render(); });
+  document.querySelectorAll('[data-duel]').forEach(b => b.onclick = () => { WKV.sel = b.dataset.duel; render(); });
   enableSorting();
 }
 
@@ -1048,46 +1050,83 @@ function duelSide(t) {
   const cls = k => t.players.filter(p => { const x = trend(p); return x && x.cls === k; });
   return { rows: rows, left: left, cls: cls };
 }
-function duelTable(t, side) {
+function duelTable(t, side, first) {
   const dot = p => { const x = trend(p); return x && x.cls !== 'conforme' && TREND[x.cls] ? `<span title="${TREND[x.cls].l}">${TREND[x.cls].e}</span>` : ''; };
-  return `<table class="fo"><tr><th class="l" style="color:${t.team === D.me ? 'var(--accent)' : 'var(--opp)'}">${t.team === D.me ? 'Toi' : esc(t.team)}</th><th class="hs" title="Matchs joués cette semaine">MJ</th><th title="FP réels cette semaine (tous ses matchs, même sur le banc)">FP</th><th title="FP réels − projection maison × matchs joués">±</th><th class="hs" title="Matchs restants cette semaine">Rst</th></tr>
+  return `<table class="fo"><tr><th class="l" style="color:${t.team === D.me ? 'var(--accent)' : first ? 'var(--ink)' : 'var(--opp)'}">${t.team === D.me ? 'Toi' : esc(t.team)}</th><th class="hs" title="Matchs joués cette semaine">MJ</th><th title="FP réels cette semaine (tous ses matchs, même sur le banc)">FP</th><th title="FP réels − projection maison × matchs joués">±</th><th class="hs" title="Matchs restants cette semaine">Rst</th></tr>
     ${side.rows.map(x => `<tr${OUT[x.p.status] ? ' class="dim"' : ''}><td class="l">${dot(x.p)} ${pname(x.p, t.team)} <span class="pos">${esc(x.p.pos)}</span>${OUT[x.p.status] ? ' ' + stChip(x.p.status) : ''}</td><td class="hs">${x.gp}</td><td><b>${f1(x.fp)}</b></td>
       <td class="${x.d >= 1 ? 'up' : x.d <= -1 ? 'down' : 'muted'}" title="attendu ${f1(x.exp)}">${x.gp ? sgn(x.d, 1) : ''}</td><td class="hs">${x.p.grp === 'G' ? '' : x.p.left || 0}</td></tr>`).join('')}
     <tr class="tot"><td class="l">Total</td><td class="hs">${side.rows.reduce((s, x) => s + x.gp, 0)}</td><td><b>${f1(side.rows.reduce((s, x) => s + x.fp, 0))}</b></td><td class="${side.rows.reduce((s, x) => s + x.d, 0) >= 0 ? 'up' : 'down'}">${sgn(side.rows.reduce((s, x) => s + (x.gp ? x.d : 0), 0), 1)}</td><td class="hs">${side.left}</td></tr></table>`;
 }
+let WKV = { per: null, sel: null };
+// Tous les duels d'une semaine (en cours : pointage + chances ; à venir : projection selon la force des équipes)
+function weekMatchups(per) {
+  const cur = D.currentPeriod, T = name => D.teams.find(t => t.team === name);
+  return (D.schedule || []).filter(g => g.period === per).map(g => {
+    const a = T(g.a), b = T(g.b); if (!a || !b) return null;
+    let pa, ea, eb;
+    if (per === cur) { const d = duelOdds(a); pa = d ? d.p : 0.5; ea = d ? d.me : g.liveA; eb = d ? d.opp : g.liveB; }
+    else { ea = a.power || 0; eb = b.power || 0; pa = normCdf((ea - eb) / (D.config.sd * Math.SQRT2)); }
+    const meIn = a.team === D.me || b.team === D.me;
+    return { a: a, b: b, liveA: g.liveA, liveB: g.liveB, pa: pa, ea: ea, eb: eb, meIn: meIn };
+  }).filter(Boolean).sort((x, y) => (y.meIn - x.meIn));
+}
+function weekStrip(per) {
+  const cur = D.currentPeriod, last = Math.max.apply(null, (D.schedule || []).map(g => g.period).concat([cur]));
+  const list = weekMatchups(per), live = per === cur;
+  const short = n => esc(n.length > 18 ? n.slice(0, 17) + '…' : n);
+  const sel = WKV.sel || D.me;
+  return `<div class="card" style="padding:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px">
+      <button class="btn" data-wk="-1" aria-label="Semaine précédente" ${per <= cur ? 'disabled style="opacity:.35"' : ''}>‹</button>
+      <div style="text-align:center"><div class="lbl">Semaine ${per}${per === cur ? ' · en cours' : ' · à venir'}</div><div class="small muted">${live ? 'pointage actuel · chances de gagner' : 'projection selon la force des équipes'}</div></div>
+      <button class="btn" data-wk="1" aria-label="Semaine suivante" ${per >= last ? 'disabled style="opacity:.35"' : ''}>›</button>
+    </div>
+    <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scroll-snap-type:x mandatory">${list.map(x => {
+      const on = live && (x.a.team === sel || x.b.team === sel), pa = Math.round(x.pa * 100);
+      const side = (t, sc, e, col) => `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><span style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${t.team === D.me ? 'var(--accent)' : 'var(--ink)'}">${short(t.team)}</span><b class="big" style="font-size:18px;color:${col}">${live ? f1(sc) : f1(e)}</b></div>`;
+      return `<button data-duel="${esc(x.a.team)}" ${live ? '' : 'disabled'} style="flex:0 0 200px;scroll-snap-align:start;text-align:left;font:inherit;color:var(--ink);background:${on ? 'var(--me)' : 'var(--card2)'};border:1px solid ${on ? '#1E4A63' : 'var(--line)'};border-radius:12px;padding:10px;cursor:${live ? 'pointer' : 'default'}">
+        ${side(x.a, x.liveA, x.ea, pa >= 50 ? 'var(--good)' : 'var(--ink)')}${side(x.b, x.liveB, x.eb, pa < 50 ? 'var(--good)' : 'var(--ink)')}
+        <div style="height:6px;border-radius:4px;background:#3A4458;overflow:hidden;margin-top:8px"><div style="height:6px;width:${pa}%;background:var(--accent)"></div></div>
+        <div class="small muted" style="display:flex;justify-content:space-between;margin-top:4px"><span>${pa} %</span><span>${100 - pa} %</span></div></button>`; }).join('')}</div></div>`;
+}
 function vWeek() {
-  const m = me(), r = m.record || {}, o = D.teams.find(t => t.team === r.opp), mine = m.players.filter(p => !OUT[p.status]);
+  const cur = D.currentPeriod;
+  if (WKV.per == null || WKV.per < cur) WKV.per = cur;
+  const strip = weekStrip(WKV.per);
+  if (WKV.per !== cur) return strip + `<div class="muted small" style="padding:0 4px">Les semaines à venir montrent seulement la projection (force par semaine, ±${D.config.sd} FP de hasard). Le détail du duel apparaît quand la semaine commence.</div>`;
+  const m = (WKV.sel && D.teams.find(t => t.team === WKV.sel)) || me(), isMe = m.team === D.me;
+  const r = m.record || {}, o = D.teams.find(t => t.team === r.opp), mine = m.players.filter(p => !OUT[p.status]);
   const tonight = mine.filter(p => p.today);
-  if (!o) return `<div class="card"><h2>Duel de la semaine</h2><div class="empty">Pas de duel trouvé cette semaine (mets les données à jour).</div></div>${goalieDays(mine)}${roleCard(m)}`;
-  const A = duelSide(m), B = duelSide(o), d = duelOdds(), lead = (r.live || 0) - (r.oppLive || 0);
-  const clsLine = (s, t) => [['progression', '🟢 Vraie progression'], ['chanceux', '🔵 Chanceux'], ['malchanceux', '🟡 Malchanceux'], ['panne', '🔴 En panne']]
-    .map(([k, l]) => { const L = s.cls(k); return L.length ? `<li><b>${l} :</b> ${L.map(p => pname(p, t)).join(', ')}</li>` : ''; }).join('');
+  if (!o) return strip + `<div class="card"><h2>Duel de la semaine</h2><div class="empty">Pas de duel trouvé cette semaine (mets les données à jour).</div></div>${isMe ? goalieDays(mine) + roleCard(m) : ''}`;
+  const A = duelSide(m), B = duelSide(o), d = duelOdds(m), lead = (r.live || 0) - (r.oppLive || 0);
   const pw = d ? Math.round(d.p * 100) : null;
   let planTxt = '';
-  try { const acq = D.espn || {}, left = acq.acqLimit != null && acq.acqUsed != null ? Math.max(0, acq.acqLimit - acq.acqUsed) : null;
+  if (isMe) try { const acq = D.espn || {}, left = acq.acqLimit != null && acq.acqUsed != null ? Math.max(0, acq.acqLimit - acq.acqUsed) : null;
     const pl = left === 0 ? null : streamPlan(m, horizonDays(D.weekEnd), left == null ? 2 : Math.min(left, 3));
     if (pl && pl.steps.length) planTxt = `<button class="card hero" data-go="todo" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;color:var(--ink);font:inherit;cursor:pointer;padding:12px 14px">
       <svg viewBox="0 0 24 24" aria-hidden="true" style="width:20px;height:20px;flex:none;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>
       <span style="flex:1"><b>${pl.steps.length} ajout${pl.steps.length > 1 ? 's' : ''} possible${pl.steps.length > 1 ? 's' : ''} cette semaine : <span class="up">+${f1(pl.gain)} FP</span></b><span class="small muted" style="display:block">${pl.steps.map(x => esc(x.w.name.split(' ').slice(-1)[0]) + ' → ' + esc(x.p.name.split(' ').slice(-1)[0])).join(' · ')} · voir « Que faire ? »</span></span>
       <span class="muted" aria-hidden="true">›</span></button>`; } catch (e) {}
+  const colA = isMe ? 'var(--accent)' : 'var(--ink)';
   const head = `<div class="card" style="padding:16px">
+      ${isMe ? '' : `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span class="small muted">Duel d’une autre équipe</span><button class="btn" data-duel="${esc(D.me)}">Revenir à mon duel</button></div>`}
       <div style="display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:end">
-        <div style="min-width:0"><div class="lbl" style="color:var(--accent)">Toi</div><div class="small" style="color:#C3CBD8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(m.team)}</div>
-          <div class="big" style="font-size:52px;line-height:1;color:var(--accent);margin-top:6px">${f1(r.live || 0)}</div></div>
+        <div style="min-width:0"><div class="lbl" style="color:${colA}">${isMe ? 'Toi' : 'Équipe'}</div><div class="small" style="color:#C3CBD8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(m.team)}</div>
+          <div class="big" style="font-size:52px;line-height:1;color:${colA};margin-top:6px">${f1(r.live || 0)}</div></div>
         <div class="big muted" style="font-size:20px;padding-bottom:10px">VS</div>
         <div style="min-width:0;text-align:right"><div class="lbl" style="color:var(--opp)">Adversaire</div><div class="small" style="color:#C3CBD8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.team)}</div>
           <div class="big" style="font-size:52px;line-height:1;color:var(--opp);margin-top:6px">${f1(r.oppLive || 0)}</div></div>
       </div>
-      ${d ? `<div style="margin-top:14px;height:10px;border-radius:6px;background:var(--opp);overflow:hidden;display:flex"><div style="width:${pw}%;background:var(--accent)"></div></div>
-      <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:13px;gap:8px;flex-wrap:wrap"><div><b class="big" style="font-size:18px;color:var(--accent)">${pw} %</b> <span class="muted">de chances de gagner</span></div><div class="muted">projeté ${Math.round(d.me)} – ${Math.round(d.opp)} · toi ${Math.round(d.lo)} à ${Math.round(d.hi)} (80 %)</div></div>` : ''}
+      ${d ? `<div style="margin-top:14px;height:10px;border-radius:6px;background:var(--opp);overflow:hidden;display:flex"><div style="width:${pw}%;background:${isMe ? 'var(--accent)' : '#AEB7C6'}"></div></div>
+      <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:13px;gap:8px;flex-wrap:wrap"><div><b class="big" style="font-size:18px;color:${colA}">${pw} %</b> <span class="muted">de chances de gagner</span></div><div class="muted">projeté ${Math.round(d.me)} – ${Math.round(d.opp)} · ${Math.round(d.lo)} à ${Math.round(d.hi)} (80 %)</div></div>` : ''}
       <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:14px">
-        <div class="tile"><div class="lbl" style="font-size:10px">Matchs restants</div><div class="big" style="font-size:22px;white-space:nowrap"><span style="color:var(--accent)">${A.left}</span> <span class="muted" style="font-size:15px">vs</span> <span style="color:var(--opp)">${B.left}</span></div></div>
+        <div class="tile"><div class="lbl" style="font-size:10px">Matchs restants</div><div class="big" style="font-size:22px;white-space:nowrap"><span style="color:${colA}">${A.left}</span> <span class="muted" style="font-size:15px">vs</span> <span style="color:var(--opp)">${B.left}</span></div></div>
         <div class="tile"><div class="lbl" style="font-size:10px">Écart</div><div class="big" style="font-size:22px;color:${lead >= 0 ? 'var(--good)' : 'var(--bad)'}">${sgn(lead, 1)}</div></div>
         <div class="tile"><div class="lbl" style="font-size:10px">Ce soir</div><div class="big" style="font-size:22px">${tonight.length} <span class="muted" style="font-size:14px;font-family:inherit">joueur${tonight.length > 1 ? 's' : ''}</span></div></div>
       </div></div>${planTxt}`;
-  const over = `<div class="card"><h2>Face-à-face</h2><div class="fo2">${duelTable(m, A)}${duelTable(o, B)}</div>
+  const over = `<div class="card"><h2>Face-à-face</h2><div class="fo2">${duelTable(m, A, true)}${duelTable(o, B, false)}</div>
       <div class="legend"><span>FP réels cette semaine (stats LNH : tous ses matchs, même sur le banc). ± = réel − projection maison × matchs joués (survole pour l’attendu). Rst = matchs restants. 🟢🔵🟡🔴 = tendance de la saison.</span></div></div>`;
-  return head + over + goalieDays(mine) + roleCard(m);
+  return strip + head + over + (isMe ? goalieDays(mine) + roleCard(m) : '');
 }
 // ---------- Rôles sur la glace (feuilles de présences, 3 derniers matchs vs 3 d'avant) — info seulement, pas dans la projection ----------
 function roleOf(p) { return D.roles && p && p.id != null ? D.roles[p.id] || D.roles[String(p.id)] : null; }
@@ -1572,8 +1611,8 @@ function weekOutlook(team) {
 }
 const normCdf = z => { const t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989423 * Math.exp(-z * z / 2);
   const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return z > 0 ? 1 - p : p; };
-function duelOdds() {
-  const m = me(), r = m.record || {}, o = D.teams.find(t => t.team === r.opp);
+function duelOdds(m) {
+  m = m || me(); const r = m.record || {}, o = D.teams.find(t => t.team === r.opp);
   if (!o || r.live == null) return null;
   const a = weekOutlook(m), b = weekOutlook(o), mu = (r.live + a.mean) - (r.oppLive + b.mean), sd = Math.sqrt(a.sd ** 2 + b.sd ** 2);
   return { p: sd > 0 ? normCdf(mu / sd) : (mu > 0 ? 1 : 0), me: r.live + a.mean, opp: r.oppLive + b.mean, lo: r.live + a.mean - 1.28 * a.sd, hi: r.live + a.mean + 1.28 * a.sd, oppName: o.team };
