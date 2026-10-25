@@ -394,9 +394,13 @@ function weekSchedule_() {
 }
 
 // ---------------- Simulation du reste de la saison ----------------
-function lineupPower_(players, val) {
+// avail (facultatif) : part de sa valeur selon son statut. Sans avail : un blessé ne compte pas (cette semaine).
+// Pour le reste de la saison, on suppose qu'il revient : même règle que l'app (« long terme ») — LBP/absent 60 %, suspendu 50 %, incertain 95 %.
+const AVAIL_LONG = { INJURY_RESERVE: 0.6, IR: 0.6, OUT: 0.6, SUSPENSION: 0.5, DAY_TO_DAY: 0.95 };
+function lineupPower_(players, val0, avail) {
   const L = CONFIG.LINEUP;
-  const ok = players.filter(p => !OUT_STATUSES[p.status]);
+  const val = avail ? p => val0(p) * (avail[p.status] == null ? 1 : avail[p.status]) : val0;
+  const ok = avail ? players : players.filter(p => !OUT_STATUSES[p.status]);
   const by = (a, b) => val(b) - val(a);
   const F = ok.filter(p => p.grp === 'F').sort(by), D = ok.filter(p => p.grp === 'D').sort(by);
   const util = F.slice(L.F).concat(D.slice(L.D)).sort(by).slice(0, L.UTIL);
@@ -423,7 +427,7 @@ function remainingSchedule_() {
     if (!a || !b) return;
     const isCur = m.matchupPeriodId === cur;
     games.push({ period: m.matchupPeriodId, a: a, b: b, liveA: isCur ? pts(m.home) : 0, liveB: isCur ? pts(m.away) : 0,
-                 frac: isCur ? Math.max(0, (8 - dow) / 7) : 1 });
+                 frac: isCur ? Math.max(0, (8 - dow) / 7) : 1, cur: isCur });
   });
   const set = (j.settings && j.settings.scheduleSettings) || {};
   return { games: games, playoffTeams: set.playoffTeamCount || 8, current: cur };
@@ -440,8 +444,10 @@ function simulate_(teamsOut, sched) {
     sched.games.forEach(g => {
       const ia = idx[g.a], ib = idx[g.b];
       if (ia === undefined || ib === undefined) return;
-      const sa = g.liveA + teamsOut[ia].power * g.frac + gauss_() * APP.WEEK_SD * Math.sqrt(g.frac);
-      const sb = g.liveB + teamsOut[ib].power * g.frac + gauss_() * APP.WEEK_SD * Math.sqrt(g.frac);
+      const pa = g.cur && teamsOut[ia].powerNow != null ? teamsOut[ia].powerNow : teamsOut[ia].power;
+      const pb = g.cur && teamsOut[ib].powerNow != null ? teamsOut[ib].powerNow : teamsOut[ib].power;
+      const sa = g.liveA + pa * g.frac + gauss_() * APP.WEEK_SD * Math.sqrt(g.frac);
+      const sb = g.liveB + pb * g.frac + gauss_() * APP.WEEK_SD * Math.sqrt(g.frac);
       if (sa > sb) w[ia]++; else w[ib]++;
       pf[ia] += sa; pf[ib] += sb;
     });
@@ -532,7 +538,8 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
       record: e ? { w: e.w, l: e.l, tie: e.tie, pf: round_(e.pf), pa: round_(e.pa), apW: e.apW, apL: e.apL,
                     live: e.live === '' ? null : round_(e.live), opp: e.opp === '' ? null : (ESPN_SHEET_OF[e.opp] || ''),
                     oppLive: e.oppLive === '' ? null : round_(e.oppLive), wkW: e.wkW, wkL: e.wkL } : null,
-      power: round_(lineupPower_(ps, p => p.model || 0)),
+      power: round_(lineupPower_(ps, p => p.model || 0, AVAIL_LONG)),        // semaines à venir : les blessés reviennent
+      powerNow: round_(lineupPower_(ps, p => p.model || 0)),                  // cette semaine : les blessés ne jouent pas
       powerReal: round_(lineupPower_(ps, p => (p.gp ? p.fpg || 0 : 0)))
     };
   });
