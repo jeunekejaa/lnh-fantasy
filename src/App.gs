@@ -444,8 +444,8 @@ function simulate_(teamsOut, sched) {
     sched.games.forEach(g => {
       const ia = idx[g.a], ib = idx[g.b];
       if (ia === undefined || ib === undefined) return;
-      const pa = g.cur && teamsOut[ia].powerNow != null ? teamsOut[ia].powerNow : teamsOut[ia].power;
-      const pb = g.cur && teamsOut[ib].powerNow != null ? teamsOut[ib].powerNow : teamsOut[ib].power;
+      const pw = t => g.cur && t.powerNow != null ? t.powerNow : (t.powerBy && t.powerBy[g.period] != null ? t.powerBy[g.period] : t.power);
+      const pa = pw(teamsOut[ia]), pb = pw(teamsOut[ib]);
       const sa = g.liveA + pa * g.frac + gauss_() * APP.WEEK_SD * Math.sqrt(g.frac);
       const sb = g.liveB + pb * g.frac + gauss_() * APP.WEEK_SD * Math.sqrt(g.frac);
       if (sa > sb) w[ia]++; else w[ib]++;
@@ -466,6 +466,7 @@ function simulate_(teamsOut, sched) {
 // ---------------- Instantané pour l'app ----------------
 function buildAppSnapshot_(ss, teams, players, index, aliases) {
   mark_('Équipes LNH actuelles');
+  try { INJ = injuries_(); } catch (e) { INJ = null; WARN.push('Blessures (dates de retour) : ' + e.message); }
   try { CUR_TEAMS = currentTeams_(); } catch (e) { CUR_TEAMS = null; WARN.push('Équipes LNH actuelles : ' + e.message); }
   // présences sur la glace d'abord : le drapeau « joue blessé » (temps de jeu −20 % sur 3 matchs) en a besoin
   mark_('Présences sur la glace');
@@ -506,6 +507,9 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
                         : modelSkater_(p, prior, p ? mp[p.id] : null, g, pjPrior, pjPri._lg, gafPrior);
     const team = (CUR_TEAMS && ((p && CUR_TEAMS.id[p.id]) || CUR_TEAMS.nom[norm_(name)])) || (p && p.team) || nhl || '';   // équipe actuelle (échanges compris)
     const ov = OVR[name], st = ov && ov.out && ov.out >= ymd_(new Date()) ? 'OUT' : (status || '');
+    const ij = INJ && (OUT_STATUSES[st] || st === 'DAY_TO_DAY') ? INJ[norm_(name)] || null : null;
+    // retour estimé (ESPN) ; date dépassée mais toujours blessé → on suppose dans 3 jours
+    const today0 = ymd_(new Date()), ret = ij && ij.r ? (ij.r > today0 ? ij.r : addDays_(today0, 3)) : (ov && ov.out && ov.out >= today0 ? addDays_(ov.out, 1) : null);
     return {
       name: name, pos: pos || (p && p.pos) || '', grp: g, nhl: team, status: st,
       gp: p ? p.gp : 0, fpg: p && p.gp ? round_(p.fpg) : null, gaf: gafPrior ? round_(gafPrior.fpg) : null,
@@ -518,6 +522,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
       toi: m.toi ? round_(m.toi) : null, pptoi: m.pptoi ? round_(m.pptoi) : null, gsax: m.gsax ? round_(m.gsax) : null,
       left: sch.left[team] || 0, next: sch.next[team] || 0, today: !!sch.today[team],
       id: p ? p.id : null,
+      ret: ret, injT: ij ? ij.t : null, injC: ij ? ij.c : null,
       x: playerSheet_(g, p, m, p ? mp[p.id] : null, gafPrior, pjPrior, team)
     };
   };
@@ -538,7 +543,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
       record: e ? { w: e.w, l: e.l, tie: e.tie, pf: round_(e.pf), pa: round_(e.pa), apW: e.apW, apL: e.apL,
                     live: e.live === '' ? null : round_(e.live), opp: e.opp === '' ? null : (ESPN_SHEET_OF[e.opp] || ''),
                     oppLive: e.oppLive === '' ? null : round_(e.oppLive), wkW: e.wkW, wkL: e.wkL } : null,
-      power: round_(lineupPower_(ps, p => p.model || 0, AVAIL_LONG)),        // semaines à venir : les blessés reviennent
+      power: round_(lineupPower_(ps, p => p.model || 0, AVAIL_LONG)),        // remplacé par la moyenne semaine par semaine (powerByPeriod_)
       powerNow: round_(lineupPower_(ps, p => p.model || 0)),                  // cette semaine : les blessés ne jouent pas
       powerReal: round_(lineupPower_(ps, p => (p.gp ? p.fpg || 0 : 0)))
     };
@@ -562,6 +567,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
   try { JOURNAL = espnJournal_(); } catch (e) { WARN.push('Journal ESPN : ' + e.message); }
   setProgress_(90, 'Simulation de 2 000 saisons…');
   const sched = remainingSchedule_();
+  try { powerByPeriod_(teamsOut, sched, sch.weekEnd); } catch (e) { WARN.push('Force par semaine : ' + e.message); }
   if (sched.games.length) simulate_(teamsOut, sched);
 
   // Joueurs libres : tous les joueurs LNH ayant joué cette saison, absents de tous les alignements
@@ -805,6 +811,48 @@ function espnWeekRosters_() {
   Object.keys(out.teams).forEach(k => Object.keys(out.teams[k]).forEach(id => { const x = out.teams[k][id]; x[1] = Math.round(x[1] * 10) / 10; x[2] = Math.round(x[2] * 10) / 10; }));
   try { cache.put(ck, JSON.stringify(out), 600); } catch (e) {}
   return out;
+}
+// Blessures LNH (ESPN) : type, date de retour estimée, note. { nomnormalisé: { r: 'AAAA-MM-JJ', t, s, c } } — gardé 1 h.
+let INJ = null;
+const addDays_ = (d, n) => ymd_(new Date(new Date(d + 'T12:00:00Z').getTime() + n * 86400000));
+const dayDiff_ = (a, b) => Math.round((new Date(b + 'T12:00:00Z') - new Date(a + 'T12:00:00Z')) / 86400000);
+function injuries_() {
+  const cache = CacheService.getScriptCache(), hit = cache.get('INJ');
+  if (hit) return JSON.parse(hit);
+  const r = UrlFetchApp.fetch('https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/injuries', { muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) return null;
+  const out = {};
+  (JSON.parse(r.getContentText()).injuries || []).forEach(t => (t.injuries || []).forEach(i => {
+    const a = i.athlete || {}, d = i.details || {}; if (!a.displayName) return;
+    out[norm_(a.displayName)] = { r: d.returnDate ? String(d.returnDate).slice(0, 10) : '', t: d.type || '', s: (d.fantasyStatus && d.fantasyStatus.abbreviation) || i.status || '', c: String(i.shortComment || '').slice(0, 220) };
+  }));
+  try { cache.put('INJ', JSON.stringify(out), 3600); } catch (e) {}
+  return out;
+}
+// Part d'une semaine (s → e) où un joueur est disponible, selon sa date de retour estimée
+function availWeek_(p, s, e) {
+  const out = OUT_STATUSES[p.status];
+  if (!out && p.status !== 'DAY_TO_DAY') return 1;
+  if (!p.ret) return out ? AVAIL_LONG[p.status] || 0.6 : 1;      // pas de date : règle générale
+  if (p.ret <= s) return 1;
+  if (p.ret > e) return 0;
+  return (dayDiff_(p.ret, e) + 1) / 7;
+}
+// Force de chaque équipe semaine par semaine (période ESPN → FP attendus), blessés comptés selon leur retour
+function powerByPeriod_(teamsOut, sched, weekEnd) {
+  if (!weekEnd || !sched.current) return;
+  const pers = {}; sched.games.forEach(g => { if (g.period > sched.current) pers[g.period] = 1; });
+  teamsOut.forEach(t => {
+    const by = {}; let sum = 0, n = 0;
+    Object.keys(pers).forEach(k => {
+      const per = +k, e = addDays_(weekEnd, 7 * (per - sched.current)), s = addDays_(e, -6);
+      const wmap = new Map(t.players.map(p => [p, availWeek_(p, s, e)]));
+      by[per] = round_(lineupPower_(t.players, p => (p.model || 0) * wmap.get(p), {}));
+      sum += by[per]; n++;
+    });
+    t.powerBy = by;
+    if (n) t.power = round_(sum / n);                                  // force moyenne du reste de la saison
+  });
 }
 // Équipe LNH actuelle de chaque joueur (alignements officiels) : un joueur échangé change d'équipe tout de suite,
 // même s'il n'a pas encore joué pour sa nouvelle équipe. Gardé 1 h. { id: { idLNH: 'ABC' }, nom: { nomnormalisé: 'ABC' } }

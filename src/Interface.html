@@ -218,7 +218,8 @@ $('#tabs').onclick = e => { const b = e.target.closest('button'); if (!b) return
 const me = () => D.teams.find(t => t.team === D.me) || D.teams[0];
 const sigChip = s => s === 'malchanceux' ? '<span class="chip warn" title="Produit moins que ses tirs et ses chances ne le méritent">🟡 malchanceux</span>'
   : s === 'chanceux' ? '<span class="chip blue" title="Produit plus que ses chances ne le méritent">🔵 chanceux</span>' : '';
-const stChip = s => !s || s === 'ACTIVE' ? '' : `<span class="chip ${OUT[s] ? 'bad' : 'warn'}">${esc({OUT:'absent',INJURY_RESERVE:'IR',SUSPENSION:'suspendu',DAY_TO_DAY:'incertain'}[s] || s)}</span>`;
+// statut + retour estimé (ESPN), ex. « IR · retour ~29 oct. » ; le détail de la blessure au survol
+const stChip = (s, p) => !s || s === 'ACTIVE' ? '' : `<span class="chip ${OUT[s] ? 'bad' : 'warn'}"${p && p.injT ? ` title="${esc(p.injT + (p.injC ? ' — ' + p.injC : ''))}"` : ''}>${esc({OUT:'absent',INJURY_RESERVE:'IR',SUSPENSION:'suspendu',DAY_TO_DAY:'incertain'}[s] || s)}${p && p.ret && OUT[s] ? ' · retour ~' + dShort(p.ret) : ''}</span>`;
 
 // ---------- modèle côté client (mêmes règles que le serveur) ----------
 function power(players) {
@@ -303,7 +304,7 @@ function vBoard() {
 let PREG = [];
 const pname = (p, owner) => { PREG.push(owner !== undefined ? Object.assign({ owner: owner }, p) : p); return `<span class="pn" data-pi="${PREG.length - 1}">${esc(p.name)}</span>`; };
 function playerRows(list, opts = {}) {
-  return list.map(p => `<tr><td>${pname(p, p.owner !== undefined ? p.owner : ownerOf(p))} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span> ${stChip(p.status)} ${pChip(p)}</td>
+  return list.map(p => `<tr><td>${pname(p, p.owner !== undefined ? p.owner : ownerOf(p))} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span> ${stChip(p.status, p)} ${pChip(p)}</td>
     <td>${p.gp || 0}</td><td>${f2(p.fpg)}</td><td>${f2(p.gaf)}</td><td><b>${f2(p.model)}</b></td>
     <td class="${p.luck > 0 ? 'down' : p.luck < 0 ? 'up' : ''}" title="FP réels moins FP mérités (xG, chance sur la glace)">${p.grp === 'G' ? (p.gsax != null ? 'GSAx ' + sgn(p.gsax, 2) : '–') : sgn(p.luck, 2)}</td>
     <td>${p.grp === 'G' ? pct(p.share) + (p.shareFixed ? ' <span class="chip" title="Rôle fixé à la main (GOALIE_ROLE dans App.gs)">fixé</span>' : '') : (p.toi ? f1(p.toi) + (p.pptoi ? ' <span class="muted">(' + f1(p.pptoi) + ' AN)</span>' : '') : '–')}</td>
@@ -338,11 +339,11 @@ function moveGroups(list, h) {
         ? `${x.usedDays && x.usedDays.length ? x.usedDays.map(dLabel).join(', ') : '–'} · 2 sem. <b class="${x.gain >= 0 ? 'up' : 'down'}">${sgn(x.gain)}</b> · long terme <b class="${lt >= -0.3 ? (lt >= 0 ? 'up' : 'muted') : 'down'}">${sgn(lt)}/sem.</b>`
         : `saison <b class="up">+${Math.round(x.season)}</b> · ${f2(p.fpg)} réel sur ${p.gp} MJ`;
       return `<div style="display:flex;gap:10px;align-items:baseline;padding:6px 0;border-top:1px solid var(--line)">
-        <div style="flex:1 1 auto;min-width:0">${pname(p, '')} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span>${tr(p)} ${stChip(p.status)} <span class="small muted">· ${f2(p.model)}</span>
+        <div style="flex:1 1 auto;min-width:0">${pname(p, '')} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span>${tr(p)} ${stChip(p.status, p)} <span class="small muted">· ${f2(p.model)}</span>
           <div class="small muted">${det}</div></div>
         <div style="flex:0 0 auto;text-align:right">${main}</div></div>`;
     }).join('');
-    return `<div style="margin:10px 0 4px"><div style="padding:6px 8px;background:var(--chip);border-radius:8px">Change <b>${pname(w, D.me)}</b> <span class="pos">${esc(w.pos)} · ${esc(w.nhl)}</span>${tr(w)} ${stChip(w.status)} <span class="small muted">· projection ${f2(w.model)} FP/match</span> pour :</div>${rows}</div>`;
+    return `<div style="margin:10px 0 4px"><div style="padding:6px 8px;background:var(--chip);border-radius:8px">Change <b>${pname(w, D.me)}</b> <span class="pos">${esc(w.pos)} · ${esc(w.nhl)}</span>${tr(w)} ${stChip(w.status, w)} <span class="small muted">· projection ${f2(w.model)} FP/match</span> pour :</div>${rows}</div>`;
   }).join('') + (h === 'court' ? '<div class="small muted" style="margin-top:4px">Les soirs listés = ceux où il entre dans ton alignement. Long terme en rouge = tu t’affaiblis pour la suite (bon pour gagner cette semaine seulement).</div>' : '');
 }
 // Ajouts groupés par joueur à retirer (un en-tête par joueur retiré, au lieu de le répéter à chaque ligne)
@@ -351,7 +352,7 @@ function byDrop(list) {
   list.forEach(x => { if (!idx.has(x.w)) { idx.set(x.w, out.length); out.push({ w: x.w, list: [] }); } out[idx.get(x.w)].list.push(x); });
   return out;
 }
-const dropHead = (w, n) => `<tr><td colspan="${n}" class="l" style="background:var(--chip);font-size:12.5px">Retirer <b>${pname(w, D.me)}</b> <span class="pos">${esc(w.pos)} · ${esc(w.nhl)}</span> ${stChip(w.status)} ${pChip(w)} · Maison <b>${f2(w.model)}</b> — et prendre :</td></tr>`;
+const dropHead = (w, n) => `<tr><td colspan="${n}" class="l" style="background:var(--chip);font-size:12.5px">Retirer <b>${pname(w, D.me)}</b> <span class="pos">${esc(w.pos)} · ${esc(w.nhl)}</span> ${stChip(w.status, w)} ${pChip(w)} · Maison <b>${f2(w.model)}</b> — et prendre :</td></tr>`;
 // Que faire ? : ajouts (court et long terme), gardiens, échanges suggérés
 function vTodo() {
   const m = me(), mine = m.players.filter(p => !OUT[p.status]);
@@ -555,8 +556,18 @@ const AVAIL = { court: { INJURY_RESERVE: 0, OUT: 0, SUSPENSION: 0, DAY_TO_DAY: 0
 const H_LABEL = { court: 'Court terme · 2 prochaines semaines', long: 'Long terme · reste de la saison' };
 let TR = { other: null, give: {}, get: {}, h: 'long' }, MOCKT = { key: '', list: null };
 // Valeur d'un joueur par match d'alignement, selon l'horizon (court : calendrier des 2 semaines × blessures)
+// part de l'horizon où un blessé sera revenu (date de retour estimée ESPN) ; sans date : règle générale (AVAIL)
+function retShare(p, h) {
+  if (!OUT[p.status] || !p.ret) return null;
+  const t = todayStr(), end = h === 'court' ? ymdAdd(t, 13) : seasonEnd();
+  if (!end || end <= t) return null;
+  const span = dDiff(t, end) + 1, back = p.ret > end ? 0 : dDiff(p.ret > t ? p.ret : t, end) + 1;
+  return Math.max(0, Math.min(1, back / span));
+}
+const dDiff = (a, b) => Math.round((new Date(b + 'T12:00:00Z') - new Date(a + 'T12:00:00Z')) / 86400000);
+function seasonEnd() { const w = D.weeks || []; return w.length ? w[w.length - 1].e : ymdAdd(D.weekEnd, 7 * 20); }
 function hVal(p, h) {
-  const av = AVAIL[h][p.status], a = av == null ? 1 : av;
+  const rs = retShare(p, h), av = AVAIL[h][p.status], a = rs != null ? rs : av == null ? 1 : av;
   const gf = h === 'court' ? ((p.left || 0) + (p.next || 0)) / (2 * D.config.gpw) : 1;
   return (p.model || 0) * a * gf;
 }
@@ -629,7 +640,7 @@ function vTrade() {
   if (!TR.other || !others.find(t => t.team === TR.other)) TR.other = (others.find(t => !NO_TRADE.test(t.team)) || others[0]).team;
   const m = me(), o = D.teams.find(t => t.team === TR.other);
   const list = (t, sel, key) => t.players.slice().sort((a, b) => b.model - a.model).map(p => `<label class="pick"><input type="checkbox" data-k="${key}" data-n="${esc(p.name)}" ${sel[p.name] ? 'checked' : ''}>
-     <span class="n">${pname(p, t.team)} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span> ${stChip(p.status)} ${pChip(p)}</span><span class="small">${f2(p.model)}</span></label>`).join('');
+     <span class="n">${pname(p, t.team)} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span> ${stChip(p.status, p)} ${pChip(p)}</span><span class="small">${f2(p.model)}</span></label>`).join('');
   return `<div class="card"><h2>Simulateur d’échange</h2><div class="controls">
       <select id="tother">${others.map(t => `<option ${t.team === TR.other ? 'selected' : ''}>${esc(t.team)}</option>`).join('')}</select>
       <button class="btn primary" id="tgo">Calculer</button><button class="btn" id="treset">Effacer</button></div>
@@ -851,7 +862,7 @@ function sheetHtml(p) {
   const x = p.x || {}, S = D.config, isG = p.grp === 'G';
   const owner = p.owner === undefined ? ownerOf(p) : p.owner;
   const own = owner ? (owner === D.me ? '<span class="chip good">ton équipe</span>' : `<span class="chip">${esc(owner)}</span>`) : '<span class="chip warn">libre</span>';
-  const head = `<div class="hd"><div><h2>${esc(p.name)}</h2><div class="muted small" style="margin-top:4px">${esc(p.pos)} · ${esc(p.nhl)} · ${p.gp || 0} MJ ${own} ${stChip(p.status)} ${pChip(p)}</div></div><button class="x" aria-label="Fermer">✕</button></div>`;
+  const head = `<div class="hd"><div><h2>${esc(p.name)}</h2><div class="muted small" style="margin-top:4px">${esc(p.pos)} · ${esc(p.nhl)} · ${p.gp || 0} MJ ${own} ${stChip(p.status, p)} ${pChip(p)}</div></div><button class="x" aria-label="Fermer">✕</button></div>`;
   const wk = `<h3>Calendrier</h3><div class="grid">${kp(p.left + (p.today ? ' <span class="chip good">ce soir</span>' : ''), 'Matchs restants cette semaine')}${kp(p.next, 'Matchs la semaine prochaine')}
     ${kp(f1((p.perGame ?? p.model) * p.left), 'FP attendus d’ici dimanche', 'Projection maison × matchs restants cette semaine')}${kp(f1((p.perGame ?? p.model) * p.next), 'FP attendus sem. proch.')}</div>
     ${nextGames(p)}`;
@@ -1082,9 +1093,9 @@ function suggestedTrades() {
   const pick = m.players.slice().sort((a, b) => (b.model || 0) - (a.model || 0)).map(p => {
     const prot = PROTECT[p.name];
     return `<label class="pick"><input type="checkbox" data-tg="${esc(p.name)}" ${TS.give[p.name] ? 'checked' : ''} ${prot ? 'disabled' : ''}>
-      <span class="n">${pname(p, D.me)} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span> ${stChip(p.status)} ${pChip(p)}${prot ? ' <span class="chip">protégé</span>' : ''}</span><span class="small">${f2(p.model)}</span></label>`; }).join('');
+      <span class="n">${pname(p, D.me)} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span> ${stChip(p.status, p)} ${pChip(p)}${prot ? ' <span class="chip">protégé</span>' : ''}</span><span class="small">${f2(p.model)}</span></label>`; }).join('');
   const key = give.map(p => p.name).sort().join('+') + '|' + D.updated;
-  const chips = l => l.map(p => `${pname(p)} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span> ${stChip(p.status)} ${pChip(p)} <span class="small muted">${f2(p.model)}</span>`).join(' + ');
+  const chips = l => l.map(p => `${pname(p)} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span> ${stChip(p.status, p)} ${pChip(p)} <span class="small muted">${f2(p.model)}</span>`).join(' + ');
   let res = '';
   if (TS.res && TS.key === key) {
     res = !TS.res.length ? '<div class="empty">Aucune équipe ne fait un échange à la fois gagnant pour toi et acceptable pour elle avec ce package. Essaie d’ajouter ou d’enlever un joueur.</div>'
@@ -1151,7 +1162,7 @@ function duelTable(t, side, first) {
   const dot = p => { const x = trend(p); return x && x.cls !== 'conforme' && TREND[x.cls] ? `<span title="${TREND[x.cls].l}">${TREND[x.cls].e}</span>` : ''; };
   const tot = side.rows.reduce((s, x) => s + x.fp, 0);
   return `<table class="fo"><tr><th class="l" style="color:${t.team === D.me ? 'var(--accent)' : first ? 'var(--ink)' : 'var(--opp)'}">${t.team === D.me ? 'Toi' : esc(t.team)}</th><th class="hs" title="Matchs joués dans l'alignement (pas au banc) cette semaine">MJ</th><th title="FP comptés cette semaine : seulement les jours où il était dans l'alignement de cette équipe">FP</th><th title="FP comptés − projection maison × matchs joués">±</th><th class="hs" title="Matchs restants cette semaine">Rst</th></tr>
-    ${side.rows.map(x => `<tr${OUT[x.p.status] || x.drop ? ' class="dim"' : ''}><td class="l">${dot(x.p)} ${pname(x.p, x.drop ? '' : t.team)} <span class="pos">${esc(x.p.pos)}</span>${x.drop ? ' <span class="chip">retiré</span>' : x.add ? ' <span class="chip blue">ajouté</span>' : ''}${OUT[x.p.status] && !x.drop ? ' ' + stChip(x.p.status) : ''}</td><td class="hs">${x.gp}</td><td title="${x.bench ? f1(x.bench) + ' FP au banc (non comptés)' : ''}"><b>${f1(x.fp)}</b></td>
+    ${side.rows.map(x => `<tr${OUT[x.p.status] || x.drop ? ' class="dim"' : ''}><td class="l">${dot(x.p)} ${pname(x.p, x.drop ? '' : t.team)} <span class="pos">${esc(x.p.pos)}</span>${x.drop ? ' <span class="chip">retiré</span>' : x.add ? ' <span class="chip blue">ajouté</span>' : ''}${OUT[x.p.status] && !x.drop ? ' ' + stChip(x.p.status, x.p) : ''}</td><td class="hs">${x.gp}</td><td title="${x.bench ? f1(x.bench) + ' FP au banc (non comptés)' : ''}"><b>${f1(x.fp)}</b></td>
       <td class="${x.d >= 1 ? 'up' : x.d <= -1 ? 'down' : 'muted'}" title="attendu ${f1(x.exp)}">${x.gp ? sgn(x.d, 1) : ''}</td><td class="hs">${x.drop || x.p.grp === 'G' ? '' : x.p.left || 0}</td></tr>`).join('')}
     <tr class="tot"><td class="l">Total</td><td class="hs">${side.rows.reduce((s, x) => s + x.gp, 0)}</td><td><b>${f1(tot)}</b></td><td class="${side.rows.reduce((s, x) => s + x.d, 0) >= 0 ? 'up' : 'down'}">${sgn(side.rows.reduce((s, x) => s + (x.gp ? x.d : 0), 0), 1)}</td><td class="hs">${side.left}</td></tr></table>`;
 }
@@ -1163,7 +1174,7 @@ function weekMatchups(per) {
     const a = T(g.a), b = T(g.b); if (!a || !b) return null;
     let pa, ea, eb;
     if (per === cur) { const d = duelOdds(a); pa = d ? d.p : 0.5; ea = d ? d.me : g.liveA; eb = d ? d.opp : g.liveB; }
-    else { ea = a.power || 0; eb = b.power || 0; pa = normCdf((ea - eb) / (D.config.sd * Math.SQRT2)); }
+    else { ea = (a.powerBy && a.powerBy[per]) || a.power || 0; eb = (b.powerBy && b.powerBy[per]) || b.power || 0; pa = normCdf((ea - eb) / (D.config.sd * Math.SQRT2)); }
     const meIn = a.team === D.me || b.team === D.me;
     return { a: a, b: b, liveA: g.liveA, liveB: g.liveB, pa: pa, ea: ea, eb: eb, meIn: meIn };
   }).filter(Boolean).sort((x, y) => (y.meIn - x.meIn));
@@ -1414,7 +1425,7 @@ function horizonDays(endISO) { const out = [], t = todayStr(); if (!t || !endISO
 const dLabel = d => { const x = new Date(d + 'T12:00:00'); return JOURS[x.getDay()] + ' ' + x.getDate(); };
 // disponibilité : absent = 0 ; incertain = 60 % les 2 premiers jours, 90 % ensuite
 function avail(p, d) {
-  if (OUT[p.status]) return 0;
+  if (OUT[p.status]) return p.ret && d >= p.ret ? 0.85 : 0;   // revient à sa date de retour estimée (prudence : 85 %)
   if (p.status === 'DAY_TO_DAY') return d <= ymdAdd(todayStr(), 1) ? 0.6 : 0.9;
   return 1;
 }
@@ -1584,7 +1595,7 @@ function teamReport(m) {
     ${kp(pct(dep), 'Dépend de ses 3 meilleurs', 'Part de la production de son alignement qui vient de ses 3 meilleurs patineurs : plus c’est haut, plus une blessure le fait mal')}</div>
     <ul class="small" style="margin:10px 0 0;padding-left:18px">
       <li><b>Ses 3 piliers :</b> ${top3.map(p => `${pname(p, m.team)} (${f2(p.model)})`).join(', ')}</li>
-      ${hurt.length ? `<li><b>Blessés / incertains :</b> ${hurt.map(p => `${pname(p, m.team)} ${stChip(p.status)}`).join(', ')}</li>` : ''}
+      ${hurt.length ? `<li><b>Blessés / incertains :</b> ${hurt.map(p => `${pname(p, m.team)} ${stChip(p.status, p)}`).join(', ')}</li>` : ''}
       ${prog.length ? `<li><b>🟢 Vraie progression :</b> ${prog.map(p => pname(p, m.team)).join(', ')}</li>` : ''}
       ${unl.length ? `<li><b>🟡 Malchanceux (vont remonter : à garder ou à acheter) :</b> ${unl.map(p => pname(p, m.team)).join(', ')}</li>` : ''}
       ${lucky.length ? `<li><b>🔵 Chanceux (vont redescendre : à vendre pendant qu’ils produisent) :</b> ${lucky.map(p => pname(p, m.team)).join(', ')}</li>` : ''}
