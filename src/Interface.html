@@ -216,6 +216,14 @@ $('#tabs').onclick = e => { const b = e.target.closest('button'); if (!b) return
   setTab(b.dataset.t || LASTSUB[b.dataset.g] || GROUPS[b.dataset.g][0]); };
 
 const me = () => D.teams.find(t => t.team === D.me) || D.teams[0];
+// « Que faire ? » du point de vue d'une autre équipe : on se met dans ses souliers le temps du calcul
+let POV = '', POV_REAL = null;
+const povOn = () => !!POV && POV_REAL != null && POV !== POV_REAL;
+function withPov(fn) {
+  const real = D.me; POV_REAL = real;
+  if (POV && D.teams.some(t => t.team === POV)) D.me = POV;
+  try { return fn(); } finally { D.me = real; }
+}
 const sigChip = s => s === 'malchanceux' ? '<span class="chip warn" title="Produit moins que ses tirs et ses chances ne le méritent">🟡 malchanceux</span>'
   : s === 'chanceux' ? '<span class="chip blue" title="Produit plus que ses chances ne le méritent">🔵 chanceux</span>' : '';
 // statut + retour estimé (ESPN), ex. « IR · retour ~29 oct. » ; le détail de la blessure au survol
@@ -257,7 +265,7 @@ function render() {
     + (D.warn && D.warn.length ? `<div class="warnbox">⚠ ${D.warn.map(esc).join(' · ')}</div>` : '');
   navState();
   const g = groupOf(TAB), segs = GROUPS[g].length > 1 ? `<div class="seg mob" role="group" aria-label="${GLABEL[g]}">${GROUPS[g].map(t => `<button data-sub="${t}" class="${t === TAB ? 'on' : ''}">${TLABEL[t]}</button>`).join('')}</div>` : '';
-  $('#view').innerHTML = segs + warn + ({ board: vBoard, team: vTeam, week: vWeek, todo: vTodo, waivers: vWaivers, search: vSearch, trend: vTrend, tx: vTx, log: vLog, trade: vTrade, about: vAbout }[TAB])();
+  $('#view').innerHTML = segs + warn + ({ board: vBoard, team: vTeam, week: vWeek, todo: () => withPov(vTodo), waivers: vWaivers, search: vSearch, trend: vTrend, tx: vTx, log: vLog, trade: vTrade, about: vAbout }[TAB])();
   if (TAB === 'search') bindSearch();
   if (TAB === 'todo') bindWeek();
   if (TAB === 'todo') bindTodo();
@@ -395,7 +403,7 @@ function vTodo() {
   const H = WK.h || 'court';
   const hzBtns = `<div class="seg" id="wkhz" role="group" aria-label="Horizon">${[['court', 'Cette semaine'], ['long', 'Long terme'], ['hail', '🎲 Hail Mary']]
       .map(([h, l]) => `<button class="${H === h ? 'on' : ''}" data-h="${h}">${l}</button>`).join('')}</div>`;
-  const acq = D.espn || {}, left = acq.acqLimit != null && acq.acqUsed != null ? Math.max(0, acq.acqLimit - acq.acqUsed) : null;
+  const acq = povOn() ? {} : D.espn || {}, left = acq.acqLimit != null && acq.acqUsed != null ? Math.max(0, acq.acqLimit - acq.acqUsed) : null;
   const plan = streamPlan(m, daysWk, left == null ? 2 : Math.min(left, 3));
   const slotRow = slotsByDay(m.players, daysWk);
   const shortCard = `<h2>Ajouts court terme : alignement jour par jour</h2>
@@ -419,7 +427,10 @@ function vTodo() {
       : '<div class="muted">Aucun joueur libre n’améliore ton alignement à long terme.</div>'}
     <div class="legend"><span>Gain = hausse de ton meilleur alignement chaque semaine (projection maison, blessés comptés à 60 % puisqu’ils reviennent) × ${weeksLeft} semaines restantes. Un ajout qui finirait sur ton banc ne rapporte rien.</span></div>`;
   const body = H === 'hail' ? hailCard(m, left) : H === 'court' ? shortCard : longCard;
-  return `<div class="card">${hzBtns}${body}</div>
+  const povSel = `<div class="card" style="padding:10px 14px;${povOn() ? 'border-color:var(--opp)' : ''}"><label class="small muted" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Point de vue
+    <select id="povsel" style="flex:1;min-width:180px">${D.teams.slice().sort((a, b) => (b.team === POV_REAL) - (a.team === POV_REAL)).map(t => `<option value="${esc(t.team)}" ${t.team === D.me ? 'selected' : ''}>${t.team === POV_REAL ? 'Toi (' + esc(t.team) + ')' : esc(t.team)}</option>`).join('')}</select></label>
+    ${povOn() ? `<div class="small" style="margin-top:6px;color:var(--opp)">Tu vois « Que faire ? » comme si tu étais <b>${esc(D.me)}</b> : ses joueurs, son duel, ses meilleurs ajouts.</div>` : ''}</div>`;
+  return povSel + `<div class="card">${hzBtns}${body}</div>
     ${goalieCompare(mine)}
     ${suggestedTrades()}`;
 }
@@ -1063,7 +1074,7 @@ let TS = { give: {}, res: null, key: '' };
 function findTrades(give, h) {
   const m = me(), b0 = powerH(m.players, h), sum = (l, f) => l.reduce((s, p) => s + f(p), 0), byTeam = [];
   const maxGet = Math.min(3, Math.max(2, give.length));
-  D.teams.filter(t => t !== m && !NO_TRADE.test(t.team)).forEach(o => {
+  D.teams.filter(t => t !== m && (povOn() || !NO_TRADE.test(t.team))).forEach(o => {
     // on ne vise pas les joueurs 🔴 en panne (le backtest : ils font en moyenne un peu moins que la Maison prévoit)
     const cls = p => { const t = trend(p); return t ? t.cls : null; };
     const o0 = powerH(o.players, h), top = o.players.filter(p => !AVOID[p.name] && cls(p) !== 'panne').sort((a, b) => hVal(b, h) - hVal(a, h)).slice(0, 14), packs = top.map(p => [p]);
@@ -1104,7 +1115,7 @@ function suggestedTrades() {
         <div style="margin:4px 0">Tu reçois : ${chips(t.get)}</div>
         <div class="small"><span class="up"><b>Toi ${sgn(t.dm)} FP/sem.</b></span> · lui ${sgn(t.dO)} · à ses yeux il reçoit ${Math.round(t.ratio * 100)} % de ce qu’il donne</div>
         ${tradeWhy(t).length ? `<div class="small muted">Pourquoi : ${tradeWhy(t).join(' · ')}</div>` : ''}
-        <button class="btn" style="margin-top:6px" data-mock="${i}">Analyser dans le simulateur</button></div>`).join('');
+        ${povOn() ? '' : `<button class="btn" style="margin-top:6px" data-mock="${i}">Analyser dans le simulateur</button>`}</div>`).join('');
   }
   return `<div class="card"><h2>Échanges ciblés <span class="muted small">(long terme · reste de la saison)</span></h2>
     <div class="small muted" style="margin-bottom:6px">Coche le ou les joueurs que tu veux bouger (plusieurs = un package), puis « Trouver ». Meilleur retour chez 5 équipes différentes.</div>
@@ -1113,14 +1124,15 @@ function suggestedTrades() {
     <div id="tsres">${res}</div>
     <details ${give.length && TS.res && TS.key === key ? '' : 'open'} style="margin-top:8px"><summary class="small">Tes joueurs</summary><div style="margin-top:6px">${pick}</div></details>
     <div class="legend"><span>« Acceptable » = selon la réputation (projections des analystes) et les stats réelles qu’il voit, il reçoit au moins autant qu’il donne, et son alignement ne s’affaiblit pas. Gain = ton meilleur alignement par semaine, projection maison. Les joueurs 🔴 en panne ne sont jamais proposés ; à gain presque égal, les 🟡 malchanceux passent devant.</span>
-    <span>Jamais avec « ${esc((D.teams.find(t => NO_TRADE.test(t.team)) || {}).team || '—')} » · Snuggerud protégé</span></div></div>`;
+    ${povOn() ? '' : `<span>Jamais avec « ${esc((D.teams.find(t => NO_TRADE.test(t.team)) || {}).team || '—')} » · Snuggerud protégé</span>`}</div></div>`;
 }
 function bindTodo() {
+  const ps = $('#povsel'); if (ps) ps.onchange = e => { POV = e.target.value === D.me ? '' : e.target.value; TS = { give: {}, res: null, key: '' }; WK.drop = ''; render(); window.scrollTo(0, 0); };
   document.querySelectorAll('[data-tg]').forEach(c => c.onchange = () => { TS.give[c.dataset.tg] = c.checked; TS.res = null; render(); });
   const go = $('#tsgo'); if (go) go.onclick = () => {
-    const give = me().players.filter(p => TS.give[p.name]); if (!give.length) return;
+    const give = withPov(() => me().players.filter(p => TS.give[p.name])); if (!give.length) return;
     $('#tsres').innerHTML = '<div class="muted">Recherche chez toutes les équipes…</div>';
-    setTimeout(() => { TS.res = findTrades(give, 'long'); TS.key = give.map(p => p.name).sort().join('+') + '|' + D.updated; render(); const r = $('#tsres'); if (r) r.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 30);
+    setTimeout(() => { TS.res = withPov(() => findTrades(give, 'long')); TS.key = give.map(p => p.name).sort().join('+') + '|' + D.updated; render(); const r = $('#tsres'); if (r) r.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 30);
   };
   const rs = $('#tsreset'); if (rs) rs.onclick = () => { TS = { give: {}, res: null, key: '' }; render(); };
   document.querySelectorAll('[data-mock]').forEach(b => b.onclick = () => {
