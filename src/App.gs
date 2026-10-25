@@ -44,10 +44,12 @@ const SHARE_KEY = 'HZwSztv5v7cUf41u';
 function doGet(e) {
   if (e && e.parameter && e.parameter.k && SHARE_KEY && e.parameter.k === SHARE_KEY) {
     const what = e.parameter.what;
-    if (what === 'diag') { let o = {}; try { fetchEspnTeams_(); const pl = [];
-        (ESPN_DATA.teams || []).forEach(t => ((t.roster || {}).entries || []).forEach(e => { const p = e.playerPoolEntry && e.playerPoolEntry.player; if (p && p.injuryStatus && p.injuryStatus !== 'ACTIVE') pl.push(p); }));
-        o.n = pl.length; o.keys = pl.length ? Object.keys(pl[0]) : []; o.ex = pl.slice(0, 4).map(p => { const c = {}; Object.keys(p).filter(k => /injur|return|out|status/i.test(k)).forEach(k => { c[k] = p[k]; }); c.name = p.fullName; return c; });
-      } catch (er) { o.err = er.message; }
+    if (what === 'diag') {
+      const urls = ['https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/injuries', 'https://site.web.api.espn.com/apis/site/v2/sports/hockey/nhl/injuries',
+        'https://cdn.espn.com/core/nhl/injuries?xhr=1', 'https://sports.core.api.espn.com/v2/sports/hockey/leagues/nhl/teams/25/injuries',
+        'https://www.cbssports.com/nhl/injuries/', 'https://www.espn.com/nhl/injuries'];
+      const res = UrlFetchApp.fetchAll(urls.map(u => ({ url: u, muteHttpExceptions: true, headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36' } })));
+      const o = res.map((r, i) => { const t = r.getContentText(); return { u: urls[i], code: r.getResponseCode(), len: t.length, ret: (t.match(/returnDate|Expected Return|expected-return/gi) || []).length, head: t.slice(0, 80) }; });
       return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
     if (what === 'ver') return ContentService.createTextOutput(codeStatus_()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'update') return ContentService.createTextOutput(checkCodeFromApp()).setMimeType(ContentService.MimeType.JSON);
