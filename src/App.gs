@@ -354,7 +354,7 @@ function weekSchedule_() {
   const nextMon = ymd_(new Date(now.getTime() + (8 - dow) * 86400000));
   const nextSun = ymd_(new Date(now.getTime() + (14 - dow) * 86400000));
   const j = fetchJsonAll_([`${WEB}/schedule/${today}`, `${WEB}/schedule/${nextMon}`]);
-  const left = {}, next = {}, todayTeams = {}, seen = {};
+  const left = {}, next = {}, todayTeams = {}, liveTeams = {}, seen = {};
   const add = (m, t) => { m[t] = (m[t] || 0) + 1; };
   // Les deux calendriers (7 jours chacun, à partir d'aujourd'hui et du lundi suivant) se chevauchent :
   // on ne compte chaque match qu'une fois.
@@ -362,6 +362,7 @@ function weekSchedule_() {
     if (g.gameType !== CONFIG.GAME_TYPE || seen[g.id]) return;
     seen[g.id] = true;
     const teams = [g.awayTeam.abbrev, g.homeTeam.abbrev];
+    if (day.date === today && (g.gameState === 'LIVE' || g.gameState === 'CRIT')) teams.forEach(t => { liveTeams[t] = true; });   // match en cours
     if (day.date >= today && day.date <= sunday && (g.gameState === 'FUT' || g.gameState === 'PRE')) {
       teams.forEach(t => add(left, t));
       if (day.date === today) teams.forEach(t => { todayTeams[t] = true; });
@@ -390,7 +391,7 @@ function weekSchedule_() {
       if (any) weeks.push({ s: start, e: end, n: n });
     });
   } catch (e) { WARN.push('Calendrier des semaines : ' + e.message); }
-  return { left: left, next: next, today: todayTeams, weekEnd: sunday, weeks: weeks, games: games };
+  return { left: left, next: next, today: todayTeams, live: liveTeams, weekEnd: sunday, weeks: weeks, games: games };
 }
 
 // ---------------- Simulation du reste de la saison ----------------
@@ -520,7 +521,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
       deserved: m.deserved === null ? null : round_(m.deserved), luck: m.luck === null ? null : round_(m.luck),
       signal: g === 'G' ? '' : signal_(m, p ? p.gp : 0),
       toi: m.toi ? round_(m.toi) : null, pptoi: m.pptoi ? round_(m.pptoi) : null, gsax: m.gsax ? round_(m.gsax) : null,
-      left: sch.left[team] || 0, next: sch.next[team] || 0, today: !!sch.today[team],
+      left: sch.left[team] || 0, next: sch.next[team] || 0, today: !!sch.today[team], live: !!(sch.live && sch.live[team]),
       id: p ? p.id : null,
       ret: ret, injT: ij ? ij.t : null, injC: ij ? ij.c : null,
       x: playerSheet_(g, p, m, p ? mp[p.id] : null, gafPrior, pjPrior, team)

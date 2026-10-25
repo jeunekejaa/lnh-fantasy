@@ -107,6 +107,8 @@ function onOpen() {
 let DATA_ONLY = false;
 function updateLive() { DATA_ONLY = false; run_(); }
 function updateData() { DATA_ONLY = true; run_(); }
+// chronométrage fin (voir mark_ dans App.gs)
+const M_ = l => { try { if (typeof mark_ === 'function') mark_(l); } catch (e) { /* rien */ } };
 
 function run_() {
   WARN.length = 0;
@@ -121,7 +123,7 @@ function run_() {
     if (p.pos !== 'G' && p.team) TEAM_GP[p.team] = Math.max(TEAM_GP[p.team] || 0, p.gp || 0);
   });
   const aliases = readAliases_(ss);
-
+  M_('ESPN : synchro des alignements');
   if (!DATA_ONLY) {
     const teamSheets = ss.getSheets().filter(isTeamSheet_);
     teamSheets.forEach(ensureTeamRows_);                   // formules jusqu'à LAST_ROW
@@ -130,8 +132,10 @@ function run_() {
   syncEspn_(ss, aliases);          // met à jour les alignements depuis ESPN (si connecté)
   prog(50, 'Mise à jour des feuilles…');
   writeLiveSheet_(ss, players);
+  M_('Feuille GAF live');
   updateGafLive_(ss, index, aliases);
   if (!DATA_ONLY) { setupWaivers_(ss); setupSearch_(ss); newsSheet_(ss); }
+  M_('Feuille Ballotage');
   writeWaivers_(ss);
 
   prog(60, 'Calcul des équipes…');
@@ -141,11 +145,13 @@ function run_() {
     if (isTeamSheet_(sh)) { teams.push(updateTeamSheet_(sh, index, aliases)); teamNames.push(sh.getName()); }
   });
   PropertiesService.getDocumentProperties().setProperty('TEAM_SHEETS', JSON.stringify(teamNames));
+  M_('Leaderboard');
   writeLeaderboard_(ss, teams);
   prog(72, 'Leaderboard à jour — projection maison et simulation…');
   // App web : projection maison, stats avancées, calendrier, simulation (fichier App.gs)
   try { if (typeof buildAppSnapshot_ === 'function') buildAppSnapshot_(ss, teams, players, index, aliases); }
   catch (e) { console.log('App : ' + e.message); WARN.push('App : ' + e.message); }
+  M_('Nouvelles du jour');
   maybeDailyNews_(ss);
   prog(100, 'Terminé');
 }
@@ -1344,6 +1350,7 @@ function syncEspn_(ss, aliases) {
   }
 
   let teams;
+  M_('ESPN : téléchargement');
   try { teams = fetchEspnTeams_(); }
   catch (e) {
     sh.getRange('G1').setValue(`⚠ Synchro ESPN impossible (${stamp_()}) : ${e.message}. Les alignements n'ont pas été modifiés.`);
@@ -1355,6 +1362,7 @@ function syncEspn_(ss, aliases) {
     return;
   }
 
+  M_('ESPN : écriture dans les feuilles');
   const byKey = {};
   ss.getSheets().forEach(s => { if (isTeamSheet_(s)) byKey[normTeam_(s.getName())] = s; });
 
@@ -1377,6 +1385,7 @@ function syncEspn_(ss, aliases) {
   sh.getRange(2, 1, rows.length, header.length).setValues(rows);
   clearBelow_(sh, rows.length + 2, header.length);
   sh.getRange('G1').setValue(`✔ Synchro ESPN : ${stamp_()}`);
+  M_('ESPN : News Tracker + recalcul');
   if (moves.length) { try { logTransactions_(ss, moves); } catch (e) { WARN.push('News Tracker : ' + e.message); } }
   if (changed) SpreadsheetApp.flush();   // laisse les formules GAF se recalculer avant la suite
 }

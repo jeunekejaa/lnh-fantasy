@@ -308,7 +308,7 @@ function playerRows(list, opts = {}) {
     <td>${p.gp || 0}</td><td>${f2(p.fpg)}</td><td>${f2(p.gaf)}</td><td><b>${f2(p.model)}</b></td>
     <td class="${p.luck > 0 ? 'down' : p.luck < 0 ? 'up' : ''}" title="FP réels moins FP mérités (xG, chance sur la glace)">${p.grp === 'G' ? (p.gsax != null ? 'GSAx ' + sgn(p.gsax, 2) : '–') : sgn(p.luck, 2)}</td>
     <td>${p.grp === 'G' ? pct(p.share) + (p.shareFixed ? ' <span class="chip" title="Rôle fixé à la main (GOALIE_ROLE dans App.gs)">fixé</span>' : '') : (p.toi ? f1(p.toi) + (p.pptoi ? ' <span class="muted">(' + f1(p.pptoi) + ' AN)</span>' : '') : '–')}</td>
-    <td>${p.today ? '<span class="chip good">ce soir</span> ' : ''}${p.left}</td><td>${p.next}</td>${opts.extra ? opts.extra(p) : ''}</tr>`).join('');
+    <td>${p.live ? '<span class="chip bad">🔴 en cours</span> ' : p.today ? '<span class="chip good">ce soir</span> ' : ''}${p.left}</td><td>${p.next}</td>${opts.extra ? opts.extra(p) : ''}</tr>`).join('');
 }
 const PHEAD = (extra = '') => `<tr><th>Joueur</th><th>MJ</th><th title="FP par match cette saison">Réel</th><th title="Projection des analystes (moyenne GAF des experts, avant la saison)">Analystes</th><th title="Projection maison : analystes + moteur maison, mélangés à la saison en cours stat par stat">Maison</th><th title="Chance : réel − mérité. Négatif = malchanceux (va remonter)">Chance</th><th title="Temps de jeu (min/match), dont avantage numérique · gardiens : part des départs">TJ / départs</th><th>Matchs restants</th><th>Sem. proch.</th>${extra}</tr>`;
 
@@ -356,7 +356,7 @@ const dropHead = (w, n) => `<tr><td colspan="${n}" class="l" style="background:v
 // Que faire ? : ajouts (court et long terme), gardiens, échanges suggérés
 function vTodo() {
   const m = me(), mine = m.players.filter(p => !OUT[p.status]);
-  const tonight = mine.filter(p => p.today);
+  const tonight = mine.filter(p => p.today || p.live);
   // horizon : reste de cette semaine + semaine prochaine (un ajout doit valoir plus qu’un seul soir)
   const val = p => (p.grp === 'G' ? p.model * (p.share || D.config.share) : p.model) * (p.left + p.next);
   const worst = {}, cands = {};
@@ -863,7 +863,7 @@ function sheetHtml(p) {
   const owner = p.owner === undefined ? ownerOf(p) : p.owner;
   const own = owner ? (owner === D.me ? '<span class="chip good">ton équipe</span>' : `<span class="chip">${esc(owner)}</span>`) : '<span class="chip warn">libre</span>';
   const head = `<div class="hd"><div><h2>${esc(p.name)}</h2><div class="muted small" style="margin-top:4px">${esc(p.pos)} · ${esc(p.nhl)} · ${p.gp || 0} MJ ${own} ${stChip(p.status, p)} ${pChip(p)}</div></div><button class="x" aria-label="Fermer">✕</button></div>`;
-  const wk = `<h3>Calendrier</h3><div class="grid">${kp(p.left + (p.today ? ' <span class="chip good">ce soir</span>' : ''), 'Matchs restants cette semaine')}${kp(p.next, 'Matchs la semaine prochaine')}
+  const wk = `<h3>Calendrier</h3><div class="grid">${kp(p.left + (p.live ? ' <span class="chip bad">🔴 en cours</span>' : p.today ? ' <span class="chip good">ce soir</span>' : ''), 'Matchs restants cette semaine')}${kp(p.next, 'Matchs la semaine prochaine')}
     ${kp(f1((p.perGame ?? p.model) * p.left), 'FP attendus d’ici dimanche', 'Projection maison × matchs restants cette semaine')}${kp(f1((p.perGame ?? p.model) * p.next), 'FP attendus sem. proch.')}</div>
     ${nextGames(p)}`;
   if (isG) return head + goalieSheet(p, x) + wk + ovrBox(p) + newsBox(p) + foot();
@@ -1162,7 +1162,7 @@ function duelTable(t, side, first) {
   const dot = p => { const x = trend(p); return x && x.cls !== 'conforme' && TREND[x.cls] ? `<span title="${TREND[x.cls].l}">${TREND[x.cls].e}</span>` : ''; };
   const tot = side.rows.reduce((s, x) => s + x.fp, 0);
   return `<table class="fo"><tr><th class="l" style="color:${t.team === D.me ? 'var(--accent)' : first ? 'var(--ink)' : 'var(--opp)'}">${t.team === D.me ? 'Toi' : esc(t.team)}</th><th class="hs" title="Matchs joués dans l'alignement (pas au banc) cette semaine">MJ</th><th title="FP comptés cette semaine : seulement les jours où il était dans l'alignement de cette équipe">FP</th><th title="FP comptés − projection maison × matchs joués">±</th><th class="hs" title="Matchs restants cette semaine">Rst</th></tr>
-    ${side.rows.map(x => `<tr${OUT[x.p.status] || x.drop ? ' class="dim"' : ''}><td class="l">${dot(x.p)} ${pname(x.p, x.drop ? '' : t.team)} <span class="pos">${esc(x.p.pos)}</span>${x.drop ? ' <span class="chip">retiré</span>' : x.add ? ' <span class="chip blue">ajouté</span>' : ''}${OUT[x.p.status] && !x.drop ? ' ' + stChip(x.p.status, x.p) : ''}</td><td class="hs">${x.gp}</td><td title="${x.bench ? f1(x.bench) + ' FP au banc (non comptés)' : ''}"><b>${f1(x.fp)}</b></td>
+    ${side.rows.map(x => `<tr${OUT[x.p.status] || x.drop ? ' class="dim"' : ''}><td class="l">${dot(x.p)} ${pname(x.p, x.drop ? '' : t.team)} <span class="pos">${esc(x.p.pos)}</span>${x.drop ? ' <span class="chip">retiré</span>' : x.add ? ' <span class="chip blue">ajouté</span>' : ''}${!x.drop && x.p.live ? ' <span class="chip bad" title="Son match est commencé">🔴 en cours</span>' : ''}${OUT[x.p.status] && !x.drop ? ' ' + stChip(x.p.status, x.p) : ''}</td><td class="hs">${x.gp}</td><td title="${x.bench ? f1(x.bench) + ' FP au banc (non comptés)' : ''}"><b>${f1(x.fp)}</b></td>
       <td class="${x.d >= 1 ? 'up' : x.d <= -1 ? 'down' : 'muted'}" title="attendu ${f1(x.exp)}">${x.gp ? sgn(x.d, 1) : ''}</td><td class="hs">${x.drop || x.p.grp === 'G' ? '' : x.p.left || 0}</td></tr>`).join('')}
     <tr class="tot"><td class="l">Total</td><td class="hs">${side.rows.reduce((s, x) => s + x.gp, 0)}</td><td><b>${f1(tot)}</b></td><td class="${side.rows.reduce((s, x) => s + x.d, 0) >= 0 ? 'up' : 'down'}">${sgn(side.rows.reduce((s, x) => s + (x.gp ? x.d : 0), 0), 1)}</td><td class="hs">${side.left}</td></tr></table>`;
 }
@@ -1205,7 +1205,7 @@ function vWeek() {
   if (WKV.per !== cur) return strip + `<div class="muted small" style="padding:0 4px">Les semaines à venir montrent seulement la projection (force par semaine, ±${D.config.sd} FP de hasard). Le détail du duel apparaît quand la semaine commence.</div>`;
   const m = (WKV.sel && D.teams.find(t => t.team === WKV.sel)) || me(), isMe = m.team === D.me;
   const r = m.record || {}, o = D.teams.find(t => t.team === r.opp), mine = m.players.filter(p => !OUT[p.status]);
-  const tonight = mine.filter(p => p.today);
+  const tonight = mine.filter(p => p.today || p.live);
   if (!o) return strip + `<div class="card"><h2>Duel de la semaine</h2><div class="empty">Pas de duel trouvé cette semaine (mets les données à jour).</div></div>${isMe ? goalieDays(mine) + roleCard(m) : ''}`;
   const A = duelSide(m), B = duelSide(o), d = duelOdds(m), lead = (r.live || 0) - (r.oppLive || 0);
   const pw = d ? Math.round(d.p * 100) : null;
