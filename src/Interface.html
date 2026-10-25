@@ -1376,7 +1376,7 @@ function trend(p) {
   return out;
 }
 const pChip = p => ovChip(p) + (p.inj ? '<span class="chip bad" title="Temps de jeu −20 % sur ses 3 derniers matchs : joue peut-être blessé">🚨</span>' : '') + pChip0(p);
-const ovChip = p => (p._ov ? `<span class="chip" title="Mon info : ${esc([p._ov.out ? 'absent jusqu’au ' + p._ov.out : '', p._ov.start ? 'partant le ' + p._ov.start : '', p._ov.role || '', p._ov.note || ''].filter(Boolean).join(' · '))}">📝</span> ` : '');
+const ovChip = p => (p._ov ? `<span class="chip" title="Mon info : ${esc([p._ov.pts ? 'mon estimé : ' + p._ov.pts + ' pts' : '', p._ov.out ? 'absent jusqu’au ' + p._ov.out : '', p._ov.start ? 'partant le ' + p._ov.start : '', p._ov.role || '', p._ov.note || ''].filter(Boolean).join(' · '))}">📝</span> ` : '');
 const pChip0 = p => { const t = trend(p); if (!t) return sigChip(p.signal); if (t.cls === 'conforme') return '';
   const T = TREND[t.cls]; return `<span class="chip ${T.c}" title="${esc(T.t)}">${T.e} ${T.l}</span>`; };
 const sgnPct = r => (r >= 0 ? '+' : '−') + Math.round(Math.abs(r) * 100) + ' %';
@@ -1657,15 +1657,16 @@ function ovrBox(p) {
       <label class="small">Absent jusqu’au <input type="date" id="ovout" value="${esc(o.out || '')}"></label>
       ${isG ? `<label class="small">Partant confirmé le <input type="date" id="ovstart" value="${esc(o.start || '')}"></label>` : ''}
       <select id="ovrole">${roles.map(([v, l]) => `<option value="${v}" ${o.role === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      ${isG ? '' : `<label class="small">Mon estimé : <input type="number" id="ovpts" min="0" max="250" placeholder="pts" value="${esc(o.pts || '')}" style="width:76px"> pts sur la saison</label>`}
       <input id="ovnote" placeholder="Note (ex. DailyFaceoff)" value="${esc(o.note || '')}" style="flex:1;min-width:140px">
       <button class="btn primary" id="ovsave">Enregistrer</button>${p._ov ? '<button class="btn" id="ovclear">Effacer</button>' : ''}</div>
-    <div class="note">${o.t ? `Enregistré le ${esc(o.t)}. ` : ''}« Absent » le retire de tes alignements et de ta force jusqu’à cette date. « Partant confirmé » met ses chances de départ à 100 % ce soir-là. Le rôle est affiché pour mémoire : il ne change pas la projection (pas encore prouvé par le backtest).</div>`;
+    <div class="note">${o.t ? `Enregistré le ${esc(o.t)}. ` : ''}« Absent » le retire de tes alignements et de ta force jusqu’à cette date. « Partant confirmé » met ses chances de départ à 100 % ce soir-là. « Mon estimé » remplace la projection maison : ses buts, passes et points en AN sont ajustés pour qu’il finisse avec ce total (appliqué à la prochaine mise à jour des données). Le rôle est affiché pour mémoire : il ne change pas la projection (pas encore prouvé par le backtest).</div>`;
 }
 function saveOvr(p, clear) {
-  const o = clear ? null : { out: ($('#ovout') || {}).value || '', start: ($('#ovstart') || {}).value || '', role: ($('#ovrole') || {}).value || '', note: ($('#ovnote') || {}).value || '' };
+  const o = clear ? null : { out: ($('#ovout') || {}).value || '', start: ($('#ovstart') || {}).value || '', role: ($('#ovrole') || {}).value || '', note: ($('#ovnote') || {}).value || '', pts: +(($('#ovpts') || {}).value || 0) || '' };
   const done = txt => { D.ovr = JSON.parse(txt || '{}'); applyOvr(); render(); openSheet(D.teams.flatMap(t => t.players).concat(D.waivers).find(q => q.name === p.name) || p); };
   if (window.google && google.script && google.script.run) google.script.run.withSuccessHandler(done).withFailureHandler(e => alert('Erreur : ' + (e && e.message))).saveOverride(p.name, o);
-  else { const O = Object.assign({}, D.ovr || {}); if (o && (o.out || o.start || o.role || o.note)) O[p.name] = Object.assign(o, { t: todayStr() }); else delete O[p.name]; done(JSON.stringify(O)); }
+  else { const O = Object.assign({}, D.ovr || {}); if (o && (o.out || o.start || o.role || o.note || o.pts)) O[p.name] = Object.assign(o, { t: todayStr() }); else delete O[p.name]; done(JSON.stringify(O)); }
 }
 // ---------- Nouvelles (fil ESPN LNH) ----------
 let NEWS = {};

@@ -44,6 +44,10 @@ const SHARE_KEY = 'HZwSztv5v7cUf41u';
 function doGet(e) {
   if (e && e.parameter && e.parameter.k && SHARE_KEY && e.parameter.k === SHARE_KEY) {
     const what = e.parameter.what;
+    if (what === 'pts' && e.parameter.n) {          // « Mon estimé » d'un joueur (total de points de la saison) ; pts vide = effacer
+      const cur = getOverrides_()[e.parameter.n] || {};
+      return ContentService.createTextOutput(saveOverride(e.parameter.n, Object.assign({}, cur, { pts: e.parameter.pts || '' }))).setMimeType(ContentService.MimeType.JSON);
+    }
     if (what === 'ver') return ContentService.createTextOutput(codeStatus_()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'update') return ContentService.createTextOutput(checkCodeFromApp()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'refresh') return ContentService.createTextOutput(refreshLocked_(false)).setMimeType(ContentService.MimeType.JSON);
@@ -514,6 +518,17 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
     const ov = OVR[name], st = ov && ov.out && ov.out >= ymd_(new Date()) ? 'OUT' : (status || '');
     const ij = INJ && (OUT_STATUSES[st] || st === 'DAY_TO_DAY') ? INJ[norm_(name)] || null : null;
     // retour estimé (ESPN) ; date dépassée mais toujours blessé → on suppose dans 3 jours
+    // « Mon info » : total de points visé sur la saison (ex. McDavid 175) — sa projection pour le reste de la saison suit
+    if (ov && ov.pts > 0 && g !== 'G' && p && m.rates) {
+      const season = typeof pjGames_ === 'function' ? pjGames_(String(CONFIG.SEASON)) : 82;
+      const left = Math.max(1, season - (TEAM_GP[team] || p.gp || 0)), cur = (+p.g || 0) + (+p.a || 0);
+      const R = m.rates, pg = (R.g || 0) + (R.a || 0), want = Math.max(0, (ov.pts - cur) / left), S = CONFIG.SCORING;
+      if (pg > 0) {
+        const f = want / pg;
+        m.model += (f - 1) * (S.G * (R.g || 0) + S.A * (R.a || 0) + S.PPP * (R.ppp || 0) + S.SHP * (R.shp || 0));
+        ['g', 'a', 'ppp', 'shp'].forEach(k => { R[k] = (R[k] || 0) * f; });
+      }
+    }
     const today0 = ymd_(new Date()), ret = ij && ij.r ? (ij.r > today0 ? ij.r : addDays_(today0, 3)) : (ov && ov.out && ov.out >= today0 ? addDays_(ov.out, 1) : null);
     return {
       name: name, pos: pos || (p && p.pos) || '', grp: g, nhl: team, status: st,
@@ -1156,11 +1171,12 @@ function getOverrides_() {
 }
 function saveOverride(name, obj) {          // appelée par l'app (fiche de joueur)
   const all = getOverrides_();
-  if (!obj || (!obj.out && !obj.start && !obj.role && !obj.note)) delete all[name];
+  if (obj && obj.pts) obj.pts = Math.round(+obj.pts) || '';
+  if (!obj || (!obj.out && !obj.start && !obj.role && !obj.note && !obj.pts)) delete all[name];
   else all[name] = Object.assign({}, obj, { t: ymd_(new Date()) });
   // ménage : on oublie les corrections expirées depuis plus de 7 jours
   const old = ymd_(new Date(Date.now() - 7 * 86400000));
-  Object.keys(all).forEach(n => { const o = all[n]; if ((o.out && o.out < old && !o.role && !o.note) || (o.start && o.start < old && !o.out && !o.role && !o.note)) delete all[n]; });
+  Object.keys(all).forEach(n => { const o = all[n]; if (o.pts) return; if ((o.out && o.out < old && !o.role && !o.note) || (o.start && o.start < old && !o.out && !o.role && !o.note)) delete all[n]; });
   PropertiesService.getDocumentProperties().setProperty(LG.OVR_PROP, JSON.stringify(all));
   return JSON.stringify(all);
 }
