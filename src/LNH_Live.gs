@@ -143,8 +143,8 @@ function run_() {
   const teamNames = [];
   // toutes les lectures d'abord, puis toutes les écritures : une lecture après une écriture force Google à
   // recalculer les formules du classeur, à chaque feuille
-  const pre = ss.getSheets().filter(isTeamSheet_).map(sh => [sh, sh.getRange(`B2:I${CONFIG.LAST_ROW}`).getValues()]);
-  pre.forEach(([sh, vals]) => { teams.push(updateTeamSheet_(sh, index, aliases, vals)); teamNames.push(sh.getName()); });
+  const pre = ss.getSheets().filter(isTeamSheet_).map(sh => { M_('Lecture ' + sh.getName()); return [sh, sh.getRange(`B2:I${CONFIG.LAST_ROW}`).getValues()]; });
+  pre.forEach(([sh, vals]) => { M_('Écriture ' + sh.getName()); teams.push(updateTeamSheet_(sh, index, aliases, vals)); teamNames.push(sh.getName()); });
   PropertiesService.getDocumentProperties().setProperty('TEAM_SHEETS', JSON.stringify(teamNames));
   M_('Leaderboard');
   writeLeaderboard_(ss, teams);
@@ -1368,9 +1368,10 @@ function syncEspn_(ss, aliases) {
     return;
   }
 
-  M_('ESPN : écriture dans les feuilles');
+  M_('ESPN : repérer les feuilles d’équipe');
   const byKey = {};
   ss.getSheets().forEach(s => { if (isTeamSheet_(s)) byKey[normTeam_(s.getName())] = s; });
+  M_('ESPN : écriture dans les feuilles');
 
   let changed = false;
   const moves = [];   // pour le News Tracker
@@ -1383,11 +1384,13 @@ function syncEspn_(ss, aliases) {
     if (t.players.length < CONFIG.ESPN_MIN_ROSTER) {
       return [t.name, team.getName(), t.players.length, '⚠ Alignement ESPN incomplet — ignoré par sécurité', ''];
     }
+    M_('ESPN : ' + team.getName());
     const r = applyRoster_(team, t.players, aliases);
     changed = changed || r.changed;
     if (r.changed) moves.push({ team: team.getName(), added: r.added, removed: r.removed });
     return [t.name, team.getName(), t.players.length, r.text, r.overflow.join(', ')];
   });
+  M_('ESPN : feuille ESPN');
   sh.getRange(2, 1, rows.length, header.length).setValues(rows);
   clearBelow_(sh, rows.length + 2, header.length);
   sh.getRange('G1').setValue(`✔ Synchro ESPN : ${stamp_()}`);
