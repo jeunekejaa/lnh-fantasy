@@ -143,7 +143,7 @@ function run_() {
   const teamNames = [];
   // toutes les lectures d'abord, puis toutes les écritures : une lecture après une écriture force Google à
   // recalculer les formules du classeur, à chaque feuille
-  const pre = ss.getSheets().filter(isTeamSheet_).map(sh => { M_('Lecture ' + sh.getName()); return [sh, sh.getRange(`B2:I${CONFIG.LAST_ROW}`).getValues()]; });
+  const pre = teamSheets_(ss).map(sh => { M_('Lecture ' + sh.getName()); return [sh, sh.getRange(`B2:I${CONFIG.LAST_ROW}`).getValues()]; });
   pre.forEach(([sh, vals]) => { M_('Écriture ' + sh.getName()); teams.push(updateTeamSheet_(sh, index, aliases, vals)); teamNames.push(sh.getName()); });
   PropertiesService.getDocumentProperties().setProperty('TEAM_SHEETS', JSON.stringify(teamNames));
   M_('Leaderboard');
@@ -680,6 +680,19 @@ function extendRefs_(ss, teamSheets) {
 // Mémorisé pendant toute l'exécution : l'en-tête d'une feuille ne change pas en cours de mise à jour
 // (avant : A1:B1 relu ~70 fois par mise à jour, ~7 s)
 const TEAM_SHEET_MEMO = {};
+// Les feuilles d'équipe : d'abord la liste gardée à la dernière mise à jour (TEAM_SHEETS), vérifiée ;
+// tour complet du classeur seulement si elle ne colle plus (feuille renommée, ajoutée ou supprimée) ou si on le demande.
+let TEAM_SHEETS_LIST = null;
+function teamSheets_(ss, full) {
+  if (TEAM_SHEETS_LIST && !full) return TEAM_SHEETS_LIST;
+  const all = ss.getSheets();
+  let names = [];
+  try { names = JSON.parse(PropertiesService.getDocumentProperties().getProperty('TEAM_SHEETS') || '[]'); } catch (e) { names = []; }
+  const set = {}; names.forEach(n => { set[n] = true; });
+  let list = !full && names.length ? all.filter(sh => set[sh.getName()] && isTeamSheet_(sh)) : null;
+  if (!list || list.length !== names.length) list = all.filter(isTeamSheet_);
+  return (TEAM_SHEETS_LIST = list);
+}
 function isTeamSheet_(sh) {
   const id = sh.getSheetId();
   if (TEAM_SHEET_MEMO[id] !== undefined) return TEAM_SHEET_MEMO[id];
@@ -1369,8 +1382,12 @@ function syncEspn_(ss, aliases) {
   }
 
   M_('ESPN : repérer les feuilles d’équipe');
-  const byKey = {};
-  ss.getSheets().forEach(s => { if (isTeamSheet_(s)) byKey[normTeam_(s.getName())] = s; });
+  let byKey = {};
+  teamSheets_(ss).forEach(s => { byKey[normTeam_(s.getName())] = s; });
+  // une équipe ESPN sans feuille connue → tour complet du classeur (nouvelle feuille, renommée…)
+  if (teams.some(t => !(links[t.name] && ss.getSheetByName(links[t.name])) && !byKey[normTeam_(t.name)])) {
+    byKey = {}; teamSheets_(ss, true).forEach(s => { byKey[normTeam_(s.getName())] = s; });
+  }
   M_('ESPN : écriture dans les feuilles');
 
   let changed = false;
