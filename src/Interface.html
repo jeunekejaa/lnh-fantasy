@@ -382,7 +382,7 @@ function vTodo() {
     return { p, w, d, season: d * weeksLeft };
   }).filter(x => x && x.d > 0.1).sort((a, b) => b.d - a.d).slice(0, 10);
   const H = WK.h || 'court';
-  const hzBtns = `<div class="seg" id="wkhz" role="group" aria-label="Horizon">${[['court', 'Cette semaine'], ['long', 'Long terme']]
+  const hzBtns = `<div class="seg" id="wkhz" role="group" aria-label="Horizon">${[['court', 'Cette semaine'], ['long', 'Long terme'], ['hail', '🎲 Hail Mary']]
       .map(([h, l]) => `<button class="${H === h ? 'on' : ''}" data-h="${h}">${l}</button>`).join('')}</div>`;
   const acq = D.espn || {}, left = acq.acqLimit != null && acq.acqUsed != null ? Math.max(0, acq.acqLimit - acq.acqUsed) : null;
   const plan = streamPlan(m, daysWk, left == null ? 2 : Math.min(left, 3));
@@ -407,9 +407,75 @@ function vTodo() {
     ${lsugg.length ? moveGroups(lsugg.slice(0, 8), 'long')
       : '<div class="muted">Aucun joueur libre n’améliore ton alignement à long terme.</div>'}
     <div class="legend"><span>Gain = hausse de ton meilleur alignement chaque semaine (projection maison, blessés comptés à 60 % puisqu’ils reviennent) × ${weeksLeft} semaines restantes. Un ajout qui finirait sur ton banc ne rapporte rien.</span></div>`;
-  return `<div class="card">${hzBtns}${H === 'court' ? shortCard : longCard}</div>
+  const body = H === 'hail' ? hailCard(m, left) : H === 'court' ? shortCard : longCard;
+  return `<div class="card">${hzBtns}${body}</div>
     ${goalieCompare(mine)}
     ${suggestedTrades()}`;
+}
+
+// ---------- Hail Mary : maximiser les CHANCES DE GAGNER le duel, pas les FP attendus ----------
+// Quand tu es loin derrière, un joueur explosif (beaucoup de buts, gardien qui peut voler un match) vaut plus qu'un joueur
+// régulier qui rapporte autant en moyenne : on a besoin du haut de la fourchette. Le calcul : ton alignement jour par jour
+// d'ici dimanche, moyenne ET variance de chaque match (même modèle que les chances de gagner), contre ton adversaire.
+function oddsWith(m, players, ob) {
+  const r = m.record || {}, a = weekOutlook({ players: players });
+  const mu = (r.live + a.mean) - (r.oppLive + ob.mean), sd = Math.sqrt(a.sd ** 2 + ob.sd ** 2);
+  return { p: sd > 0 ? normCdf(mu / sd) : (mu > 0 ? 1 : 0), mean: r.live + a.mean, hi: r.live + a.mean + 1.28 * a.sd, need: r.oppLive + ob.mean - r.live };
+}
+const ceil1 = p => (p.model || 0) + 1.28 * Math.sqrt(varGame(p));     // un bon soir (1 fois sur 10)
+function hailMary(m, n) {
+  const r = m.record || {}, o = D.teams.find(t => t.team === r.opp);
+  if (!o || r.live == null) return null;
+  const ob = weekOutlook(o), days = horizonDays(D.weekEnd);
+  if (!days.length) return null;
+  const base = oddsWith(m, m.players, ob);
+  const gl = D.waivers.filter(p => p.grp === 'G' && !OUT[p.status] && !AVOID[p.name] && days.some(d => playsOn(p, d)))
+    .sort((a, b) => b.model - a.model).slice(0, 15);
+  const pool0 = faPool(days).slice(0, 60).concat(gl);
+  // à retirer : parmi tes joueurs les plus faibles à long terme (jamais un protégé ni un gros nom blessé)
+  const drops = roster => roster.filter(p => !PROTECT[p.name] && p.status !== 'INJURY_RESERVE').sort((a, b) => (a.model || 0) - (b.model || 0)).slice(0, 8);
+  const bestMove = (roster, cur, pool) => {
+    const res = [];
+    pool.forEach(p => { let best = null;
+      drops(roster).forEach(w => {
+        const rr = roster.filter(q => q !== w).concat([p]), x = oddsWith(m, rr, ob);
+        if (!best || x.p > best.x.p) best = { p: p, w: w, x: x, r: rr }; });
+      if (best) { best.dp = best.x.p - cur.p; res.push(best); } });
+    return res.sort((a, b) => b.dp - a.dp || b.x.hi - a.x.hi);
+  };
+  const ranking = bestMove(m.players, base, pool0).slice(0, 10);
+  let roster = m.players.slice(), cur = base; const steps = [], used = {};
+  for (let i = 0; i < n; i++) {
+    const mv = bestMove(roster, cur, pool0.filter(p => !used[p.name]))[0];
+    if (!mv || mv.dp < 0.005) break;
+    mv.days = days.filter(d => playsOn(mv.p, d));
+    steps.push(mv); used[mv.p.name] = 1; roster = mv.r; cur = mv.x;
+  }
+  return { base: base, final: cur, steps: steps, ranking: ranking, opp: o.team };
+}
+function hailCard(m, left) {
+  if (left === 0) return '<h2>🎲 Hail Mary</h2><div class="muted">Plus d’acquisition possible cette semaine.</div>';
+  const H = hailMary(m, left == null ? 2 : Math.min(left, 4));
+  if (!H) return '<h2>🎲 Hail Mary</h2><div class="muted">Pas de duel en cours (mets les données à jour).</div>';
+  const b = H.base, f = H.final;
+  const days = x => x.days && x.days.length ? x.days.map(d => dLabel(d)).join(', ') : '';
+  const tiles = H.steps.map((x, i) => `<div class="tile" style="background:#0E1A24"><div class="small muted">${i + 1} · ${days(x)}</div>
+      <div style="margin-top:4px"><span class="muted">Retire</span> ${pname(x.w, D.me)}</div><div><span class="muted">Prends</span> ${pname(x.p, '')} <span class="pos">${esc(x.p.pos)} · ${esc(x.p.nhl)}</span></div>
+      <div style="margin-top:4px"><b class="up">+${Math.round(x.dp * 1000) / 10} pts de %</b> <span class="small muted">· bon soir : ${f1(ceil1(x.p))} FP</span></div>
+      ${(x.w.model || 0) > (x.p.model || 0) + 0.3 ? `<div class="small down" style="margin-top:2px">${esc(x.w.name)} vaut plus à long terme (${f2(x.w.model)} vs ${f2(x.p.model)})</div>` : ''}</div>`).join('');
+  const rows = H.ranking.map(x => `<tr><td class="l">${pname(x.p, '')} <span class="pos">${esc(x.p.pos)} · ${esc(x.p.nhl)}</span></td><td class="l small">${esc(x.w.name)}</td>
+      <td>${f2(x.p.model)}</td><td><b>${f1(ceil1(x.p))}</b></td><td>${pct(x.x.p)}</td><td class="${x.dp > 0 ? 'up' : 'down'}">${sgn(x.dp * 100, 1)}</td></tr>`).join('');
+  return `<h2>🎲 Hail Mary : tout pour gagner ce duel</h2>
+    ${b.p > 0.5 ? `<div class="small muted" style="margin-bottom:8px">Tu es favori (${pct(b.p)}) : pas besoin de prendre des risques. Les choix ci-dessous maximisent quand même tes chances.</div>` : ''}
+    <div class="card hero" style="margin:0 0 12px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap"><div class="lbl" style="color:var(--accent)">Tes chances contre ${esc(H.opp)}</div>
+        <div class="big" style="font-size:30px;white-space:nowrap">${pct(b.p)} <span class="muted" style="font-size:20px">→</span> <span class="${f.p > b.p ? 'up' : ''}">${pct(f.p)}</span></div></div>
+      <div class="small muted" style="margin-top:4px">Il te manque environ <b style="color:var(--ink)">${f1(Math.max(0, b.need))} FP</b> de plus que ta projection d’ici dimanche. Avec le plan : ${f1(f.mean)} FP projetés, jusqu’à ${f1(f.hi)} si la semaine finit bien (1 fois sur 10).</div>
+      ${H.steps.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px">${tiles}</div>` : '<div class="muted" style="margin-top:8px">Aucun ajout n’améliore tes chances.</div>'}
+    </div>
+    ${rows ? `<div class="small muted" style="margin:6px 0 2px">Meilleurs coups un par un (chances si tu fais seulement celui-là) :</div>
+    <div class="tbl"><table><tr><th class="l">Prends</th><th class="l">Retire</th><th title="Projection maison, FP par match">FP/m</th><th title="FP d'un bon soir (1 fois sur 10)">Bon soir</th><th>Chances</th><th title="Gain en points de pourcentage">±</th></tr>${rows}</table></div>` : ''}
+    <div class="legend"><span>Classé selon tes <b>chances de gagner</b>, pas les FP moyens. Quand tu es derrière, la variance t’aide : un marqueur qui tire beaucoup ou un gardien qui peut voler un match (victoire + jeu blanc) passe devant un joueur régulier. « Bon soir » = ce qu’il fait 1 fois sur 10.</span><span>Le plan respecte ta limite d’acquisitions (${left == null ? '?' : left} restante${left > 1 ? 's' : ''}). Vérifie que le joueur est encore libre sur ESPN : les données datent de la dernière mise à jour.</span></div>`;
 }
 
 // Gardiens : on juge sur la saison (FP par départ × part des départs), pas sur 2 semaines de calendrier
@@ -1043,19 +1109,39 @@ function bindTodo() {
 }
 // ---------- Semaine : le duel de la semaine ----------
 function wkOf(p) { const w = D.wk && D.wk.p && p.id != null ? D.wk.p[p.id] : null; return w ? { gp: w[0], fp: w[1] } : { gp: 0, fp: 0 }; }
+// Face-à-face : selon ESPN, jour par jour — un joueur ne compte que les jours où il était dans TON alignement
+// (ajouts et retraits compris : un joueur retiré garde les points qu'il t'a donnés, un ajout ne compte qu'à partir de son arrivée)
+function findAnywhere(name) {
+  const n = norm(name); let f = null;
+  D.teams.some(t => (f = t.players.find(p => norm(p.name) === n)));
+  return f || (D.waivers || []).find(p => norm(p.name) === n) || null;
+}
 function duelSide(t) {
-  const rows = t.players.map(p => { const w = wkOf(p), exp = (p.model || 0) * w.gp; return { p: p, gp: w.gp, fp: w.fp, d: w.fp - exp, exp: exp }; })
-    .sort((a, b) => b.fp - a.fp || (b.p.model || 0) - (a.p.model || 0));
+  const R = D.wkr && D.wkr.teams && D.wkr.teams[t.team], first = D.wkr && D.wkr.days ? D.wkr.days[0] : null;
+  let rows;
+  if (R) {
+    const seen = new Set();
+    rows = Object.keys(R).map(id => {
+      const x = R[id], cp = t.players.find(p => norm(p.name) === norm(x[0]));
+      if (cp) seen.add(cp);
+      const p = cp || Object.assign({ pos: '', grp: 'F', model: 0, nhl: '' }, findAnywhere(x[0]) || {}, { name: x[0] });
+      const gp = (x[3] || []).length, exp = (p.model || 0) * gp, days = x[5] || [];
+      return { p: p, gp: gp, fp: x[1] || 0, bench: x[2] || 0, d: (x[1] || 0) - exp, exp: exp, drop: !cp, add: !!(cp && first != null && days.length && days[0] > first) };
+    });
+    t.players.filter(p => !seen.has(p)).forEach(p => rows.push({ p: p, gp: 0, fp: 0, bench: 0, d: 0, exp: 0, drop: false, add: true }));
+  } else rows = t.players.map(p => { const w = wkOf(p), exp = (p.model || 0) * w.gp; return { p: p, gp: w.gp, fp: w.fp, bench: 0, d: w.fp - exp, exp: exp }; });
+  rows.sort((a, b) => (a.drop - b.drop) || b.fp - a.fp || (b.p.model || 0) - (a.p.model || 0));
   const out = t.players.filter(p => !OUT[p.status]), left = out.filter(p => p.grp !== 'G').reduce((s, p) => s + (p.left || 0), 0);
   const cls = k => t.players.filter(p => { const x = trend(p); return x && x.cls === k; });
-  return { rows: rows, left: left, cls: cls };
+  return { rows: rows, left: left, cls: cls, espn: !!R };
 }
 function duelTable(t, side, first) {
   const dot = p => { const x = trend(p); return x && x.cls !== 'conforme' && TREND[x.cls] ? `<span title="${TREND[x.cls].l}">${TREND[x.cls].e}</span>` : ''; };
-  return `<table class="fo"><tr><th class="l" style="color:${t.team === D.me ? 'var(--accent)' : first ? 'var(--ink)' : 'var(--opp)'}">${t.team === D.me ? 'Toi' : esc(t.team)}</th><th class="hs" title="Matchs joués cette semaine">MJ</th><th title="FP réels cette semaine (tous ses matchs, même sur le banc)">FP</th><th title="FP réels − projection maison × matchs joués">±</th><th class="hs" title="Matchs restants cette semaine">Rst</th></tr>
-    ${side.rows.map(x => `<tr${OUT[x.p.status] ? ' class="dim"' : ''}><td class="l">${dot(x.p)} ${pname(x.p, t.team)} <span class="pos">${esc(x.p.pos)}</span>${OUT[x.p.status] ? ' ' + stChip(x.p.status) : ''}</td><td class="hs">${x.gp}</td><td><b>${f1(x.fp)}</b></td>
-      <td class="${x.d >= 1 ? 'up' : x.d <= -1 ? 'down' : 'muted'}" title="attendu ${f1(x.exp)}">${x.gp ? sgn(x.d, 1) : ''}</td><td class="hs">${x.p.grp === 'G' ? '' : x.p.left || 0}</td></tr>`).join('')}
-    <tr class="tot"><td class="l">Total</td><td class="hs">${side.rows.reduce((s, x) => s + x.gp, 0)}</td><td><b>${f1(side.rows.reduce((s, x) => s + x.fp, 0))}</b></td><td class="${side.rows.reduce((s, x) => s + x.d, 0) >= 0 ? 'up' : 'down'}">${sgn(side.rows.reduce((s, x) => s + (x.gp ? x.d : 0), 0), 1)}</td><td class="hs">${side.left}</td></tr></table>`;
+  const tot = side.rows.reduce((s, x) => s + x.fp, 0);
+  return `<table class="fo"><tr><th class="l" style="color:${t.team === D.me ? 'var(--accent)' : first ? 'var(--ink)' : 'var(--opp)'}">${t.team === D.me ? 'Toi' : esc(t.team)}</th><th class="hs" title="Matchs joués dans l'alignement (pas au banc) cette semaine">MJ</th><th title="FP comptés cette semaine : seulement les jours où il était dans l'alignement de cette équipe">FP</th><th title="FP comptés − projection maison × matchs joués">±</th><th class="hs" title="Matchs restants cette semaine">Rst</th></tr>
+    ${side.rows.map(x => `<tr${OUT[x.p.status] || x.drop ? ' class="dim"' : ''}><td class="l">${dot(x.p)} ${pname(x.p, x.drop ? '' : t.team)} <span class="pos">${esc(x.p.pos)}</span>${x.drop ? ' <span class="chip">retiré</span>' : x.add ? ' <span class="chip blue">ajouté</span>' : ''}${OUT[x.p.status] && !x.drop ? ' ' + stChip(x.p.status) : ''}</td><td class="hs">${x.gp}</td><td title="${x.bench ? f1(x.bench) + ' FP au banc (non comptés)' : ''}"><b>${f1(x.fp)}</b></td>
+      <td class="${x.d >= 1 ? 'up' : x.d <= -1 ? 'down' : 'muted'}" title="attendu ${f1(x.exp)}">${x.gp ? sgn(x.d, 1) : ''}</td><td class="hs">${x.drop || x.p.grp === 'G' ? '' : x.p.left || 0}</td></tr>`).join('')}
+    <tr class="tot"><td class="l">Total</td><td class="hs">${side.rows.reduce((s, x) => s + x.gp, 0)}</td><td><b>${f1(tot)}</b></td><td class="${side.rows.reduce((s, x) => s + x.d, 0) >= 0 ? 'up' : 'down'}">${sgn(side.rows.reduce((s, x) => s + (x.gp ? x.d : 0), 0), 1)}</td><td class="hs">${side.left}</td></tr></table>`;
 }
 let WKV = { per: null, sel: null };
 // Tous les duels d'une semaine (en cours : pointage + chances ; à venir : projection selon la force des équipes)
@@ -1125,7 +1211,7 @@ function vWeek() {
         <div class="tile"><div class="lbl" style="font-size:10px">Ce soir</div><div class="big" style="font-size:22px">${tonight.length} <span class="muted" style="font-size:14px;font-family:inherit">joueur${tonight.length > 1 ? 's' : ''}</span></div></div>
       </div></div>${planTxt}`;
   const over = `<div class="card"><h2>Face-à-face</h2><div class="fo2">${duelTable(m, A, true)}${duelTable(o, B, false)}</div>
-      <div class="legend"><span>FP réels cette semaine (stats LNH : tous ses matchs, même sur le banc). ± = réel − projection maison × matchs joués (survole pour l’attendu). Rst = matchs restants. 🟢🔵🟡🔴 = tendance de la saison.</span></div></div>`;
+      <div class="legend"><span>${A.espn ? 'Selon ESPN, jour par jour : un joueur ne compte que les jours où il était dans l’alignement (pas au banc). Les joueurs retirés gardent les points qu’ils ont donnés ; un ajout compte à partir de son arrivée.' : 'FP réels cette semaine (stats LNH : tous ses matchs, même sur le banc).'} MJ = matchs joués dans l’alignement. ± = réel − projection maison × MJ (survole pour l’attendu). Rst = matchs restants. 🟢🔵🟡🔴 = tendance de la saison.</span></div></div>`;
   return strip + head + over + (isMe ? goalieDays(mine) + roleCard(m) : '');
 }
 // ---------- Rôles sur la glace (feuilles de présences, 3 derniers matchs vs 3 d'avant) — info seulement, pas dans la projection ----------
@@ -1338,7 +1424,7 @@ function dayLineup(players, d) {
   const F = sk.filter(p => p.grp === 'F').sort(by), Dd = sk.filter(p => p.grp === 'D').sort(by);
   const util = F.slice(L.F).concat(Dd.slice(L.D)).sort(by).slice(0, L.UTIL);
   const starters = F.slice(0, L.F).concat(Dd.slice(0, L.D), util);
-  const gv = p => (p.model || 0) * gShare(p, d) * avail(p, d);
+  const gv = p => goalieEV(p, d) * avail(p, d);
   const G = players.filter(p => p.grp === 'G' && gv(p) > 0 && playsOn(p, d)).sort((a, b) => gv(b) - gv(a)).slice(0, L.G);
   return { fp: starters.reduce((t, p) => t + v(p), 0) + G.reduce((t, p) => t + gv(p), 0), starters: starters, goalies: G,
            free: { F: Math.max(0, L.F - Math.min(L.F, F.length)), D: Math.max(0, L.D - Math.min(L.D, Dd.length)),
@@ -1393,24 +1479,49 @@ function streamPlan(m, days, n) {
   }
   return { steps: steps, gain: gain };
 }
+// ---------- Chances de victoire d'un match (force des équipes LNH : buts pour / contre, ramenés vers la moyenne) ----------
+let TSC = null, TSCD = null;
+function tStr(ab) {
+  if (!D.tstr) return null;
+  if (TSCD !== D) { TSCD = D; TSC = {}; const all = Object.values(D.tstr), gp = all.reduce((t, x) => t + x.gp, 0), lg = gp ? all.reduce((t, x) => t + x.gf, 0) / gp : 3;
+    const K = 10; Object.keys(D.tstr).forEach(k => { const x = D.tstr[k]; TSC[k] = { gf: (x.gf + K * lg) / (x.gp + K), ga: (x.ga + K * lg) / (x.gp + K), lg: lg }; }); }
+  return TSC[ab] || null;
+}
+const pyth = (a, b) => { const x = Math.pow(a, 2.05), y = Math.pow(b, 2.05); return x + y > 0 ? x / (x + y) : 0.5; };
+// p = chances que l'équipe gagne ce match ; base = ses chances contre une équipe moyenne ; oppOff = attaque adverse / moyenne
+function gameWin(ab, d) {
+  const g = (D.teamGames && D.teamGames[ab] || []).find(x => x[0] === d); if (!g) return null;
+  const A = tStr(ab), B = tStr(g[1]); if (!A || !B) return null;
+  const ea = A.gf * B.ga / A.lg, eb = B.gf * A.ga / A.lg;
+  return { p: Math.min(0.85, Math.max(0.15, pyth(ea, eb) + (g[2] ? 0.02 : -0.02))), base: pyth(A.gf, A.ga), oppOff: B.gf / A.lg };
+}
+// FP d'un gardien S'IL EST PARTANT ce soir-là : sa projection, ajustée selon les chances de victoire (3 FP) et l'attaque adverse
+// (un but de plus = −1 FP et un arrêt de moins −0,2)
+function goalieFP(p, d) {
+  const m = p.model || 0, w = gameWin(p.nhl, d); if (!w) return m;
+  const r = p.x && p.x.r, ga = r ? r[1] : 2.9;
+  return Math.max(0, m + 3 * (w.p - w.base) - 1.2 * ga * (w.oppOff - 1));
+}
+const goalieEV = (p, d) => goalieFP(p, d) * gShare(p, d);
 // Gardiens, soir par soir : qui aligner (partant probable × FP par départ), et les gardiens libres qui jouent ces soirs-là
 function goalieDays(mine) {
   const days = horizonDays(D.weekEnd);
   if (!days.length || !D.teamGames) return '';
   const opp = (p, d) => { const g = teamGames(p).find(x => x[0] === d); return g ? (g[2] ? 'vs ' : '@ ') + g[1] : ''; };
-  const ev = (p, d) => (p.model || 0) * gShare(p, d);
-  const fa = D.waivers.filter(p => p.grp === 'G' && !OUT[p.status]);
+  const ev = goalieEV;
+  const winLbl = (p, d) => { const w = gameWin(p.nhl, d); return w ? ` · gagne <b class="${w.p >= 0.55 ? 'up' : w.p <= 0.45 ? 'down' : ''}">${pct(w.p)}</b>` : ''; };
+  const fa = D.waivers.filter(p => p.grp === 'G' && !OUT[p.status] && !AVOID[p.name]);
   const rows = days.map(d => {
     const G = mine.filter(p => p.grp === 'G' && playsOn(p, d)).sort((a, b) => ev(b, d) - ev(a, d));
     const start = G.slice(0, D.config.lineup.G), bench = G.slice(D.config.lineup.G);
     const free = D.config.lineup.G - start.length;
     const best = free > 0 ? fa.filter(p => playsOn(p, d)).sort((a, b) => ev(b, d) - ev(a, d)).slice(0, 2) : [];
-    const cell = (p, on) => `${pname(p, on ? D.me : '')} <span class="pos">${opp(p, d)}</span> <span class="muted">· ${startLbl(p, d)} · ${f1(ev(p, d))} FP</span>`;
+    const cell = (p, on) => `${pname(p, on ? D.me : '')} <span class="pos">${opp(p, d)}</span> <span class="muted">· ${startLbl(p, d)}${winLbl(p, d)} · <b style="color:var(--ink)">${f1(ev(p, d))} FP</b></span>`;
     return `<tr><td>${dLabel(d)}</td><td class="l">${start.length ? start.map(p => '✅ ' + cell(p, true)).join('<br>') : '<span class="muted">aucun</span>'}${bench.length ? '<br>' + bench.map(p => '🪑 ' + cell(p, true)).join('<br>') : ''}</td>
       <td class="l">${best.length ? best.map(p => cell(p, false)).join('<br>') : '<span class="muted">—</span>'}</td></tr>`;
   }).join('');
   return `<div class="card"><h2>Gardiens soir par soir : qui aligner</h2><div class="tbl"><table><tr><th>Soir</th><th class="l">Tes gardiens (✅ aligner · 🪑 banc)</th><th class="l">Libres qui jouent ce soir-là</th></tr>${rows}</table></div>
-    <div class="legend"><span>FP attendus = FP par départ (maison) × chances d’être le partant (sa part des départs). Les libres ne sont proposés que les soirs où tu as une place de gardien vide.</span></div></div>`;
+    <div class="legend"><span>FP attendus = chances d’être le partant × FP s’il est partant. Les FP s’il est partant suivent sa projection, ajustée selon les chances de victoire de son équipe ce soir-là (force des 2 équipes, avantage de la glace) et l’attaque adverse. C’est ce chiffre qui classe : un partant sûr dans une équipe faible bat souvent un partant incertain dans une bonne équipe.</span><span>Le matin, attends les confirmations (DailyFaceoff) avant de choisir quand c’est serré.</span><span>Les libres ne sont proposés que les soirs où tu as une place de gardien vide.</span></div></div>`;
 }
 
 // ---------- Semaines de séries (ESPN) ----------
@@ -1604,7 +1715,7 @@ function weekOutlook(team) {
   days.forEach(d => {
     const L = dayLineup(team.players, d);
     L.starters.forEach(p => { const a = avail(p, d); mean += (p.model || 0) * a * oppMult(p, d); varr += varGame(p) * a; games.set(p, (games.get(p) || 0) + a); });
-    L.goalies.forEach(p => { const sh = gShare(p, d) * avail(p, d), m = p.model || 0; mean += m * sh; varr += sh * (varGame(p) + m * m) - (sh * m) ** 2; games.set(p, (games.get(p) || 0) + sh); });
+    L.goalies.forEach(p => { const sh = gShare(p, d) * avail(p, d), m = goalieFP(p, d); mean += m * sh; varr += sh * (varGame(p) + m * m) - (sh * m) ** 2; games.set(p, (games.get(p) || 0) + sh); });
   });
   games.forEach(n => { varr += (V.sm * n) ** 2; });
   return { mean: mean, sd: Math.sqrt(varr) };

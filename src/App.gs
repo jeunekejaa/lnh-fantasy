@@ -174,7 +174,7 @@ const fp_ = s => { const S = CONFIG.SCORING; return S.G * s.g + S.A * s.a + S.PP
 const blend_ = (prior, obs, n, k) => (k * prior + n * obs) / (k + n);
 
 // Réglages appris par le backtest 2025-26 (🧪), sinon valeurs de base de APP.K
-let CUR_TEAMS = null, WEEKST = null, STARTERS = null, TX_SEEN = {}, OPP_ADJ = null, BT_P = undefined, PJ_GK = undefined, TX_CACHE = [], GK_RECENT = {}, JOURNAL = null, ROLES = null;
+let TSTR = null, WKROS = null, CUR_TEAMS = null, WEEKST = null, STARTERS = null, TX_SEEN = {}, OPP_ADJ = null, BT_P = undefined, PJ_GK = undefined, TX_CACHE = [], GK_RECENT = {}, JOURNAL = null, ROLES = null;
 function inSeason_() {
   if (BT_P === undefined) { BT_P = null; try { if (typeof btParams_ === 'function') BT_P = btParams_(); } catch (e) { /* rien */ } }
   return BT_P;
@@ -512,6 +512,8 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
   try { TX_CACHE = espnTransactions_(); } catch (e) { TX_CACHE = []; WARN.push('Transactions ESPN : ' + e.message); }
   try { if (false) mpProbe_(); } catch (e) { /* sonde facultative */ }
   try { WEEKST = weekStats_(sch.weekEnd); } catch (e) { WARN.push('Stats de la semaine : ' + e.message); }
+  try { TSTR = teamStrength_(); } catch (e) { WARN.push('Force des équipes : ' + e.message); }
+  try { WKROS = espnWeekRosters_(); } catch (e) { WARN.push('Duel ESPN jour par jour : ' + e.message); }
   try { STARTERS = dfoStarters_(); } catch (e) { WARN.push('Gardiens partants : ' + e.message); }
   try { OPP_ADJ = oppAdjust_(); } catch (e) { WARN.push('Adversaires : ' + e.message); }
   try { JOURNAL = espnJournal_(); } catch (e) { WARN.push('Journal ESPN : ' + e.message); }
@@ -532,7 +534,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
               share: CONFIG.GOALIE_START_SHARE, sims: APP.SIMS, luck: APP.LUCK,
               k: inSeason_() ? Object.assign({}, APP.K, inSeason_().K, { gx: inSeason_().kxg, g: inSeason_().gsrc === 'tirs' ? inSeason_().K.g : inSeason_().kg, gstart: inSeason_().gk ? inSeason_().gk.k : APP.K.gstart }) : APP.K,
               bt: inSeason_() },
-    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, wk: WEEKST,
+    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, wk: WEEKST, tstr: TSTR, wkr: WKROS,
     teams: teamsOut, waivers: waivers, schedule: sched.games, warn: WARN.slice(),
     sources: ['LNH (api-web.nhle.com)', 'ESPN Fantasy', 'GAF Aggregate Projections', 'MoneyPuck.com']
   };
@@ -699,6 +701,61 @@ function weekStats_(weekEnd) {
     const fp = S.W * (r.wins || 0) + S.GA * (r.goalsAgainst || 0) + S.SV * (r.saves || 0) + S.SO * (r.shutouts || 0) + S.OTL * (r.otLosses || 0);
     out.p[r.playerId] = [r.gamesStarted != null ? r.gamesStarted : (r.gamesPlayed || 0), Math.round(fp * 10) / 10];
   });
+  try { cache.put(ck, JSON.stringify(out), 600); } catch (e) {}
+  return out;
+}
+// Force des équipes LNH (classement) : buts pour / contre par match → chances de victoire d'un match (gardiens)
+function teamStrength_() {
+  const cache = CacheService.getScriptCache(), hit = cache.get('TSTR');
+  if (hit) return JSON.parse(hit);
+  const r = UrlFetchApp.fetch(`${WEB}/standings/now`, { muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) return null;
+  const out = {};
+  (JSON.parse(r.getContentText()).standings || []).forEach(t => {
+    const ab = t.teamAbbrev && (t.teamAbbrev.default || t.teamAbbrev); if (!ab) return;
+    out[ab] = { gp: t.gamesPlayed || 0, gf: t.goalFor || 0, ga: t.goalAgainst || 0 };
+  });
+  try { cache.put('TSTR', JSON.stringify(out), 3 * 3600); } catch (e) {}
+  return out;
+}
+// Le duel de la semaine selon ESPN, jour par jour : pour chaque équipe fantasy, les points de chaque joueur
+// PENDANT qu'il était dans l'alignement (ajouts et retraits compris) — actifs (comptés) vs banc.
+// { per, days, cur, teams: { feuille: { idESPN: [nom, FP comptés, FP banc, jours actifs joués, jours banc joués, jours dans l'équipe] } } }
+function espnWeekRosters_() {
+  if (!ESPN_DATA || !CONFIG.ESPN_LEAGUE_ID) return null;
+  const st = ESPN_DATA.status || {}, per = st.currentMatchupPeriod, mp = ((ESPN_DATA.settings || {}).scheduleSettings || {}).matchupPeriods || {};
+  const cur = ESPN_DATA.scoringPeriodId || st.latestScoringPeriod;
+  const ids = (mp[per] || []).filter(d => d <= cur);
+  if (!per || !ids.length) return null;
+  const cache = CacheService.getScriptCache(), ck = 'WKR_' + per + '_' + ids.join('-'), hit = cache.get(ck);
+  if (hit) return JSON.parse(hit);
+  const base = `https://${ESPN_HOSTS[0]}/apis/v3/games/fhl/seasons/${CONFIG.ESPN_SEASON}/segments/0/leagues/${CONFIG.ESPN_LEAGUE_ID}?view=mBoxscore&view=mMatchupScore&scoringPeriodId=`;
+  const res = UrlFetchApp.fetchAll(ids.map(d => Object.assign({ url: base + d }, espnOptions_(true))));
+  const out = { per: per, days: ids, cur: cur, teams: {} };
+  res.forEach((r, ri) => {
+    if (r.getResponseCode() !== 200) return;
+    let j; try { j = JSON.parse(r.getContentText()); } catch (e) { return; }
+    const day = ids[ri];
+    (j.schedule || []).forEach(m => {
+      if (m.matchupPeriodId !== per) return;
+      ['home', 'away'].forEach(side => {
+        const t = m[side]; if (!t || !t.rosterForCurrentScoringPeriod) return;
+        const sheet = ESPN_SHEET_OF[t.teamId]; if (!sheet) return;
+        const T = out.teams[sheet] || (out.teams[sheet] = {});
+        (t.rosterForCurrentScoringPeriod.entries || []).forEach(e => {
+          const pe = e.playerPoolEntry || {}, pl = pe.player || {}, pts = Math.round((pe.appliedStatTotal || 0) * 10) / 10;
+          if (e.lineupSlotId === 8) return;                                     // réserve des blessés : ne compte pas
+          // [nom, FP comptés, FP au banc, jours actifs avec un match, jours au banc avec un match, tous les jours dans l'équipe]
+          const x = T[e.playerId] || (T[e.playerId] = [pl.fullName || '', 0, 0, [], [], []]);
+          const st = (pl.stats || []).find(z => z.scoringPeriodId === day && z.statSourceId === 0 && z.stats && Object.keys(z.stats).length);
+          const played = !!st || pts !== 0;
+          x[5].push(day);
+          if (e.lineupSlotId === 7) { x[2] += pts; if (played) x[4].push(day); } else { x[1] += pts; if (played) x[3].push(day); }
+        });
+      });
+    });
+  });
+  Object.keys(out.teams).forEach(k => Object.keys(out.teams[k]).forEach(id => { const x = out.teams[k][id]; x[1] = Math.round(x[1] * 10) / 10; x[2] = Math.round(x[2] * 10) / 10; }));
   try { cache.put(ck, JSON.stringify(out), 600); } catch (e) {}
   return out;
 }
