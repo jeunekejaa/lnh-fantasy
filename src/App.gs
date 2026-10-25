@@ -44,7 +44,10 @@ const SHARE_KEY = 'HZwSztv5v7cUf41u';
 function doGet(e) {
   if (e && e.parameter && e.parameter.k && SHARE_KEY && e.parameter.k === SHARE_KEY) {
     const what = e.parameter.what;
-    if (what === 'diag') { let o; try { const x = injuries_(); o = { ok: !!x, n: x ? Object.keys(x).length : 0, ex: x ? Object.keys(x).slice(0, 3).map(k => [k, x[k].r]) : null }; } catch (er) { o = { err: er.message }; }
+    if (what === 'diag') { let o = {}; try { fetchEspnTeams_(); const pl = [];
+        (ESPN_DATA.teams || []).forEach(t => ((t.roster || {}).entries || []).forEach(e => { const p = e.playerPoolEntry && e.playerPoolEntry.player; if (p && p.injuryStatus && p.injuryStatus !== 'ACTIVE') pl.push(p); }));
+        o.n = pl.length; o.keys = pl.length ? Object.keys(pl[0]) : []; o.ex = pl.slice(0, 4).map(p => { const c = {}; Object.keys(p).filter(k => /injur|return|out|status/i.test(k)).forEach(k => { c[k] = p[k]; }); c.name = p.fullName; return c; });
+      } catch (er) { o.err = er.message; }
       return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
     if (what === 'ver') return ContentService.createTextOutput(codeStatus_()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'update') return ContentService.createTextOutput(checkCodeFromApp()).setMimeType(ContentService.MimeType.JSON);
