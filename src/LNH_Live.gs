@@ -141,9 +141,10 @@ function run_() {
   prog(60, 'Calcul des équipes…');
   const teams = [];
   const teamNames = [];
-  ss.getSheets().forEach(sh => {
-    if (isTeamSheet_(sh)) { teams.push(updateTeamSheet_(sh, index, aliases)); teamNames.push(sh.getName()); }
-  });
+  // toutes les lectures d'abord, puis toutes les écritures : une lecture après une écriture force Google à
+  // recalculer les formules du classeur, à chaque feuille
+  const pre = ss.getSheets().filter(isTeamSheet_).map(sh => [sh, sh.getRange(`B2:I${CONFIG.LAST_ROW}`).getValues()]);
+  pre.forEach(([sh, vals]) => { teams.push(updateTeamSheet_(sh, index, aliases, vals)); teamNames.push(sh.getName()); });
   PropertiesService.getDocumentProperties().setProperty('TEAM_SHEETS', JSON.stringify(teamNames));
   M_('Leaderboard');
   writeLeaderboard_(ss, teams);
@@ -676,12 +677,17 @@ function extendRefs_(ss, teamSheets) {
 }
 
 // ---------- Feuilles d'équipes ----------
+// Mémorisé pendant toute l'exécution : l'en-tête d'une feuille ne change pas en cours de mise à jour
+// (avant : A1:B1 relu ~70 fois par mise à jour, ~7 s)
+const TEAM_SHEET_MEMO = {};
 function isTeamSheet_(sh) {
+  const id = sh.getSheetId();
+  if (TEAM_SHEET_MEMO[id] !== undefined) return TEAM_SHEET_MEMO[id];
   const h = sh.getRange('A1:B1').getValues()[0];
-  return h[0] === 'Choix Repêchage' && h[1] === 'Joueur';
+  return (TEAM_SHEET_MEMO[id] = h[0] === 'Choix Repêchage' && h[1] === 'Joueur');
 }
 
-function updateTeamSheet_(sh, index, aliases) {
+function updateTeamSheet_(sh, index, aliases, vals) {   // vals : B2:I déjà lus (facultatif)
   const L = CONFIG.LAST_ROW;
   once_('team:' + sh.getSheetId(), () => {
     header_(sh.getRange('S1:X1'), [['FanPts réels (LNH)', 'MJ réels', 'FP/MJ réel', 'FP/MJ projeté (GAF)',
@@ -693,9 +699,9 @@ function updateTeamSheet_(sh, index, aliases) {
     trendRules_(sh, sh.getRange(`W2:W${L}`), sh.getRange(`X2:X${L}`), CONFIG.SEUIL);
   });
 
-  const data = sh.getRange(`B2:D${L}`).getValues();              // Joueur, Équipe LNH, Pos
+  const data = vals ? vals.map(r => [r[0], r[1], r[2]]) : sh.getRange(`B2:D${L}`).getValues();   // Joueur, Équipe LNH, Pos
   saveRoster_(sh, data.map(r => r[0]));
-  const proj = sh.getRange(`I2:I${L}`).getValues().map(r => r[0]); // FP/Match projeté (GAF)
+  const proj = vals ? vals.map(r => r[7]) : sh.getRange(`I2:I${L}`).getValues().map(r => r[0]); // FP/Match projeté (GAF), colonne I
   const out = [];
   const t = { team: sh.getName(), total: 0, gp: 0, sumReal: 0, sumProj: 0, counted: 0,
               best: null, worst: null, missing: [], players: [] };
