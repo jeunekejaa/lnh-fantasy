@@ -262,7 +262,8 @@ function render() {
   $('#stamp').textContent = 'Mis à jour ' + D.updated + (D.weekEnd ? ' · semaine jusqu’au ' + D.weekEnd.slice(5).replace('-', '/') : '');
   const warn = (CODEUP && CODEUP.updated ? `<div class="warnbox" style="border-color:var(--good)">⬆️ Nouvelle version de l’app installée (${esc(CODEUP.bundle)}). ${CODEUP.url ? `<a href="${esc(CODEUP.url)}" target="_top"><b>Touche ici pour la recharger</b></a>` : '<b>Rafraîchis la page</b>'} pour voir les changements.</div>` : '')
     + (CODEUP && CODEUP.err ? `<div class="warnbox">⚠ Mise à jour du code impossible : ${esc(CODEUP.err)}</div>` : '')
-    + (D.warn && D.warn.length ? `<div class="warnbox">⚠ ${D.warn.map(esc).join(' · ')}</div>` : '');
+    + (D.warn && D.warn.length ? `<div class="warnbox">⚠ ${D.warn.map(esc).join(' · ')}</div>` : '')
+    + (staleDay() ? `<div class="warnbox">⚠ Ces données datent du <b>${esc(dShort(todayStr()))}</b> : « ce soir », les matchs restants et les partants sont ceux de cette journée-là. Appuie sur <b>Mettre à jour</b>.</div>` : '');
   navState();
   const g = groupOf(TAB), segs = GROUPS[g].length > 1 ? `<div class="seg mob" role="group" aria-label="${GLABEL[g]}">${GROUPS[g].map(t => `<button data-sub="${t}" class="${t === TAB ? 'on' : ''}">${TLABEL[t]}</button>`).join('')}</div>` : '';
   $('#view').innerHTML = segs + warn + ({ board: vBoard, team: vTeam, week: vWeek, todo: () => withPov(vTodo), waivers: vWaivers, search: vSearch, trend: vTrend, tx: vTx, log: vLog, trade: vTrade, about: vAbout }[TAB])();
@@ -755,6 +756,9 @@ const weekList = () => D.weeks && D.weeks.length ? D.weeks
   : [{ s: ymdAdd(D.weekEnd, -6), e: D.weekEnd || '', fb: 'cur' }, { s: ymdAdd(D.weekEnd, 1), e: ymdAdd(D.weekEnd, 7), fb: 'next' }];
 function ymdAdd(d, k) { if (!d) return ''; const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + k); return x.toISOString().slice(0, 10); }
 const todayStr = () => (D.updated || '').slice(0, 10);
+// vraie date du jour (heure de l'Est) : les données d'hier donnent un « ce soir » périmé
+const realToday = () => { try { return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Toronto' }); } catch (e) { return ''; } };
+const staleDay = () => { const r = realToday(); return !!(r && D && D.updated && todayStr() < r); };
 const wkKind = w => (w.e && w.e < todayStr() ? 'past' : w.s && w.s <= todayStr() ? 'cur' : 'fut');
 const curWeekIdx = () => { const W = weekList(), i = W.findIndex(w => wkKind(w) === 'cur'); return i < 0 ? 0 : i; };
 const wkIdx = () => { const i = PSV.ws ? weekList().findIndex(w => w.s === PSV.ws) : -1; return i >= 0 ? i : curWeekIdx(); };
