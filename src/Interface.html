@@ -182,6 +182,11 @@ function progress(on) {
   }, 1200);
 }
 let CODEUP = null;
+const PAGE_VER = '@@VER@@';   // remplacé par la version du code à l'envoi sur GitHub
+// la page affichée est-elle plus vieille que le code installé ? → bannière « recharge »
+function verCheck(c) {
+  if (c && c.ver && PAGE_VER.indexOf('@@') < 0 && c.ver !== PAGE_VER && !(CODEUP && CODEUP.updated)) { CODEUP = { updated: true, bundle: c.ver, url: c.url }; if (D) render(); }
+}
 function load(force) {
   $('#stamp').textContent = force ? 'Mise à jour en cours…' : 'Chargement…';
   if (force) progress(true);
@@ -191,12 +196,17 @@ function load(force) {
   };
   const ko = e => { if (force) progress(false); $('#stamp').textContent = 'Erreur : ' + (e && e.message || e); };
   if (window.google && google.script && google.script.run) {
-    if (!force) { google.script.run.withSuccessHandler(ok).withFailureHandler(ko).getAppData(); return; }
+    if (!force) {
+      google.script.run.withSuccessHandler(ok).withFailureHandler(ko).getAppData();
+      try { google.script.run.withSuccessHandler(t => { try { verCheck(JSON.parse(t)); } catch (e) {} }).codeVersion(); } catch (e) {}
+      return;
+    }
     // ↻ : d'abord le code (nouvelle version sur GitHub ?), puis les données — avec le nouveau code s'il vient d'être installé
     $('#plabel').textContent = 'Vérification du code…';
     google.script.run.withSuccessHandler(t => {
       let c = {}; try { c = JSON.parse(t || '{}'); } catch (e) {}
       CODEUP = c.updated ? c : (c.err ? { err: c.err } : null);
+      if (!c.updated) verCheck(c);
       google.script.run.withSuccessHandler(ok).withFailureHandler(ko).refreshFromApp();
     }).withFailureHandler(() => google.script.run.withSuccessHandler(ok).withFailureHandler(ko).refreshFromApp()).checkCodeFromApp();
   } else if (window.MOCK) ok(JSON.stringify(window.MOCK));
@@ -624,7 +634,8 @@ function vTrade() {
       <select id="tother">${others.map(t => `<option ${t.team === TR.other ? 'selected' : ''}>${esc(t.team)}</option>`).join('')}</select>
       <button class="btn primary" id="tgo">Calculer</button><button class="btn" id="treset">Effacer</button></div>
     <div class="two"><div><div class="muted small" style="margin-bottom:4px">Tu donnes</div>${list(m, TR.give, 'give')}</div>
-      <div><div class="muted small" style="margin-bottom:4px">Tu reçois de ${esc(o.team)}</div>${list(o, TR.get, 'get')}</div></div></div>
+      <div><div class="muted small" style="margin-bottom:4px">Tu reçois de ${esc(o.team)}</div>${list(o, TR.get, 'get')}</div></div>
+    <button class="btn primary" id="tgo2" style="width:100%;min-height:46px;margin-top:14px">Calculer</button></div>
     <div class="card" id="tres"><div class="muted">Coche des joueurs des deux côtés, puis « Calculer ».</div></div>`;
 }
 function bindTrade() {
@@ -632,6 +643,7 @@ function bindTrade() {
   $('#treset').onclick = () => { TR.give = {}; TR.get = {}; render(); };
   document.querySelectorAll('.pick input').forEach(i => i.onchange = () => { TR[i.dataset.k][i.dataset.n] = i.checked; });
   $('#tgo').onclick = calcTrade;
+  $('#tgo2').onclick = () => { calcTrade(); const r = $('#tres'); if (r) r.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
 }
 function calcTrade() {
   const m = me(), o = D.teams.find(t => t.team === TR.other);

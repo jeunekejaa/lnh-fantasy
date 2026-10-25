@@ -44,6 +44,9 @@ const SHARE_KEY = 'HZwSztv5v7cUf41u';
 function doGet(e) {
   if (e && e.parameter && e.parameter.k && SHARE_KEY && e.parameter.k === SHARE_KEY) {
     const what = e.parameter.what;
+    if (what === 'ver') return ContentService.createTextOutput(codeStatus_()).setMimeType(ContentService.MimeType.JSON);
+    if (what === 'update') return ContentService.createTextOutput(checkCodeFromApp()).setMimeType(ContentService.MimeType.JSON);
+    if (what === 'refresh') return ContentService.createTextOutput(refreshLocked_(false)).setMimeType(ContentService.MimeType.JSON);
     const body = what === 'bt' && typeof getBacktestData === 'function' ? getBacktestData()
       : what === 'pj' && typeof getProjectionResult === 'function' ? getProjectionResult()
       : what === 'mp' ? getMpProbe_()
@@ -70,12 +73,33 @@ function openApp() {
   SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutput(html).setWidth(420).setHeight(140), '📱 LNH Fantasy');
 }
 // Progression d'une mise à jour (lue par l'app toutes les secondes pendant le chargement)
+// Chronométrage de chaque étape d'une mise à jour (gardé dans LAST_TIMING, lu avec ?what=ver)
+let TMARK = [];
+function mark_(label) { TMARK.push([label, Date.now()]); }
+function saveTiming_() {
+  try {
+    if (TMARK.length < 2) return;
+    const out = { at: stamp_(), total: Math.round((TMARK[TMARK.length - 1][1] - TMARK[0][1]) / 100) / 10, steps: [] };
+    for (let i = 0; i < TMARK.length - 1; i++) out.steps.push([TMARK[i][0], Math.round((TMARK[i + 1][1] - TMARK[i][1]) / 100) / 10]);
+    PropertiesService.getScriptProperties().setProperty('LAST_TIMING', JSON.stringify(out));
+  } catch (e) { /* rien */ }
+}
 function setProgress_(pct, label) {
+  if (pct <= 3) TMARK = [];
+  mark_(label);
+  if (pct >= 100) saveTiming_();
   try { CacheService.getScriptCache().put('APP_PROGRESS', JSON.stringify({ pct: pct, label: label, t: Date.now() }), 600); } catch (e) { /* rien */ }
 }
 function getProgress() { return CacheService.getScriptCache().get('APP_PROGRESS') || ''; }
 // Bouton « Mettre à jour » de l'app
-function refreshFromApp() { updateData(); return getAppData(); }
+function refreshFromApp() { refreshLocked_(true); return getAppData(); }
+// Une seule mise à jour à la fois (bouton de l'app, ou ?what=refresh)
+function refreshLocked_(wait) {
+  const L = LockService.getScriptLock();
+  if (!L.tryLock(wait ? 300000 : 2000)) return JSON.stringify({ ok: false, err: 'Une mise à jour est déjà en cours.' });
+  try { updateData(); } finally { L.releaseLock(); }
+  return codeStatus_();
+}
 
 function hiddenSheet_(ss, name) {
   let sh = ss.getSheetByName(name);
@@ -435,17 +459,21 @@ function simulate_(teamsOut, sched) {
 
 // ---------------- Instantané pour l'app ----------------
 function buildAppSnapshot_(ss, teams, players, index, aliases) {
+  mark_('Équipes LNH actuelles');
   try { CUR_TEAMS = currentTeams_(); } catch (e) { CUR_TEAMS = null; WARN.push('Équipes LNH actuelles : ' + e.message); }
   // présences sur la glace d'abord : le drapeau « joue blessé » (temps de jeu −20 % sur 3 matchs) en a besoin
+  mark_('Présences sur la glace');
   try { ROLES = typeof iceRoles_ === 'function' ? iceRoles_() : null; } catch (e) { WARN.push('Présences sur la glace : ' + e.message); }
   let mp = {};
   setProgress_(76, 'Stats avancées MoneyPuck…');
   try { mp = moneyPuck_(ss); } catch (e) { WARN.push('Stats avancées MoneyPuck : ' + e.message); }
+  mark_('Projections GAF');
   const gaf = gafStats_(ss);
   setProgress_(82, 'Calendrier et moteur de projection…');
   let sch = { left: {}, next: {}, today: {}, weekEnd: '', weeks: [] };
   try { sch = weekSchedule_(); } catch (e) { WARN.push('Calendrier : ' + e.message); }
 
+  mark_('Gardiens récents + moteur');
   try { const Bq = inSeason_(); if (Bq && Bq.gkRecent) GK_RECENT = goalieRecentShares_(players, sch.games || {}); } catch (e) { WARN.push('Gardiens récents : ' + e.message); }
   // Projection maison d'avant-saison (moteur réglé sur 4 saisons), combinée à GAF
   let pjPri = {}, gafW = 0.5;
@@ -488,6 +516,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
     };
   };
 
+  mark_('Classement ESPN + modèle des joueurs');
   const st = espnStandings_();
   const sheetToId = {};
   Object.keys(ESPN_SHEET_OF).forEach(id => { sheetToId[ESPN_SHEET_OF[id]] = +id; });
@@ -509,13 +538,20 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
   });
 
   // transactions de la ligue (14 jours) + sonde MoneyPuck (1 fois par jour)
+  mark_('Transactions ESPN');
   try { TX_CACHE = espnTransactions_(); } catch (e) { TX_CACHE = []; WARN.push('Transactions ESPN : ' + e.message); }
   try { if (false) mpProbe_(); } catch (e) { /* sonde facultative */ }
+  mark_('Stats de la semaine');
   try { WEEKST = weekStats_(sch.weekEnd); } catch (e) { WARN.push('Stats de la semaine : ' + e.message); }
+  mark_('Force des équipes');
   try { TSTR = teamStrength_(); } catch (e) { WARN.push('Force des équipes : ' + e.message); }
+  mark_('Duel ESPN jour par jour');
   try { WKROS = espnWeekRosters_(); } catch (e) { WARN.push('Duel ESPN jour par jour : ' + e.message); }
+  mark_('Gardiens partants (DailyFaceoff)');
   try { STARTERS = dfoStarters_(); } catch (e) { WARN.push('Gardiens partants : ' + e.message); }
+  mark_('Défense adverse');
   try { OPP_ADJ = oppAdjust_(); } catch (e) { WARN.push('Adversaires : ' + e.message); }
+  mark_('Journal ESPN');
   try { JOURNAL = espnJournal_(); } catch (e) { WARN.push('Journal ESPN : ' + e.message); }
   setProgress_(90, 'Simulation de 2 000 saisons…');
   const sched = remainingSchedule_();
@@ -523,6 +559,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
 
   // Joueurs libres : tous les joueurs LNH ayant joué cette saison, absents de tous les alignements
   // (l'onglet Ballotage en montre les meilleurs ; Chercher les couvre tous)
+  mark_('Joueurs libres');
   const waivers = players.filter(p => p.gp >= 1 && !rostered[keyOf(p.name)])
     .map(p => enrich(p.name, p.team, p.pos, ESPN_STATUS[norm_(p.name)] || '', p))
     .sort((a, b) => b.perGame - a.perGame).slice(0, 900);
@@ -539,6 +576,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
     sources: ['LNH (api-web.nhle.com)', 'ESPN Fantasy', 'GAF Aggregate Projections', 'MoneyPuck.com']
   };
   setProgress_(96, 'Enregistrement…');
+  mark_('Écriture des données');
   const json = JSON.stringify(snap);
   const sh = hiddenSheet_(ss, APP.DATA_SHEET);
   const chunks = [];

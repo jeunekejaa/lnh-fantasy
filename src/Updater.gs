@@ -22,7 +22,7 @@ function updateCode() {
     props.setProperty(CODE.REPO_PROP, repo);
   }
   try {
-    const res = codeUpdate_(repo);
+    const res = codeUpdate_(repo, latestSha_(repo));
     ui.alert('⬆️ Code mis à jour', `Version ${res.bundle} installée (${res.files.length} fichiers : ${res.files.join(', ')}).\n` +
       `Version Apps Script n° ${res.version}${res.deployments ? ` · app mise à jour (${res.deployments} déploiement${res.deployments > 1 ? 's' : ''}, même lien)` : ' · ⚠ aucun déploiement d’app trouvé'}.\n\n` +
       'Recharge le classeur (F5) pour le nouveau menu, puis fais une mise à jour des données.', ui.ButtonSet.OK);
@@ -34,36 +34,67 @@ function updateCode() {
 function updateCodeFromApp() {
   const repo = PropertiesService.getScriptProperties().getProperty(CODE.REPO_PROP);
   if (!repo) return JSON.stringify({ ok: false, err: 'Dépôt GitHub pas encore choisi : fais la première mise à jour du code depuis le menu du classeur.' });
-  try { const r = codeUpdate_(repo); r.ok = true; return JSON.stringify(r); }
+  try { const r = codeUpdate_(repo, latestSha_(repo)); r.ok = true; return JSON.stringify(r); }
   catch (e) { return JSON.stringify({ ok: false, err: codeHelp_(e.message) }); }
 }
 // Bouton ↻ de l'app : s'il y a une nouvelle version du code sur GitHub (version.txt ≠ version installée), on l'installe d'abord.
 // La page lance ensuite la mise à jour des données, qui tourne déjà avec le nouveau code (le déploiement pointe dessus).
+// Le dernier commit est lu directement chez GitHub (git « info/refs » : toujours à jour, sans limite de requêtes),
+// puis les fichiers sont pris À CE COMMIT : jamais la vieille copie que GitHub garde 5 minutes en cache pour « main ».
 function checkCodeFromApp() {
   const props = PropertiesService.getScriptProperties(), repo = props.getProperty(CODE.REPO_PROP);
-  if (!repo) return JSON.stringify({ updated: false });
+  let url = ''; try { url = ScriptApp.getService().getUrl(); } catch (e) {}
+  if (!repo) return JSON.stringify({ updated: false, ver: props.getProperty('CODE_VER') || '', url: url });
   try {
-    const r = UrlFetchApp.fetch(`https://raw.githubusercontent.com/${repo}/${CODE.BRANCH}/version.txt?t=${Date.now()}`,
-      { muteHttpExceptions: true, headers: { 'Cache-Control': 'no-cache' } });
-    const remote = r.getResponseCode() === 200 ? r.getContentText().trim() : '';
-    if (!remote || remote === props.getProperty('CODE_VER')) return JSON.stringify({ updated: false });
-    const u = codeUpdate_(repo);
-    let url = ''; try { url = ScriptApp.getService().getUrl(); } catch (e) {}
-    return JSON.stringify({ updated: true, bundle: u.bundle, url: url });
-  } catch (e) { return JSON.stringify({ updated: false, err: codeHelp_(e.message) }); }
+    const sha = latestSha_(repo);
+    let remote = '';
+    if (sha) {
+      if (sha === props.getProperty('CODE_SHA')) return JSON.stringify({ updated: false, ver: props.getProperty('CODE_VER') || '', url: url });
+      const r = UrlFetchApp.fetch(`https://raw.githubusercontent.com/${repo}/${sha}/version.txt`, { muteHttpExceptions: true });
+      remote = r.getResponseCode() === 200 ? r.getContentText().trim() : '';
+    } else {                                                          // plan B : l'ancienne méthode (peut avoir 5 min de retard)
+      const r = UrlFetchApp.fetch(`https://raw.githubusercontent.com/${repo}/${CODE.BRANCH}/version.txt?t=${Date.now()}`, { muteHttpExceptions: true });
+      remote = r.getResponseCode() === 200 ? r.getContentText().trim() : '';
+    }
+    if (!remote || remote === props.getProperty('CODE_VER')) {
+      if (sha && remote) props.setProperty('CODE_SHA', sha);         // même version, autre commit : rien à installer
+      return JSON.stringify({ updated: false, ver: props.getProperty('CODE_VER') || '', url: url });
+    }
+    const u = codeUpdate_(repo, sha);
+    return JSON.stringify({ updated: true, bundle: u.bundle, ver: u.bundle, url: url });
+  } catch (e) { return JSON.stringify({ updated: false, ver: props.getProperty('CODE_VER') || '', url: url, err: codeHelp_(e.message) }); }
+}
+function latestSha_(repo) {
+  try {
+    const r = UrlFetchApp.fetch(`https://github.com/${repo}.git/info/refs?service=git-upload-pack`, { muteHttpExceptions: true });
+    if (r.getResponseCode() !== 200) return null;
+    const m = r.getContentText().match(new RegExp('([0-9a-f]{40}) refs/heads/' + CODE.BRANCH + '\\b'));
+    return m ? m[1] : null;
+  } catch (e) { return null; }
+}
+// Appelée par la page au chargement : version installée (la page compare avec la sienne)
+function codeVersion() {
+  let url = ''; try { url = ScriptApp.getService().getUrl(); } catch (e) {}
+  return JSON.stringify({ ver: PropertiesService.getScriptProperties().getProperty('CODE_VER') || '', url: url });
+}
+// ?what=ver : version installée + chronométrage de la dernière mise à jour des données
+function codeStatus_() {
+  const p = PropertiesService.getScriptProperties();
+  let t = null; try { t = JSON.parse(p.getProperty('LAST_TIMING') || 'null'); } catch (e) {}
+  return JSON.stringify({ ok: true, ver: p.getProperty('CODE_VER') || '', sha: p.getProperty('CODE_SHA') || '', timing: t });
 }
 function codeChangeRepo() {
   PropertiesService.getScriptProperties().deleteProperty(CODE.REPO_PROP);
   updateCode();
 }
 
-function codeUpdate_(repo) {
+function codeUpdate_(repo, sha) {
   // 1) le paquet de fichiers : raw.githubusercontent (pas de limite de requêtes ; ?t= pour éviter le cache),
   //    sinon l'API GitHub (limitée à 60 requêtes/heure, partagées avec tous les scripts Google : souvent épuisée)
-  const t = Date.now();
-  let g = UrlFetchApp.fetch(`https://raw.githubusercontent.com/${repo}/${CODE.BRANCH}/${CODE.BUNDLE}?t=${t}`,
+  const t = Date.now(), ref = sha || CODE.BRANCH;
+  let g = UrlFetchApp.fetch(`https://raw.githubusercontent.com/${repo}/${ref}/${CODE.BUNDLE}?t=${t}`,
     { muteHttpExceptions: true, headers: { 'Cache-Control': 'no-cache', 'User-Agent': 'lnh-fantasy-updater' } });
-  if (g.getResponseCode() !== 200) g = UrlFetchApp.fetch(`https://api.github.com/repos/${repo}/contents/${CODE.BUNDLE}?ref=${CODE.BRANCH}`,
+  if (g.getResponseCode() !== 200) g = UrlFetchApp.fetch(`https://api.github.com/repos/${repo}/contents/${CODE.BUNDLE}?ref=${ref}`,
     { muteHttpExceptions: true, headers: { Accept: 'application/vnd.github.raw', 'User-Agent': 'lnh-fantasy-updater' } });
   if (g.getResponseCode() !== 200) throw new Error(`GitHub ${g.getResponseCode()} sur ${repo}/${CODE.BUNDLE}`);
   const bundle = JSON.parse(g.getContentText());
@@ -97,7 +128,7 @@ function codeUpdate_(repo) {
       manifestFileName: 'appsscript', description: 'Code ' + (bundle.version || '') } });
     n++;
   });
-  PropertiesService.getScriptProperties().setProperty('CODE_VER', bundle.version || '');
+  PropertiesService.getScriptProperties().setProperties({ CODE_VER: bundle.version || '', CODE_SHA: sha || '' });
   return { bundle: bundle.version || '?', files: bundle.files.map(f => f.name), version: v.versionNumber, deployments: n };
 }
 
