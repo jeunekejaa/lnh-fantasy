@@ -44,6 +44,8 @@ const SHARE_KEY = 'HZwSztv5v7cUf41u';
 function doGet(e) {
   if (e && e.parameter && e.parameter.k && SHARE_KEY && e.parameter.k === SHARE_KEY) {
     const what = e.parameter.what;
+    if (what === 'diag') { let o; try { const x = injuries_(); o = { ok: !!x, n: x ? Object.keys(x).length : 0, ex: x ? Object.keys(x).slice(0, 3).map(k => [k, x[k].r]) : null }; } catch (er) { o = { err: er.message }; }
+      return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
     if (what === 'ver') return ContentService.createTextOutput(codeStatus_()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'update') return ContentService.createTextOutput(checkCodeFromApp()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'refresh') return ContentService.createTextOutput(refreshLocked_(false)).setMimeType(ContentService.MimeType.JSON);
@@ -821,7 +823,7 @@ function injuries_() {
   const cache = CacheService.getScriptCache(), hit = cache.get('INJ');
   if (hit) return JSON.parse(hit);
   const r = UrlFetchApp.fetch('https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/injuries', { muteHttpExceptions: true });
-  if (r.getResponseCode() !== 200) return null;
+  if (r.getResponseCode() !== 200) throw new Error('ESPN ' + r.getResponseCode() + ' : ' + r.getContentText().slice(0, 120));
   const out = {};
   (JSON.parse(r.getContentText()).injuries || []).forEach(t => (t.injuries || []).forEach(i => {
     const a = i.athlete || {}, d = i.details || {}; if (!a.displayName) return;
