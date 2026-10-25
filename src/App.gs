@@ -44,13 +44,6 @@ const SHARE_KEY = 'HZwSztv5v7cUf41u';
 function doGet(e) {
   if (e && e.parameter && e.parameter.k && SHARE_KEY && e.parameter.k === SHARE_KEY) {
     const what = e.parameter.what;
-    if (what === 'diag') {
-      const urls = ['https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/injuries', 'https://site.web.api.espn.com/apis/site/v2/sports/hockey/nhl/injuries',
-        'https://cdn.espn.com/core/nhl/injuries?xhr=1', 'https://sports.core.api.espn.com/v2/sports/hockey/leagues/nhl/teams/25/injuries',
-        'https://www.cbssports.com/nhl/injuries/', 'https://www.espn.com/nhl/injuries'];
-      const res = UrlFetchApp.fetchAll(urls.map(u => ({ url: u, muteHttpExceptions: true, headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36' } })));
-      const o = res.map((r, i) => { const t = r.getContentText(); return { u: urls[i], code: r.getResponseCode(), len: t.length, ret: (t.match(/returnDate|Expected Return|expected-return/gi) || []).length, head: t.slice(0, 80) }; });
-      return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
     if (what === 'ver') return ContentService.createTextOutput(codeStatus_()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'update') return ContentService.createTextOutput(checkCodeFromApp()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'refresh') return ContentService.createTextOutput(refreshLocked_(false)).setMimeType(ContentService.MimeType.JSON);
@@ -377,10 +370,13 @@ function weekSchedule_() {
     if (day.date >= nextMon && day.date <= nextSun) teams.forEach(t => add(next, t));
   })));
   // Toutes les semaines (lundi → dimanche) jusqu'à la fin de la saison : matchs par équipe (fiche de joueur, « par semaine »)
-  const weeks = [], games = {};
-  try {
+  let weeks = [], games = {};
+  // Calendrier de la saison (38 requêtes) : gardé 1 h, par semaine (clé = lundi). Les matchs de CE soir viennent d'en haut, toujours frais.
+  const monK = ymd_(new Date(now.getTime() - (dow - 1) * 86400000)), cacheW = CacheService.getScriptCache(), hitW = cacheW.get('WEEKS_' + monK);
+  if (hitW) { try { const o = JSON.parse(hitW); weeks = o.w; games = o.g; } catch (e) { weeks = []; games = {}; } }
+  if (!weeks.length) try {
     // lundi de cette semaine ; on remonte 8 semaines pour couvrir le début de saison (les semaines sans match de saison régulière sont ignorées)
-    const mon = ymd_(new Date(now.getTime() - (dow - 1) * 86400000)), urls = [];
+    const mon = monK, urls = [];
     for (let k = -8; k < 30; k++) urls.push(`${WEB}/schedule/${ymd_(new Date(new Date(mon + 'T12:00:00Z').getTime() + k * 7 * 86400000))}`);
     fetchJsonAll_(urls).forEach((w, k) => {
       const start = urls[k].split('/schedule/')[1], end = ymd_(new Date(new Date(start + 'T12:00:00Z').getTime() + 6 * 86400000)), n = {};
@@ -397,6 +393,7 @@ function weekSchedule_() {
       });
       if (any) weeks.push({ s: start, e: end, n: n });
     });
+    try { const js = JSON.stringify({ w: weeks, g: games }); if (weeks.length && js.length < 95000) cacheW.put('WEEKS_' + monK, js, 3600); } catch (e) { /* trop gros : pas de cache */ }
   } catch (e) { WARN.push('Calendrier des semaines : ' + e.message); }
   return { left: left, next: next, today: todayTeams, live: liveTeams, weekEnd: sunday, weeks: weeks, games: games };
 }
@@ -827,8 +824,10 @@ const dayDiff_ = (a, b) => Math.round((new Date(b + 'T12:00:00Z') - new Date(a +
 function injuries_() {
   const cache = CacheService.getScriptCache(), hit = cache.get('INJ');
   if (hit) return JSON.parse(hit);
-  const r = UrlFetchApp.fetch('https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/injuries', { muteHttpExceptions: true });
-  if (r.getResponseCode() !== 200) throw new Error('ESPN ' + r.getResponseCode() + ' : ' + r.getContentText().slice(0, 120));
+  // site.web.api : site.api refuse les serveurs de Google (403)
+  let r = UrlFetchApp.fetch('https://site.web.api.espn.com/apis/site/v2/sports/hockey/nhl/injuries', { muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) r = UrlFetchApp.fetch('https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/injuries', { muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) throw new Error('ESPN ' + r.getResponseCode());
   const out = {};
   (JSON.parse(r.getContentText()).injuries || []).forEach(t => (t.injuries || []).forEach(i => {
     const a = i.athlete || {}, d = i.details || {}; if (!a.displayName) return;
