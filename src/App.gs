@@ -725,7 +725,9 @@ function espnWeekRosters_() {
   if (!ESPN_DATA || !CONFIG.ESPN_LEAGUE_ID) return null;
   const st = ESPN_DATA.status || {}, per = st.currentMatchupPeriod, mp = ((ESPN_DATA.settings || {}).scheduleSettings || {}).matchupPeriods || {};
   const cur = ESPN_DATA.scoringPeriodId || st.latestScoringPeriod;
-  const ids = (mp[per] || []).filter(d => d <= cur);
+  // matchupPeriods donne des semaines, pas des jours : les jours de la semaine = du lundi (heure de l'Est) jusqu'à aujourd'hui
+  const dow = +Utilities.formatDate(new Date(), 'America/Toronto', 'u');   // 1 = lundi … 7 = dimanche
+  const ids = []; for (let d = Math.max(1, cur - (dow - 1)); d <= cur; d++) ids.push(d);
   if (!per || !ids.length) return null;
   const cache = CacheService.getScriptCache(), ck = 'WKR_' + per + '_' + ids.join('-'), hit = cache.get(ck);
   if (hit) return JSON.parse(hit);
