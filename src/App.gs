@@ -350,8 +350,30 @@ function signal_(m, gp) {
 // ---------------- Calendrier ----------------
 // Matchs restants cette semaine (lundi→dimanche, à partir d'aujourd'hui, matchs pas encore commencés)
 // et matchs de la semaine prochaine, par équipe LNH.
+// ---------- Le « jour fantasy » : celui d'ESPN, pas celui de l'horloge ----------
+// Après minuit, ESPN reste sur la journée d'hier (la semaine du dimanche n'est pas finie chez lui) jusqu'à sa bascule
+// de la nuit. On suit donc le jour de pointage d'ESPN (1 par jour) : repère connu id 27 = 2026-10-25, mis à jour ensuite.
+let FNOW = null;
+function fantasyNow_() {
+  if (FNOW) return FNOW;
+  const now = new Date(), real = ymd_(now);
+  let fd = real;
+  try {
+    const id = ESPN_DATA && (ESPN_DATA.scoringPeriodId || (ESPN_DATA.status || {}).latestScoringPeriod);
+    const props = PropertiesService.getScriptProperties();
+    let map = null; try { map = JSON.parse(props.getProperty('ESPN_DAY') || 'null'); } catch (e) { map = null; }
+    if (!map || !map.id) map = { id: 27, date: '2026-10-25' };
+    if (id) {
+      fd = addDays_(map.date, id - map.id);
+      if (fd > real || fd < addDays_(real, -2)) fd = real;           // repère incohérent : on garde l'horloge
+      else if (id !== map.id) props.setProperty('ESPN_DAY', JSON.stringify({ id: id, date: fd }));
+    } else if (+Utilities.formatDate(now, 'America/Toronto', 'H') < 5) fd = addDays_(real, -1);   // ESPN muet : avant 5 h = hier
+  } catch (e) { fd = real; }
+  FNOW = fd === real ? now : new Date(fd + 'T16:00:00Z');            // midi à Toronto ce jour-là
+  return FNOW;
+}
 function weekSchedule_() {
-  const now = new Date();
+  const now = fantasyNow_();
   const dow = +Utilities.formatDate(now, 'America/Toronto', 'u');   // 1 = lundi … 7 = dimanche
   const today = ymd_(now);
   const sunday = ymd_(new Date(now.getTime() + (7 - dow) * 86400000));
@@ -426,7 +448,7 @@ function remainingSchedule_() {
   if (!j || !j.schedule) return { games: [], playoffTeams: 0 };
   const cur = (j.status && j.status.currentMatchupPeriod) || 0;
   const name = id => ESPN_SHEET_OF[id] || '';
-  const dow = +Utilities.formatDate(new Date(), 'America/Toronto', 'u');
+  const dow = +Utilities.formatDate(fantasyNow_(), 'America/Toronto', 'u');
   const games = [];
   j.schedule.forEach(m => {
     if (!m.home || !m.away || m.matchupPeriodId < cur) return;
@@ -598,7 +620,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
     .sort((a, b) => b.perGame - a.perGame).slice(0, 900);
 
   const snap = {
-    v: 1, updated: stamp_(), season: CONFIG.SEASON, me: APP.MY_TEAM, weekEnd: sch.weekEnd, weeks: sch.weeks || [], teamGames: sch.games || {},
+    v: 1, updated: stamp_(), fday: ymd_(fantasyNow_()), season: CONFIG.SEASON, me: APP.MY_TEAM, weekEnd: sch.weekEnd, weeks: sch.weeks || [], teamGames: sch.games || {},
     playoffTeams: sched.playoffTeams || 8, currentPeriod: sched.current || null,
     config: { gpw: CONFIG.GAMES_PER_WEEK, lineup: CONFIG.LINEUP, sd: APP.WEEK_SD, injury: APP.INJURY_FACTOR,
               share: CONFIG.GOALIE_START_SHARE, sims: APP.SIMS, luck: APP.LUCK,
@@ -797,7 +819,7 @@ function espnWeekRosters_() {
   const st = ESPN_DATA.status || {}, per = st.currentMatchupPeriod, mp = ((ESPN_DATA.settings || {}).scheduleSettings || {}).matchupPeriods || {};
   const cur = ESPN_DATA.scoringPeriodId || st.latestScoringPeriod;
   // matchupPeriods donne des semaines, pas des jours : les jours de la semaine = du lundi (heure de l'Est) jusqu'à aujourd'hui
-  const dow = +Utilities.formatDate(new Date(), 'America/Toronto', 'u');   // 1 = lundi … 7 = dimanche
+  const dow = +Utilities.formatDate(fantasyNow_(), 'America/Toronto', 'u');   // 1 = lundi … 7 = dimanche (jour fantasy)
   const ids = []; for (let d = Math.max(1, cur - (dow - 1)); d <= cur; d++) ids.push(d);
   if (!per || !ids.length) return null;
   const cache = CacheService.getScriptCache(), ck = 'WKR_' + per + '_' + ids.join('-'), hit = cache.get(ck);

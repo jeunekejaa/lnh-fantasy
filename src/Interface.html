@@ -755,10 +755,10 @@ let PSV = { mode: 'match', ws: null };   // ws = lundi de la semaine choisie (pa
 const weekList = () => D.weeks && D.weeks.length ? D.weeks
   : [{ s: ymdAdd(D.weekEnd, -6), e: D.weekEnd || '', fb: 'cur' }, { s: ymdAdd(D.weekEnd, 1), e: ymdAdd(D.weekEnd, 7), fb: 'next' }];
 function ymdAdd(d, k) { if (!d) return ''; const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + k); return x.toISOString().slice(0, 10); }
-const todayStr = () => (D.updated || '').slice(0, 10);
+const todayStr = () => D.fday || (D.updated || '').slice(0, 10);   // jour fantasy (ESPN) : après minuit, encore « hier » jusqu'à la bascule d'ESPN
 // vraie date du jour (heure de l'Est) : les données d'hier donnent un « ce soir » périmé
 const realToday = () => { try { return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Toronto' }); } catch (e) { return ''; } };
-const staleDay = () => { const r = realToday(); return !!(r && D && D.updated && todayStr() < r); };
+const staleDay = () => { const r = realToday(), u = D && D.updated ? D.updated.slice(0, 10) : ''; return !!(r && u && u < r); };   // mise à jour faite un autre jour que celui de l'horloge
 const wkKind = w => (w.e && w.e < todayStr() ? 'past' : w.s && w.s <= todayStr() ? 'cur' : 'fut');
 const curWeekIdx = () => { const W = weekList(), i = W.findIndex(w => wkKind(w) === 'cur'); return i < 0 ? 0 : i; };
 const wkIdx = () => { const i = PSV.ws ? weekList().findIndex(w => w.s === PSV.ws) : -1; return i >= 0 ? i : curWeekIdx(); };
