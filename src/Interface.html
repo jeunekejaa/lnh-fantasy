@@ -1493,6 +1493,12 @@ function faPool(days, exclude) {
   return D.waivers.filter(p => p.grp !== 'G' && !AVOID[p.name] && !OUT[p.status] && p.gp >= 3 && !isPanne(p) && !(exclude && exclude[p.name]) && days.some(d => playsOn(p, d)))
     .sort((a, b) => (b.model || 0) - (a.model || 0)).slice(0, 150);
 }
+// un retrait qui créerait une place vide toute la saison (ex. retirer un défenseur pour prendre un attaquant quand tu en as juste 6) : interdit
+function leavesHole(roster, w, p) {
+  if (w.grp === p.grp) return false;
+  const need = { F: D.config.lineup.F, D: D.config.lineup.D, G: D.config.lineup.G }[w.grp] || 0;
+  return roster.filter(q => q.grp === w.grp && q !== w && !OUT[q.status]).length < need;
+}
 // meilleurs ajouts : pour chaque joueur libre, le meilleur joueur à retirer, gain = FP de l'alignement jour par jour
 function streamSearch(m, days, forced, daysWk) {
   // gain sur 2 semaines (jusqu'à dimanche prochain) ET sur cette semaine seulement (ton duel en cours)
@@ -1501,6 +1507,7 @@ function streamSearch(m, days, forced, daysWk) {
   faPool(days).forEach(p => {
     let best = null;
     drops.forEach(w => {
+      if (leavesHole(m.players, w, p)) return;
       const r = m.players.filter(q => q !== w).concat([p]), gw = planFp(r, daysWk) - baseWk, g = planFp(r, days) - base;
       if (!best || gw > best.gainWk + 1e-9 || (Math.abs(gw - best.gainWk) < 1e-9 && g > best.gain)) best = { p: p, w: w, gain: g, gainWk: gw, r: r }; });
     if (best && (best.gainWk > 0.5 || best.gain > 0.5)) {
@@ -1518,6 +1525,7 @@ function streamPlan(m, days, n) {
     const base = planFp(roster, days), drops = dropCandidates({ players: roster }), pool = faPool(days, used);
     let best = null;
     pool.forEach(p => drops.forEach(w => {
+      if (leavesHole(roster, w, p)) return;
       const r = roster.filter(q => q !== w).concat([p]), g = planFp(r, days) - base;
       if (!best || g > best.gain) best = { p: p, w: w, gain: g, r: r };
     }));
