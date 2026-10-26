@@ -1235,15 +1235,15 @@ function vWeek() {
   const colA = isMe ? 'var(--accent)' : 'var(--ink)';
   const head = `<div class="card" style="padding:16px">
       ${isMe ? '' : `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span class="small muted">Duel d’une autre équipe</span><button class="btn" data-duel="${esc(D.me)}">Revenir à mon duel</button></div>`}
-      <div style="display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:end">
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:start">
         <div style="min-width:0"><div class="lbl" style="color:${colA}">${isMe ? 'Toi' : 'Équipe'}</div><div class="small" style="color:#C3CBD8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(m.team)}</div>
-          <div class="big" style="font-size:52px;line-height:1;color:${colA};margin-top:6px">${f1(r.live || 0)}</div></div>
-        <div class="big muted" style="font-size:20px;padding-bottom:10px">VS</div>
+          <div class="big" style="font-size:52px;line-height:1;color:${colA};margin-top:6px">${f1(r.live || 0)}</div>${d ? `<div style="margin-top:6px;"><div style="font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:600">Points estimés de la semaine</div><div><b class="big" style="font-size:24px;color:${colA}">${Math.round(d.me)}</b> <span class="small muted">(${Math.round(d.lo)} à ${Math.round(d.hi)})</span></div></div>` : ''}</div>
+        <div class="big muted" style="font-size:20px;padding-top:54px">VS</div>
         <div style="min-width:0;text-align:right"><div class="lbl" style="color:var(--opp)">Adversaire</div><div class="small" style="color:#C3CBD8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.team)}</div>
-          <div class="big" style="font-size:52px;line-height:1;color:var(--opp);margin-top:6px">${f1(r.oppLive || 0)}</div></div>
+          <div class="big" style="font-size:52px;line-height:1;color:var(--opp);margin-top:6px">${f1(r.oppLive || 0)}</div>${d ? `<div style="margin-top:6px;"><div style="font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:600">Points estimés de la semaine</div><div><b class="big" style="font-size:24px;color:var(--opp)">${Math.round(d.opp)}</b> <span class="small muted">(${Math.round(d.olo)} à ${Math.round(d.ohi)})</span></div></div>` : ''}</div>
       </div>
       ${d ? `<div style="margin-top:14px;height:10px;border-radius:6px;background:var(--opp);overflow:hidden;display:flex"><div style="width:${pw}%;background:${isMe ? 'var(--accent)' : '#AEB7C6'}"></div></div>
-      <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:13px;gap:8px;flex-wrap:wrap"><div><b class="big" style="font-size:18px;color:${colA}">${pw} %</b> <span class="muted">de chances de gagner</span></div><div class="muted">fin de semaine prévue : <b style="color:${colA}">${Math.round(d.me)}</b> à <b style="color:var(--opp)">${Math.round(d.opp)}</b> · ${isMe ? 'toi' : 'eux'} : entre ${Math.round(d.lo)} et ${Math.round(d.hi)}, 8 fois sur 10</div></div>` : ''}
+      <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:13px;gap:8px;flex-wrap:wrap"><div><b class="big" style="font-size:18px;color:${colA}">${pw} %</b> <span class="muted">de chances de gagner</span></div><div class="small muted">Pointage actuel en gros · estimé de fin de semaine dessous (entre parenthèses : 8 fois sur 10)</div></div>` : ''}
       <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:14px">
         <div class="tile"><div class="lbl" style="font-size:10px">Matchs restants</div><div class="big" style="font-size:22px;white-space:nowrap"><span style="color:${colA}">${A.left}</span> <span class="muted" style="font-size:15px">vs</span> <span style="color:var(--opp)">${B.left}</span></div></div>
         <div class="tile"><div class="lbl" style="font-size:10px">Écart</div><div class="big" style="font-size:22px;color:${lead >= 0 ? 'var(--good)' : 'var(--bad)'}">${sgn(lead, 1)}</div></div>
@@ -1766,7 +1766,8 @@ function duelOdds(m) {
   m = m || me(); const r = m.record || {}, o = D.teams.find(t => t.team === r.opp);
   if (!o || r.live == null) return null;
   const a = weekOutlook(m), b = weekOutlook(o), mu = (r.live + a.mean) - (r.oppLive + b.mean), sd = Math.sqrt(a.sd ** 2 + b.sd ** 2);
-  return { p: sd > 0 ? normCdf(mu / sd) : (mu > 0 ? 1 : 0), me: r.live + a.mean, opp: r.oppLive + b.mean, lo: r.live + a.mean - 1.28 * a.sd, hi: r.live + a.mean + 1.28 * a.sd, oppName: o.team };
+  return { p: sd > 0 ? normCdf(mu / sd) : (mu > 0 ? 1 : 0), me: r.live + a.mean, opp: r.oppLive + b.mean, lo: r.live + a.mean - 1.28 * a.sd, hi: r.live + a.mean + 1.28 * a.sd,
+           olo: r.oppLive + b.mean - 1.28 * b.sd, ohi: r.oppLive + b.mean + 1.28 * b.sd, oppName: o.team };
 }
 function duelKpi() {
   const d = duelOdds(); if (!d) return '';
