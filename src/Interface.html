@@ -396,11 +396,20 @@ function vTodo() {
     lworst[k] = lcands[k][0];
   });
   if (forced) lworst[forced.grp] = forced;
-  const lsugg = D.waivers.filter(p => p.gp >= 3 && p.grp !== 'G' && !AVOID[p.name] && !isPanne(p) && (!forced || p.grp === forced.grp)).map(p => {
-    const w = lworst[p.grp]; if (!w) return null;
-    const d = powerH(allMine.filter(q => q !== w).concat([p]), 'long') - p0;
-    return { p, w, d, season: d * weeksLeft };
+  // on essaie de retirer le plus faible de CHAQUE position (pas seulement la même) : un défenseur peut remplacer un attaquant
+  // quand il te manque un défenseur (place vide toute la saison)
+  const lsugg = D.waivers.filter(p => p.gp >= 3 && p.grp !== 'G' && !AVOID[p.name] && !isPanne(p)).map(p => {
+    let best = null;
+    (forced ? [forced] : [lworst.F, lworst.D]).filter(Boolean).forEach(w => {
+      const d = powerH(allMine.filter(q => q !== w).concat([p]), 'long') - p0;
+      if (!best || d > best.d) best = { p, w, d, season: d * weeksLeft };
+    });
+    return best;
   }).filter(x => x && x.d > 0.1).sort((a, b) => b.d - a.d).slice(0, 10);
+  // trou d'alignement : moins de joueurs en santé que de places à une position
+  const L0 = D.config.lineup, healthy = k => m.players.filter(p => p.grp === k && !OUT[p.status]).length;
+  const holes = [['D', 'défenseur', L0.D], ['F', 'attaquant', L0.F], ['G', 'gardien', L0.G]].filter(([k, , n]) => healthy(k) < n)
+    .map(([k, l, n]) => `<div class="warnbox" style="margin:0 0 12px">⚠ Il te manque <b>${n - healthy(k)} ${l}${n - healthy(k) > 1 ? 's' : ''}</b> : ${healthy(k)} en santé pour ${n} places. Une place vide ne rapporte rien chaque match — n’importe quel ${l} libre la remplit (voir « Long terme »).</div>`).join('');
   const H = WK.h || 'court';
   const hzBtns = `<div class="seg" id="wkhz" role="group" aria-label="Horizon">${[['court', 'Cette semaine'], ['long', 'Long terme'], ['hail', '🎲 Hail Mary']]
       .map(([h, l]) => `<button class="${H === h ? 'on' : ''}" data-h="${h}">${l}</button>`).join('')}</div>`;
@@ -431,7 +440,7 @@ function vTodo() {
   const povSel = `<div class="card" style="padding:10px 14px;${povOn() ? 'border-color:var(--opp)' : ''}"><label class="small muted" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Point de vue
     <select id="povsel" style="flex:1;min-width:180px">${D.teams.slice().sort((a, b) => (b.team === POV_REAL) - (a.team === POV_REAL)).map(t => `<option value="${esc(t.team)}" ${t.team === D.me ? 'selected' : ''}>${t.team === POV_REAL ? 'Toi (' + esc(t.team) + ')' : esc(t.team)}</option>`).join('')}</select></label>
     ${povOn() ? `<div class="small" style="margin-top:6px;color:var(--opp)">Tu vois « Que faire ? » comme si tu étais <b>${esc(D.me)}</b> : ses joueurs, son duel, ses meilleurs ajouts.</div>` : ''}</div>`;
-  return povSel + `<div class="card">${hzBtns}${body}</div>
+  return povSel + holes + `<div class="card">${hzBtns}${body}</div>
     ${goalieCompare(mine)}
     ${suggestedTrades()}`;
 }
