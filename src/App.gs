@@ -48,12 +48,6 @@ function doGet(e) {
       const cur = getOverrides_()[e.parameter.n] || {};
       return ContentService.createTextOutput(saveOverride(e.parameter.n, Object.assign({}, cur, { pts: e.parameter.pts || '' }))).setMimeType(ContentService.MimeType.JSON);
     }
-    if (what === 'espn') {               // diagnostic : équipes ESPN et liens vers les feuilles
-      let o = {}; try { const T = fetchEspnTeams_(); const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.ESPN_SHEET);
-        o = { teams: T.map(t => [t.id, t.name, t.players.length]), sheet: sh ? sh.getRange(1, 1, Math.min(20, sh.getLastRow()), 4).getValues() : null,
-              idMap: PropertiesService.getDocumentProperties().getProperty('ESPN_ID_SHEET'), teamSheets: PropertiesService.getDocumentProperties().getProperty('TEAM_SHEETS') }; } catch (er) { o.err = er.message; }
-      return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
-    }
     if (what === 'ver') return ContentService.createTextOutput(codeStatus_()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'update') return ContentService.createTextOutput(checkCodeFromApp()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'refresh') return ContentService.createTextOutput(refreshLocked_(false)).setMimeType(ContentService.MimeType.JSON);
@@ -828,7 +822,7 @@ function espnWeekRosters_() {
   const dow = +Utilities.formatDate(fantasyNow_(), 'America/Toronto', 'u');   // 1 = lundi … 7 = dimanche (jour fantasy)
   const ids = []; for (let d = Math.max(1, cur - (dow - 1)); d <= cur; d++) ids.push(d);
   if (!per || !ids.length) return null;
-  const cache = CacheService.getScriptCache(), ck = 'WKR_' + per + '_' + ids.join('-'), hit = cache.get(ck);
+  const cache = CacheService.getScriptCache(), ck = 'WKR_' + per + '_' + ids.join('-') + '_' + Object.keys(ESPN_SHEET_OF).length, hit = cache.get(ck);
   if (hit) return JSON.parse(hit);
   const base = `https://${ESPN_HOSTS[0]}/apis/v3/games/fhl/seasons/${CONFIG.ESPN_SEASON}/segments/0/leagues/${CONFIG.ESPN_LEAGUE_ID}?view=mBoxscore&view=mMatchupScore&scoringPeriodId=`;
   const res = UrlFetchApp.fetchAll(ids.map(d => Object.assign({ url: base + d }, espnOptions_(true))));
