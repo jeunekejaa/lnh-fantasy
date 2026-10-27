@@ -617,6 +617,17 @@ function perceived(p) {
   const v = p.gp >= 5 && p.fpg != null ? 0.5 * rep + 0.5 * p.fpg : rep;
   return v * (p.grp === 'G' ? (p.share || D.config.share) : 1) * (OUT[p.status] ? 0.75 : 1);
 }
+// Valeur d'échange = ce qu'il vaut AU-DESSUS d'un joueur qu'on prend gratuitement au ballotage (même position).
+// Deux joueurs moyens ne valent pas une vedette : l'autre gérant devra en libérer un, et le 2e vaut à peine mieux qu'un joueur libre.
+let REPL = null, REPLD = null;
+function replLevel(g) {
+  if (REPLD !== D) { REPLD = D; REPL = {};
+    ['F', 'D', 'G'].forEach(k => { const v = (D.waivers || []).filter(p => p.grp === k && !OUT[p.status] && p.gp >= 3).map(perceived).sort((a, b) => b - a);
+      REPL[k] = v.length ? v[Math.min(4, v.length - 1)] : 0; }); }   // le 5e meilleur libre : ce que n'importe qui peut aller chercher
+  return REPL[g] || 0;
+}
+const tradeValue = p => Math.max(0, perceived(p) - replLevel(p.grp));
+const tvSum = l => l.reduce((s, p) => s + tradeValue(p), 0);
 // Après l'échange : si l'alignement grossit, on libère le joueur le moins utile
 function swapRoster(list, out, inn, h) {
   const r = list.filter(p => out.indexOf(p) < 0).concat(inn);
@@ -641,7 +652,7 @@ function mockTrades(h) {
       if (dm < 0.5) return;
       const dO = powerH(swapRoster(o.players, get, give, h), h) - o0;
       if (dO < -2) return;                                   // il ne s'affaiblit pas (ou à peine) selon son alignement
-      const ratio = sum(give, perceived) / Math.max(0.01, sum(get, perceived));
+      const ratio = tvSum(give) / Math.max(0.05, tvSum(get));
       if (ratio < 0.97) return;                              // à ses yeux, il reçoit au moins autant qu'il donne
       out.push({ o: o, give: give, get: get, dm: dm, dO: dO, ratio: ratio });
     }));
@@ -703,7 +714,7 @@ function calcTrade() {
     const im = D.teams.indexOf(m), io = D.teams.indexOf(o);
     const sum = l => l.reduce((s, p) => s + (p.model || 0), 0);
     const spots = give.length - get.length;
-    const ratio = get.length ? give.reduce((s, p) => s + perceived(p), 0) / Math.max(0.01, get.reduce((s, p) => s + perceived(p), 0)) : null;
+    const ratio = get.length ? tvSum(give) / Math.max(0.05, tvSum(get)) : null;
     const box = (h, x) => `<div style="${TR.h === h ? '' : 'opacity:.7'}"><div class="muted small">${H_LABEL[h]}${TR.h === h ? ' · <b>choisi</b>' : ''}</div>
       <div class="delta ${x.m >= 0 ? 'up' : 'down'}">${sgn(h === 'court' ? x.m * 2 : x.m)} ${h === 'court' ? 'FP sur 2 sem.' : 'FP/sem.'}</div>
       <div class="small">${esc(o.team)} : ${sgn(h === 'court' ? x.o * 2 : x.o)}</div></div>`;
@@ -711,7 +722,7 @@ function calcTrade() {
       ${po.length ? `<div class="small" style="margin-top:10px"><b>Pendant tes semaines de séries</b> (${dShort(po[0])} → ${dShort(po[po.length - 1])}) : tes FP attendus ${f1(poB)} → <b class="${poA >= poB ? 'up' : 'down'}">${f1(poA)}</b> (${sgn(poA - poB)}) · matchs : tu donnes ${give.reduce((t, p) => t + po.filter(d => playsOn(p, d)).length, 0)}, tu reçois ${get.reduce((t, p) => t + po.filter(d => playsOn(p, d)).length, 0)}</div>` : ''}
       <div class="small" style="margin-top:10px">Séries : toi ${pct(s0.po[im])} → <b>${pct(s1.po[im])}</b> (victoires ${f1(s0.wins[im])} → ${f1(s1.wins[im])}) · ${esc(o.team)} ${pct(s0.po[io])} → <b>${pct(s1.po[io])}</b></div>
       <div class="legend"><span>Projection maison échangée : tu donnes ${f2(sum(give))}, tu reçois ${f2(sum(get))} (FP/match)</span>
-      ${ratio != null ? `<span>Acceptabilité : à ses yeux (analystes + stats réelles), il reçoit ${Math.round(ratio * 100)} % de ce qu’il donne${ratio < 0.97 ? ' — il risque de refuser' : ''}</span>` : ''}
+      ${ratio != null ? `<span>Acceptabilité : à ses yeux (analystes + stats réelles, au-dessus d’un joueur libre), il reçoit ${Math.round(ratio * 100)} % de ce qu’il donne${ratio < 0.97 ? ' — il risque de refuser' : ''}</span>` : ''}
       ${spots < 0 ? `<span>Tu reçois plus de joueurs que tu en donnes : ton joueur le moins utile est libéré dans le calcul.</span>` : spots > 0 ? `<span>Tu libères ${spots} place(s) : la force n’inclut pas le joueur que tu ajouteras.</span>` : ''}
       <span>Force = ton meilleur alignement chaque semaine ; un échange qui n’améliore que ton banc ne change rien.</span></div>`;
   }, 30);
@@ -1112,7 +1123,7 @@ function findTrades(give, h) {
       if (dm < 0.3) return;
       const dO = powerH(swapRoster(o.players, get, give, h), h) - o0;
       if (dO < -2) return;
-      const ratio = sum(give, perceived) / Math.max(0.01, sum(get, perceived));
+      const ratio = tvSum(give) / Math.max(0.05, tvSum(get));
       if (ratio < 0.97) return;
       nOk++;
       // à gain presque égal, on préfère les 🟡 malchanceux (prix bas, ils vont remonter) : +0,2 FP/sem. de préférence chacun
@@ -1147,7 +1158,7 @@ function suggestedTrades() {
     ${give.length ? `<div class="small" style="margin:4px 0 8px">Tu offres : ${give.map(p => esc(p.name)).join(' + ')}</div>` : ''}
     <div id="tsres">${res}</div>
     <details ${give.length && TS.res && TS.key === key ? '' : 'open'} style="margin-top:8px"><summary class="small">Tes joueurs</summary><div style="margin-top:6px">${pick}</div></details>
-    <div class="legend"><span>« Acceptable » = selon la réputation (projections des analystes) et les stats réelles qu’il voit, il reçoit au moins autant qu’il donne, et son alignement ne s’affaiblit pas. Gain = ton meilleur alignement par semaine, projection maison. Les joueurs 🔴 en panne ne sont jamais proposés ; à gain presque égal, les 🟡 malchanceux passent devant.</span>
+    <div class="legend"><span>« Acceptable » = selon la réputation (projections des analystes) et les stats réelles qu’il voit, il reçoit au moins autant qu’il donne — en comptant ce que chaque joueur vaut <b>de plus qu’un joueur libre</b> (deux joueurs moyens ne valent pas une vedette), et son alignement ne s’affaiblit pas. Gain = ton meilleur alignement par semaine, projection maison. Les joueurs 🔴 en panne ne sont jamais proposés ; à gain presque égal, les 🟡 malchanceux passent devant.</span>
     ${povOn() ? '' : `<span>Jamais avec « ${esc((D.teams.find(t => NO_TRADE.test(t.team)) || {}).team || '—')} » · Snuggerud protégé</span>`}</div></div>`;
 }
 function bindTodo() {
@@ -1737,7 +1748,7 @@ function evalTrade(tx) {
     const now = T.players, was = now.filter(p => got.indexOf(p) < 0).concat(gave.filter(p => now.indexOf(p) < 0));
     before[tn] = was;
     res.teams.push({ team: tn, got: got, gave: gave, dLong: powerH(now, 'long') - powerH(was, 'long'), dShort: (powerH(now, 'court') - powerH(was, 'court')) * 2,
-                     perc: gave.reduce((t, p) => t + perceived(p), 0) ? got.reduce((t, p) => t + perceived(p), 0) / gave.reduce((t, p) => t + perceived(p), 0) : null });
+                     perc: tvSum(gave) ? tvSum(got) / tvSum(gave) : null });
   });
   const pAfter = D.teams.map(t => powerH(t.players, 'long')), pBefore = D.teams.map(t => before[t.team] ? powerH(before[t.team], 'long') : powerH(t.players, 'long'));
   const s0 = simulate(pBefore, 800), s1 = simulate(pAfter, 800);
