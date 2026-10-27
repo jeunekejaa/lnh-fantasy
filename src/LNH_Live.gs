@@ -1390,10 +1390,28 @@ function syncEspn_(ss, aliases) {
   }
   M_('ESPN : écriture dans les feuilles');
 
+  // Une équipe qui change de nom sur ESPN garde son numéro : on retrouve sa feuille par ce numéro (gardé à chaque synchro),
+  // sinon par élimination (une seule équipe ESPN et une seule feuille sans partenaire)
+  const dp = PropertiesService.getDocumentProperties();
+  let idMap = {}; try { idMap = JSON.parse(dp.getProperty('ESPN_ID_SHEET') || '{}'); } catch (e) { idMap = {}; }
+  const sheetFor = t => {
+    if (links[t.name] && ss.getSheetByName(links[t.name])) return ss.getSheetByName(links[t.name]);
+    if (byKey[normTeam_(t.name)]) return byKey[normTeam_(t.name)];
+    if (idMap[t.id] && ss.getSheetByName(idMap[t.id])) return ss.getSheetByName(idMap[t.id]);
+    return null;
+  };
+  const found = {}; teams.forEach(t => { const s0 = sheetFor(t); if (s0) found[t.id] = s0; });
+  const lonelyT = teams.filter(t => !found[t.id]);
+  const usedS = {}; Object.keys(found).forEach(id => { usedS[found[id].getName()] = true; });
+  const lonelyS = teamSheets_(ss).filter(s0 => !usedS[s0.getName()]);
+  if (lonelyT.length === 1 && lonelyS.length === 1) { found[lonelyT[0].id] = lonelyS[0]; WARN.push(`Équipe ESPN « ${lonelyT[0].name} » reliée à la feuille « ${lonelyS[0].getName()} » (nouveau nom ?)`); }
+  const newMap = {}; Object.keys(found).forEach(id => { newMap[id] = found[id].getName(); });
+  try { dp.setProperty('ESPN_ID_SHEET', JSON.stringify(newMap)); } catch (e) { /* rien */ }
+
   let changed = false;
   const moves = [];   // pour le News Tracker
   const rows = teams.map(t => {
-    const team = links[t.name] ? ss.getSheetByName(links[t.name]) : byKey[normTeam_(t.name)];
+    const team = found[t.id] || null;
     if (!team || !isTeamSheet_(team)) {
       return [t.name, links[t.name] || '', t.players.length, '⚠ Aucune feuille trouvée : écris le nom exact de la feuille en colonne B', ''];
     }
