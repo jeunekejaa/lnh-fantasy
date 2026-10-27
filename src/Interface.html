@@ -1660,10 +1660,23 @@ function startLbl(p, d) {
   if (s) return s.me ? (s.st === 'c' ? 'partant <b>confirmé</b>' : 'partant <b>probable</b> (' + pct(g) + ')') : `<span class="down">${s.st === 'c' ? 'pas partant' : 'probablement pas partant'}</span> <span class="small">(${esc(s.n)} ${s.st === 'c' ? 'confirmé' : 'probable'})</span>`;
   return 'partant ' + pct(g);
 }
+// a-t-il (probablement) été le partant la veille ? (ton info ou DailyFaceoff)
+function startedOn(p, d) {
+  if (p._ov && p._ov.start === d) return 1;
+  const s = starterOf(p, d);
+  if (s) return s.me ? (s.st === 'c' ? 1 : 0.85) : 0;
+  return null;
+}
 const gShare = (p, d) => {
   if (p._ov && p._ov.start === d) return 1;
   const s = starterOf(p, d);
   if (s) return s.me ? (s.st === 'c' ? 1 : 0.85) : (s.st === 'c' ? 0 : 0.15);
+  // deux soirs de suite (back-to-back) : le partant de la veille joue rarement le lendemain, l'autre gardien prend souvent le 2e match
+  const prev = ymdAdd(d, -1), tg = (D.teamGames && D.teamGames[p.nhl]) || [];
+  if (tg.some(g => g[0] === prev) && tg.some(g => g[0] === d)) {
+    const y = startedOn(p, prev);
+    if (y != null) return y >= 0.85 ? 0.1 : 0.7;
+  }
   return p.share || D.config.share;
 };
 function ovrBox(p) {

@@ -48,6 +48,10 @@ function doGet(e) {
       const cur = getOverrides_()[e.parameter.n] || {};
       return ContentService.createTextOutput(saveOverride(e.parameter.n, Object.assign({}, cur, { pts: e.parameter.pts || '' }))).setMimeType(ContentService.MimeType.JSON);
     }
+    if (what === 'start' && e.parameter.n) {        // « Partant confirmé le … » d'un gardien (d vide = effacer)
+      const cur = getOverrides_()[e.parameter.n] || {};
+      return ContentService.createTextOutput(saveOverride(e.parameter.n, Object.assign({}, cur, { start: e.parameter.d || '' }))).setMimeType(ContentService.MimeType.JSON);
+    }
     if (what === 'ver') return ContentService.createTextOutput(codeStatus_()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'update') return ContentService.createTextOutput(checkCodeFromApp()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'refresh') return ContentService.createTextOutput(refreshLocked_(false)).setMimeType(ContentService.MimeType.JSON);
