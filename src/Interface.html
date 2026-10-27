@@ -452,6 +452,7 @@ function vTodo() {
     ${povOn() ? `<div class="small" style="margin-top:6px;color:var(--opp)">Tu vois « Que faire ? » comme si tu étais <b>${esc(D.me)}</b> : ses joueurs, son duel, ses meilleurs ajouts.</div>` : ''}</div>`;
   return povSel + holes + `<div class="card">${hzBtns}${body}</div>
     ${goalieCompare(mine)}
+    ${wantTrades()}
     ${suggestedTrades()}`;
 }
 
@@ -1168,8 +1169,66 @@ function suggestedTrades() {
     <div class="legend"><span>« Acceptable » = selon la réputation (projections des analystes) et les stats réelles qu’il voit, il reçoit au moins autant qu’il donne — en comptant ce que chaque joueur vaut <b>de plus qu’un joueur libre</b> (deux joueurs moyens ne valent pas une vedette), et son alignement ne s’affaiblit pas. Gain = ton meilleur alignement par semaine, projection maison. Les joueurs 🔴 en panne ne sont jamais proposés ; à gain presque égal, les 🟡 malchanceux passent devant.</span>
     ${povOn() ? '' : `<span>Jamais avec « ${esc((D.teams.find(t => NO_TRADE.test(t.team)) || {}).team || '—')} » · Snuggerud protégé</span>`}</div></div>`;
 }
+// ---------- « Je veux… » : tu choisis ce que tu veux chez une équipe (et, si tu veux, ce que tu donnes) ; l'app complète ----------
+let WT = { team: '', get: {}, give: {}, res: null, key: '' };
+function wantSearch() {
+  const m = me(), o = D.teams.find(t => t.team === WT.team); if (!o) return [];
+  const mustGet = o.players.filter(p => WT.get[p.name]), mustGive = m.players.filter(p => WT.give[p.name]);
+  if (!mustGet.length) return [];
+  const opp = D.teams.find(t => t.team === (m.record || {}).opp), ob = opp ? weekOutlook(opp) : null;
+  const odds = r => ob ? oddsWith(m, r, ob).p : null, P0 = odds(m.players);
+  const L0 = powerH(m.players, 'long'), O0 = powerH(o.players, 'long');
+  const myPool = m.players.filter(p => !PROTECT[p.name] && mustGive.indexOf(p) < 0 && p.status !== 'INJURY_RESERVE');
+  const hisPool = o.players.filter(p => mustGet.indexOf(p) < 0 && !AVOID[p.name]).sort((a, b) => b.model - a.model).slice(0, 12);
+  const sets = (arr, k) => { const out = [[]]; const rec = (s0, a) => { if (a.length) out.push(a); if (a.length === k) return; for (let i = s0; i < arr.length; i++) rec(i + 1, a.concat([arr[i]])); }; rec(0, []); return out; };
+  const res = [];
+  sets(myPool, Math.max(0, 3 - mustGive.length)).forEach(ga => {
+    const give = mustGive.concat(ga); if (!give.length) return;
+    sets(hisPool, 1).forEach(gb => {
+      const get = mustGet.concat(gb), ratio = tvSum(give) / Math.max(0.05, tvSum(get));
+      if (ratio < 0.95 || ratio > 1.8) return;                     // il refuserait / tu paierais beaucoup trop
+      const r = swapRoster(m.players, give, get, 'long'), dl = powerH(r, 'long') - L0;
+      if (dl < 0.2) return;
+      const dO = powerH(swapRoster(o.players, get, give, 'long'), 'long') - O0;
+      if (dO < -4) return;                                          // ça le démolit : il dira non
+      const p1 = odds(r);
+      res.push({ give, get, ratio, dl, dO, p: p1, dp: p1 != null && P0 != null ? p1 - P0 : 0 });
+    });
+  });
+  return res.sort((a, b) => (b.dl + 25 * b.dp) - (a.dl + 25 * a.dp)).slice(0, 6);
+}
+function wantTrades() {
+  const m = me(), teams = D.teams.filter(t => t !== m && (povOn() || !NO_TRADE.test(t.team)));
+  if (!WT.team || !teams.find(t => t.team === WT.team)) WT.team = teams[0] ? teams[0].team : '';
+  const o = D.teams.find(t => t.team === WT.team); if (!o) return '';
+  const chip = (p, k, own) => { const prot = k === 'give' && PROTECT[p.name];
+    return `<label class="pick"><input type="checkbox" data-wt="${k}" data-n="${esc(p.name)}" ${WT[k][p.name] ? 'checked' : ''} ${prot ? 'disabled' : ''}>
+      <span class="n">${pname(p, own)} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span> ${stChip(p.status, p)} ${pChip(p)}${prot ? ' <span class="chip">protégé</span>' : ''}</span><span class="small">${f2(p.model)}</span></label>`; };
+  const nGet = Object.keys(WT.get).filter(k => WT.get[k]).length, nGive = Object.keys(WT.give).filter(k => WT.give[k]).length;
+  const key = WT.team + '|' + Object.keys(WT.get).filter(k => WT.get[k]).sort() + '|' + Object.keys(WT.give).filter(k => WT.give[k]).sort() + '|' + D.updated;
+  const names = l => l.map(p => `${pname(p)} <span class="pos">${esc(p.pos)}</span>`).join(' + ');
+  let res = '';
+  if (WT.res && WT.key === key) res = !WT.res.length ? '<div class="empty">Aucun échange à la fois gagnant pour toi et acceptable pour lui. Essaie d’ajouter un de tes joueurs (une vraie pièce) ou de viser moins haut.</div>'
+    : WT.res.map(x => `<div style="padding:10px 0;border-bottom:1px solid var(--line)">
+        <div><span class="muted small">Tu donnes</span> ${names(x.give)}</div><div><span class="muted small">Tu reçois</span> ${names(x.get)}</div>
+        <div class="small" style="margin-top:2px"><b class="up">Toi ${sgn(x.dl)} FP/sem.</b>${x.p != null ? ` · cette semaine : <b>${pct(x.p)}</b> de chances (${x.dp >= 0 ? '+' : ''}${Math.round(x.dp * 100)})` : ''} · lui ${sgn(x.dO)} · à ses yeux il reçoit ${Math.round(x.ratio * 100)} %</div></div>`).join('');
+  return `<div class="card"><h2>Je veux… <span class="muted small">(tu choisis la cible, l’app complète l’échange)</span></h2>
+    <div class="controls"><select id="wtteam">${teams.map(t => `<option value="${esc(t.team)}" ${t.team === WT.team ? 'selected' : ''}>${esc(t.team)}</option>`).join('')}</select>
+      <button class="btn primary" id="wtgo" ${nGet ? '' : 'disabled'}>Trouver</button><button class="btn" id="wtreset">Effacer</button></div>
+    <div id="wtres">${res}</div>
+    <div class="two"><details ${nGet ? '' : 'open'}><summary class="small">Ce que tu veux chez ${esc(o.team)}${nGet ? ' (' + nGet + ')' : ''}</summary><div style="margin-top:6px">${o.players.slice().sort((a, b) => b.model - a.model).map(p => chip(p, 'get', o.team)).join('')}</div></details>
+      <details><summary class="small">Ce que tu es prêt à donner (facultatif)${nGive ? ' (' + nGive + ')' : ''}</summary><div style="margin-top:6px">${m.players.slice().sort((a, b) => b.model - a.model).map(p => chip(p, 'give', D.me)).join('')}</div></details></div>
+    <div class="legend"><span>L’app ajoute jusqu’à 3 de tes joueurs et 1 autre des siens pour que l’échange soit gagnant pour toi (reste de la saison) et acceptable pour lui (ce que chaque joueur vaut de plus qu’un joueur libre, selon la réputation et les stats réelles). Classés selon la saison et tes chances cette semaine.</span></div></div>`;
+}
 function bindTodo() {
-  const ps = $('#povsel'); if (ps) ps.onchange = e => { POV = e.target.value === D.me ? '' : e.target.value; TS = { give: {}, res: null, key: '' }; WK.drop = ''; render(); window.scrollTo(0, 0); };
+  const wt = $('#wtteam'); if (wt) wt.onchange = e => { WT = { team: e.target.value, get: {}, give: WT.give, res: null, key: '' }; render(); };
+  document.querySelectorAll('[data-wt]').forEach(c => c.onchange = () => { WT[c.dataset.wt][c.dataset.n] = c.checked; WT.res = null; render(); });
+  const wg = $('#wtgo'); if (wg) wg.onclick = () => {
+    $('#wtres').innerHTML = '<div class="muted">Recherche…</div>';
+    setTimeout(() => { WT.res = withPov(wantSearch); WT.key = WT.team + '|' + Object.keys(WT.get).filter(k => WT.get[k]).sort() + '|' + Object.keys(WT.give).filter(k => WT.give[k]).sort() + '|' + D.updated; render(); const r = $('#wtres'); if (r) r.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 30);
+  };
+  const wr = $('#wtreset'); if (wr) wr.onclick = () => { WT = { team: WT.team, get: {}, give: {}, res: null, key: '' }; render(); };
+  const ps = $('#povsel'); if (ps) ps.onchange = e => { POV = e.target.value === D.me ? '' : e.target.value; TS = { give: {}, res: null, key: '' }; WT = { team: '', get: {}, give: {}, res: null, key: '' }; WK.drop = ''; render(); window.scrollTo(0, 0); };
   document.querySelectorAll('[data-tg]').forEach(c => c.onchange = () => { TS.give[c.dataset.tg] = c.checked; TS.res = null; render(); });
   const go = $('#tsgo'); if (go) go.onclick = () => {
     const give = withPov(() => me().players.filter(p => TS.give[p.name])); if (!give.length) return;
