@@ -279,6 +279,16 @@ function render() {
   document.querySelectorAll('[data-wk]').forEach(b => b.onclick = () => { WKV.per = (WKV.per || D.currentPeriod) + (+b.dataset.wk); render(); });
   document.querySelectorAll('[data-duel]').forEach(b => b.onclick = () => { WKV.sel = b.dataset.duel; render(); });
   enableSorting();
+  espnNames($('#view'));
+}
+// Les équipes s'affichent sous leur nom ESPN actuel (la feuille du classeur garde l'ancien nom, qui sert de clé partout)
+const dn = n => (D && D.names && D.names[n]) || n;
+function espnNames(root) {
+  const N = (D && D.names) || {}, pairs = Object.keys(N).filter(k => N[k] && N[k] !== k).sort((a, b) => b.length - a.length);
+  if (!pairs.length || !root) return;
+  root.querySelectorAll('option').forEach(o => { if (!o.hasAttribute('value')) o.setAttribute('value', o.textContent); });   // la valeur garde la clé
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let n;
+  while ((n = w.nextNode())) { let t = n.nodeValue, c = false; pairs.forEach(k => { if (t.indexOf(k) >= 0) { t = t.split(k).join(N[k]); c = true; } }); if (c) n.nodeValue = t; }
 }
 
 function vBoard() {
@@ -753,6 +763,7 @@ function openSheet(p) {
   if (!p) return;
   CURP = p;
   $('#psheet').innerHTML = sheetHtml(p);
+  espnNames($('#psheet'));
   bindSheet();
   $('#ps').classList.add('on'); $('#ps').scrollTop = 0; document.body.style.overflow = 'hidden';
 }
@@ -1207,7 +1218,7 @@ function weekMatchups(per) {
 function weekStrip(per) {
   const cur = D.currentPeriod, last = Math.max.apply(null, (D.schedule || []).map(g => g.period).concat([cur]));
   const list = weekMatchups(per), live = per === cur;
-  const short = n => esc(n.length > 18 ? n.slice(0, 17) + '…' : n);
+  const short = n0 => { const n = dn(n0); return esc(n.length > 18 ? n.slice(0, 17) + '…' : n); };
   const sel = WKV.sel || D.me;
   return `<div class="card" style="padding:12px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px">

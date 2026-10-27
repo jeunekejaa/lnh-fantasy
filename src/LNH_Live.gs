@@ -72,7 +72,8 @@ const LAYOUT_VERSION = 'v4';   // (leaderboard « vérité » : clé 'board2')
 const WARN = [];   // avertissements affichés en haut du Leaderboard Live
 let ESPN_DATA = null;      // réponse complète de la ligue ESPN (fiches, calendrier, pointage)
 const ESPN_STATUS = {};    // nom normalisé → statut ESPN (OUT, INJURY_RESERVE, SUSPENSION…)
-const ESPN_SHEET_OF = {};  // id d'équipe ESPN → nom de la feuille d'équipe
+const ESPN_SHEET_OF = {};
+const ESPN_NAME_OF = {};   // nom de feuille → nom actuel de l'équipe sur ESPN  // id d'équipe ESPN → nom de la feuille d'équipe
 let TEAM_GP = {};          // équipe LNH → matchs joués (pour la part de départs des gardiens)
 
 function onOpen() {
@@ -1416,6 +1417,7 @@ function syncEspn_(ss, aliases) {
       return [t.name, links[t.name] || '', t.players.length, '⚠ Aucune feuille trouvée : écris le nom exact de la feuille en colonne B', ''];
     }
     ESPN_SHEET_OF[t.id] = team.getName();
+    ESPN_NAME_OF[team.getName()] = t.name;                 // nom affiché = nom ESPN actuel (la feuille garde son nom)
     if (t.players.length < CONFIG.ESPN_MIN_ROSTER) {
       return [t.name, team.getName(), t.players.length, '⚠ Alignement ESPN incomplet — ignoré par sécurité', ''];
     }

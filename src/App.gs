@@ -624,7 +624,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
     .sort((a, b) => b.perGame - a.perGame).slice(0, 900);
 
   const snap = {
-    v: 1, updated: stamp_(), fday: ymd_(fantasyNow_()), season: CONFIG.SEASON, me: APP.MY_TEAM, weekEnd: sch.weekEnd, weeks: sch.weeks || [], teamGames: sch.games || {},
+    v: 1, updated: stamp_(), fday: ymd_(fantasyNow_()), names: ESPN_NAME_OF, season: CONFIG.SEASON, me: APP.MY_TEAM, weekEnd: sch.weekEnd, weeks: sch.weeks || [], teamGames: sch.games || {},
     playoffTeams: sched.playoffTeams || 8, currentPeriod: sched.current || null,
     config: { gpw: CONFIG.GAMES_PER_WEEK, lineup: CONFIG.LINEUP, sd: APP.WEEK_SD, injury: APP.INJURY_FACTOR,
               share: CONFIG.GOALIE_START_SHARE, sims: APP.SIMS, luck: APP.LUCK,
