@@ -615,7 +615,14 @@ function powerH(players, h) {
 function perceived(p) {
   const rep = p.gaf != null ? p.gaf : p.model || 0;
   const v = p.gp >= 5 && p.fpg != null ? 0.5 * rep + 0.5 * p.fpg : rep;
-  return v * (p.grp === 'G' ? (p.share || D.config.share) : 1) * (OUT[p.status] ? 0.75 : 1);
+  return v * (p.grp === 'G' ? (p.share || D.config.share) : 1) * injPerceived(p);
+}
+// un blessé vaut presque autant aux yeux de son gérant s'il revient bientôt : −3 % par semaine d'absence (max −40 %) ; sans date : −25 %
+function injPerceived(p) {
+  if (!OUT[p.status]) return 1;
+  if (!p.ret) return 0.75;
+  const wk = Math.max(0, dDiff(todayStr(), p.ret)) / 7;
+  return Math.max(0.6, 1 - 0.03 * wk);
 }
 // Valeur d'échange = ce qu'il vaut AU-DESSUS d'un joueur qu'on prend gratuitement au ballotage (même position).
 // Deux joueurs moyens ne valent pas une vedette : l'autre gérant devra en libérer un, et le 2e vaut à peine mieux qu'un joueur libre.
