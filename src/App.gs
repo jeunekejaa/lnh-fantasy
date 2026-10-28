@@ -1288,7 +1288,12 @@ function getOverrides_() {
 // avec la projection maison (FP/match) des joueurs AU MOMENT où l'app l'a vu passer — pour juger la décision plus tard.
 function myMoves_(teamsOut, waivers) {
   const props = PropertiesService.getDocumentProperties();
-  let list = []; try { list = JSON.parse(props.getProperty('MYMOVES') || '[]'); } catch (e) { list = []; }
+  let list = []; try { list = JSON.parse(props.getProperty('MYMOVES2') || '[]'); } catch (e) { list = []; }
+  // 2 sources : l'API ESPN (exacte : heure réelle, moves intermédiaires) et le News Tracker du classeur (approximatif :
+  // heure de la synchro, plusieurs moves fusionnés). Quand ESPN répond, on ignore le News Tracker sur la période qu'ESPN couvre.
+  const espnTx = (TX_CACHE || []).filter(t => !/^nt/.test(t.id));
+  const espnFrom = espnTx.length ? espnTx.map(t => t.date).reduce((a, b) => (a < b ? a : b)) : null;
+  if (espnFrom) list = list.filter(m => m.s !== 'nt' || m.d < espnFrom);
   const first = props.getProperty('MYMOVES_SINCE') || stamp_();
   if (!props.getProperty('MYMOVES_SINCE')) props.setProperty('MYMOVES_SINCE', first);
   const idx = {}; teamsOut.forEach(t => t.players.forEach(p => { idx[p.name] = p; })); waivers.forEach(p => { if (!idx[p.name]) idx[p.name] = p; });
@@ -1297,6 +1302,7 @@ function myMoves_(teamsOut, waivers) {
   const pl = n => { const p = idx[n]; return p ? { n: n, id: p.id || null, g: p.grp, m: r2(p.model) } : { n: n, id: null, g: null, m: null }; };
   let added = 0;
   (TX_CACHE || []).forEach(t => {
+    if (espnFrom && /^nt/.test(t.id) && t.date >= espnFrom) return;
     const mine = t.items.filter(i => i.to === APP.MY_TEAM || i.from === APP.MY_TEAM);
     if (!mine.length) return;
     const ins = mine.filter(i => i.to === APP.MY_TEAM).map(i => i.name), outs = mine.filter(i => i.from === APP.MY_TEAM).map(i => i.name);
@@ -1305,11 +1311,11 @@ function myMoves_(teamsOut, waivers) {
     const k = t.date + '|' + ins.slice().sort().join(',') + '|' + outs.slice().sort().join(',');
     if (have[k]) return;
     have[k] = true; added++;
-    list.push({ k: k, d: t.date, tr: !!t.trade, late: t.date < first, i: ins.map(pl), o: outs.map(pl) });
+    list.push({ k: k, s: /^nt/.test(t.id) ? 'nt' : 'espn', d: t.date, tr: !!t.trade, late: t.date < first, i: ins.map(pl), o: outs.map(pl) });
   });
   list.sort((a, b) => (a.d < b.d ? 1 : -1));
   list = list.slice(0, 45);
-  if (added) { try { props.setProperty('MYMOVES', JSON.stringify(list)); } catch (e) { WARN.push('Bilan de tes moves : trop gros pour être gardé'); } }
+  if (added || espnFrom) { try { props.setProperty('MYMOVES2', JSON.stringify(list)); } catch (e) { WARN.push('Bilan de tes moves : trop gros pour être gardé'); } }
   return list;
 }
 function getWatch_() { try { return JSON.parse(PropertiesService.getDocumentProperties().getProperty('WATCH') || '[]'); } catch (e) { return []; } }
