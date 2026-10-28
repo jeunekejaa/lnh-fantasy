@@ -1940,7 +1940,7 @@ function movesCard() {
   let tR = 0, tE = 0, wait = false;
   const rows = L.map(m => {
     const from = mvEff(m.d);
-    const untilOf = n => { const nx = asc.find(z => z.d > m.d && z.o.some(y => y.n === n)); return nx ? ymdAdd(mvEff(nx.d), -1) : end; };
+    const untilOf = n => { const nx = asc.find(z => z !== m && z.d >= m.d && z.o.some(y => y.n === n)); return nx ? ymdAdd(mvEff(nx.d), -1) : end; };
     // chaque arrivé compte tant qu'il reste ; les partis comptent jusqu'au départ du dernier arrivé (ou hier)
     const to = m.i.length ? m.i.map(x => untilOf(x.n)).reduce((a, b) => (a > b ? a : b)) : end;
     const I = mvSide(m.i, from, untilOf, end), O = mvSide(m.o, from, () => to, end);
