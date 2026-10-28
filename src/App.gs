@@ -278,6 +278,9 @@ function modelSkater_(p, prior, mp, pos, pj, lg, gafP) {
     shp: blend_(pr.shp, rate('shp'), n, K.shp), sog: blend_(pr.sog, sogObs, n, K.sog),
     hit: blend_(pr.hit, rate('hit'), n, K.hit), blk: blend_(pr.blk, rate('blk'), n, K.blk)
   };
+  // compagnons de trio (attaquants) : nouveau trio meilleur ou pire que d'habitude → attaque ±10 % au plus
+  const lq = g === 'F' && p && LINEQ && LINEQ[p.id] != null ? LINEQ[p.id] : 0;
+  if (lq) ['g', 'a', 'ppp', 'shp', 'sog'].forEach(k => { proj[k] *= 1 + 0.1 * lq; });
   // correction selon la tendance (FP/match), répartie sur toutes les stats
   const bias = cls && FN && FN.bias && FN.bias[cls] ? FN.bias[cls] : 0;
   if (inj && FN.inj.b) { const f0 = fp_(proj), f = f0 > 0 ? Math.max(0, f0 + FN.inj.b) / f0 : 1; Object.keys(proj).forEach(k => { proj[k] *= f; }); }
@@ -289,7 +292,7 @@ function modelSkater_(p, prior, mp, pos, pj, lg, gafP) {
   return {
     model: fp_(proj), deserved: deserved, luck: n && hasMp ? actual - deserved : null,
     toi: hasMp && mp.gp ? mp.toi / mp.gp / 60 : null, pptoi: hasMp && mp.gp ? mp.pptoi / mp.gp / 60 : null,
-    ixg: hasMp && mp.gp ? mp.ixg / mp.gp : null, ppRole: ppRole, rates: proj, trend: cls, inj: inj || undefined
+    ixg: hasMp && mp.gp ? mp.ixg / mp.gp : null, ppRole: ppRole, rates: proj, trend: cls, inj: inj || undefined, lq: lq || 0
   };
 }
 // Même règle que le backtest : 3 derniers matchs (feuilles de présences) vs le reste de sa saison (MoneyPuck)
@@ -532,6 +535,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
   // présences sur la glace d'abord : le drapeau « joue blessé » (temps de jeu −20 % sur 3 matchs) en a besoin
   mark_('Présences sur la glace');
   try { ROLES = typeof iceRoles_ === 'function' ? iceRoles_() : null; } catch (e) { WARN.push('Présences sur la glace : ' + e.message); }
+  try { LINEQ = lineQuality_(players); } catch (e) { LINEQ = {}; WARN.push('Compagnons de trio : ' + e.message); }
   let mp = {};
   setProgress_(76, 'Stats avancées MoneyPuck…');
   try { mp = moneyPuck_(ss); } catch (e) { WARN.push('Stats avancées MoneyPuck : ' + e.message); }
@@ -595,7 +599,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
       left: sch.left[team] || 0, next: sch.next[team] || 0, today: !!sch.today[team], live: !!(sch.live && sch.live[team]),
       liveLeft: sch.liveLeft && sch.liveLeft[team] != null ? sch.liveLeft[team] : null,
       id: p ? p.id : null,
-      ret: ret, injT: ij ? ij.t : null, injC: ij ? ij.c : null,
+      ret: ret, injT: ij ? ij.t : null, injC: ij ? ij.c : null, lq: m.lq || 0,
       x: playerSheet_(g, p, m, p ? mp[p.id] : null, gafPrior, pjPrior, team)
     };
   };
@@ -1042,13 +1046,35 @@ function oppAdjust_() {
 // Présences sur la glace (feuilles de présences LNH, après chaque match) : qui est sur la 1re vague d'AN, avec qui il joue à 5 c. 5.
 // 6 derniers matchs de chaque équipe (3 récents vs 3 d'avant → promotions et changements de duo). Résumés gardés dans « APP Glace ».
 const ICE = { GAMES_PER_TEAM: 6, MAX_NEW: 40, SHEET: 'APP Glace' };
+let ICE_STORE = {}, LINEQ = {};
+// Compagnons de trio (retenu par le backtest par match 2025-26, coef 0,1) : qualité de ses 2 principaux coéquipiers à 5 c. 5
+// au DERNIER match (FP d'attaque par match de la saison) vs la moyenne de ses coéquipiers sur toute la saison → −1 à +1
+function lineQuality_(players) {
+  const off = {};
+  players.forEach(p => { if (p.pos !== 'G' && p.gp >= 5) off[p.id] = (3 * (+p.g || 0) + 2 * (+p.a || 0) + 0.5 * (+p.ppp || 0) + 0.5 * (+p.shp || 0) + 0.2 * (+p.sog || 0)) / p.gp; });
+  const hist = {};
+  Object.keys(ICE_STORE).map(Number).sort((a, b) => a - b).forEach(id => {
+    const T = (ICE_STORE[id] || {}).teams || {};
+    Object.keys(T).forEach(t => Object.keys(T[t].p || {}).forEach(pid => {
+      const ms = (T[t].p[pid][3] || []).map(m => m[0]).filter(m => off[m] != null).slice(0, 2);
+      if (ms.length === 2) (hist[pid] = hist[pid] || []).push((off[ms[0]] + off[ms[1]]) / 2);
+    }));
+  });
+  const out = {};
+  Object.keys(hist).forEach(pid => {
+    const h = hist[pid]; if (h.length < 3) return;
+    const avg = h.reduce((x, v) => x + v, 0) / h.length; if (avg <= 0) return;
+    out[pid] = Math.round(Math.max(-1, Math.min(1, h[h.length - 1] / avg - 1)) * 100) / 100;
+  });
+  return out;
+}
 function iceRoles_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet(), games = readGames_(ss);
   if (!games.length) return null;
   const byTeam = {};
   games.forEach(g => [g.away, g.home].forEach(t => { (byTeam[t] = byTeam[t] || []).push(+g.id); }));
   const want = {};
-  Object.keys(byTeam).forEach(t => byTeam[t].sort((a, b) => b - a).slice(0, ICE.GAMES_PER_TEAM).forEach(id => { want[id] = true; }));
+  Object.keys(byTeam).forEach(t => byTeam[t].sort((a, b) => b - a).forEach(id => { want[id] = true; }));   // toute la saison (compagnons de trio)
   const sh = hiddenSheet_(ss, ICE.SHEET), store = {};
   if (sh.getLastRow()) sh.getRange(1, 1, sh.getLastRow(), 2).getValues().forEach(r => { if (r[0]) { try { store[+r[0]] = JSON.parse(r[1]); } catch (e) {} } });
   const todo = Object.keys(want).map(Number).filter(id => !store[id]).sort((a, b) => b - a).slice(0, ICE.MAX_NEW);
@@ -1066,6 +1092,7 @@ function iceRoles_() {
   const keep = Object.keys(want).filter(id => store[id]);
   sh.clearContents();
   if (keep.length) sh.getRange(1, 1, keep.length, 2).setValues(keep.map(id => [+id, JSON.stringify(store[id])]));
+  ICE_STORE = {}; keep.forEach(id => { ICE_STORE[id] = store[id]; });
   // par équipe : 3 derniers matchs vs 3 d'avant
   const out = {}, names = {}, goalie = {};
   // matchs déjà gardés avant le correctif : on écarte les gardiens (positions du cache LNH de la saison)
