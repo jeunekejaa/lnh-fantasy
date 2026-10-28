@@ -662,7 +662,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
               share: CONFIG.GOALIE_START_SHARE, sims: APP.SIMS, luck: APP.LUCK,
               k: inSeason_() ? Object.assign({}, APP.K, inSeason_().K, { gx: inSeason_().kxg, g: inSeason_().gsrc === 'tirs' ? inSeason_().K.g : inSeason_().kg, gstart: inSeason_().gk ? inSeason_().gk.k : APP.K.gstart }) : APP.K,
               bt: inSeason_() },
-    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS,
+    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS,
     teams: teamsOut, waivers: waivers, schedule: sched.games, warn: WARN.slice(),
     sources: ['LNH (api-web.nhle.com)', 'ESPN Fantasy', 'GAF Aggregate Projections', 'MoneyPuck.com']
   };
@@ -1279,6 +1279,13 @@ function newsTrackerTx_() {
 // Corrections manuelles (« Mon info ») : { nom: { out: 'aaaa-mm-jj' (absent jusqu'au), start: 'aaaa-mm-jj' (partant confirmé), role: 'pp1' | 'top' | 'down', note, t } }
 function getOverrides_() {
   try { return JSON.parse(PropertiesService.getDocumentProperties().getProperty(LG.OVR_PROP) || '{}'); } catch (e) { return {}; }
+}
+// Liste de surveillance (gardée sur le serveur : suit sur téléphone et ordi)
+function getWatch_() { try { return JSON.parse(PropertiesService.getDocumentProperties().getProperty('WATCH') || '[]'); } catch (e) { return []; } }
+function saveWatch(list) {          // appelée par l'app
+  const clean = (Array.isArray(list) ? list : []).map(String).filter(Boolean).slice(0, 60);
+  PropertiesService.getDocumentProperties().setProperty('WATCH', JSON.stringify(clean));
+  return JSON.stringify(clean);
 }
 function saveOverride(name, obj) {          // appelée par l'app (fiche de joueur)
   const all = getOverrides_();

@@ -566,7 +566,7 @@ function vWaivers() {
   const sorters = { model: (a, b) => pg(b) - pg(a), week: (a, b) => pg(b) * b.left - pg(a) * a.left, real: (a, b) => (b.fpg || 0) - (a.fpg || 0), luck: (a, b) => (a.luck ?? 9) - (b.luck ?? 9) };
   let L = D.waivers.filter(p => p.gp >= 3 && (WF.pos === 'all' || p.grp === WF.pos) && (WF.sig === 'all' || p.signal === WF.sig) && (!WF.q || p.name.toLowerCase().includes(WF.q.toLowerCase())));
   L = L.sort(sorters[WF.sort]).slice(0, 80);
-  return `<div class="card"><h2>Joueurs disponibles</h2><div class="controls">
+  return watchCard() + `<div class="card"><h2>Joueurs disponibles</h2><div class="controls">
     <select id="wpos">${[['all','Toutes positions'],['F','Attaquants'],['D','Défenseurs'],['G','Gardiens']].map(([v, l]) => `<option value="${v}" ${WF.pos === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <select id="wsort">${[['model','Projection maison (par match d’équipe)'],['week','Maison × matchs restants'],['real','FP réels par match'],['luck','Les plus malchanceux']].map(([v, l]) => `<option value="${v}" ${WF.sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <select id="wsig">${[['all','Tous'],['malchanceux','🟡 Malchanceux'],['chanceux','🔵 Chanceux']].map(([v, l]) => `<option value="${v}" ${WF.sig === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
@@ -771,6 +771,7 @@ $('#ps').addEventListener('click', e => { if (e.target.id === 'ps' || e.target.c
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
 function bindSheet() {
   const sv = $('#ovsave'); if (sv) sv.onclick = () => saveOvr(CURP);
+  const ws = $('#wstar'); if (ws) ws.onclick = () => toggleWatch(CURP);
   const cl = $('#ovclear'); if (cl) cl.onclick = () => saveOvr(CURP, true);
   const nb = $('#newsbtn'); if (nb) nb.onclick = () => loadNews(CURP);
   document.querySelectorAll('#psmode button').forEach(b => b.onclick = () => { PSV.mode = b.dataset.m; rerenderSheet(); });
@@ -916,17 +917,17 @@ function sheetHtml(p) {
   const x = p.x || {}, S = D.config, isG = p.grp === 'G';
   const owner = p.owner === undefined ? ownerOf(p) : p.owner;
   const own = owner ? (owner === D.me ? '<span class="chip good">ton équipe</span>' : `<span class="chip">${esc(owner)}</span>`) : '<span class="chip warn">libre</span>';
-  const head = `<div class="hd"><div><h2>${esc(p.name)}</h2><div class="muted small" style="margin-top:4px">${esc(p.pos)} · ${esc(p.nhl)} · ${p.gp || 0} MJ ${own} ${stChip(p.status, p)} ${pChip(p)}</div></div><button class="x" aria-label="Fermer">✕</button></div>`;
+  const head = `<div class="hd"><div><h2>${esc(p.name)} <button class="btn" id="wstar" style="min-height:30px;padding:0 10px;font-size:13px;vertical-align:middle">${watched(p) ? '★ Suivi' : '☆ Suivre'}</button></h2><div class="muted small" style="margin-top:4px">${esc(p.pos)} · ${esc(p.nhl)} · ${p.gp || 0} MJ ${own} ${stChip(p.status, p)} ${pChip(p)}</div></div><button class="x" aria-label="Fermer">✕</button></div>`;
   const wk = `<h3>Calendrier</h3><div class="grid">${kp(p.left + (p.live ? ' <span class="chip bad">🔴 en cours</span>' : p.today ? ' <span class="chip good">ce soir</span>' : ''), 'Matchs restants cette semaine')}${kp(p.next, 'Matchs la semaine prochaine')}
     ${kp(f1((p.perGame ?? p.model) * p.left), 'FP attendus d’ici dimanche', 'Projection maison × matchs restants cette semaine')}${kp(f1((p.perGame ?? p.model) * p.next), 'FP attendus sem. proch.')}</div>
     ${nextGames(p)}`;
-  if (isG) return head + goalieSheet(p, x) + wk + ovrBox(p) + newsBox(p) + foot();
+  if (isG) return head + goalieSheet(p, x) + formChart(p) + wk + ovrBox(p) + newsBox(p) + foot();
   const s = x.s || [0, 0, 0, 0, 0, 0, 0], r = x.r, gp = p.gp || 0;
   const pts = s[0] + s[1], fp = (p.fpg || 0) * gp;
   // reste de la saison : matchs de son équipe × part des matchs réellement joués (blessures, repos)
   const eg = (x.tl || 0) * (S.injury || 0.94);
   const live = `<h3>Cette saison · en direct</h3><div class="grid">${kp(s[0], 'Buts')}${kp(s[1], 'Passes')}${kp(pts, 'Points')}${kp(s[2], 'Pts en AN')}${kp(s[3], 'Pts en DN')}
-    ${kp(s[4], 'Tirs')}${kp(s[5], 'Mises en échec')}${kp(s[6], 'Tirs bloqués')}${kp(f1(fp), 'FP')}${kp(f2(p.fpg), 'FP / match')}</div>`;
+    ${kp(s[4], 'Tirs')}${kp(s[5], 'Mises en échec')}${kp(s[6], 'Tirs bloqués')}${kp(f1(fp), 'FP')}${kp(f2(p.fpg), 'FP / match')}</div>` + formChart(p);
   let proj = '';
   if (r) {
     const endPts = pts + (r[0] + r[1]) * eg, endFp = fp + p.model * eg;
@@ -991,6 +992,63 @@ function goalieTable(p, x, s, gp, eStarts) {
     ${N.map((nm, i) => `<tr><td>${nm}</td>${cell(i).map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}
     <tr><td><b>FP</b></td>${fpRow.map(c => `<td>${c}</td>`).join('')}</tr></table></div>
     <div class="note">${note ? note + ' ' : ''}Maison = stats des analystes mélangées à la saison (k ${x.k || '–'}), ajustées pour donner exactement les FP maison.</div>`;
+}
+// Forme : FP de chaque match (barres) et moyenne mobile sur 5 matchs (ligne), avec la projection maison et les analystes
+function formChart(p) {
+  const head = '<h3>Forme · FP par match</h3>';
+  if (!p.id) return '';
+  let g = GL[p.id];
+  if (g === undefined) { realWeek(p, { s: '0', e: '0' }); g = GL[p.id]; }
+  if (g === 'loading') return head + '<div class="muted small">Lecture de ses matchs…</div>';
+  if (!Array.isArray(g) || g.length < 3) return '';
+  const K = p.grp === 'G' ? ['w', 'ga', 'sv', 'so', 'otl'] : ['g', 'a', 'ppp', 'shp', 'sog', 'hit', 'blk'];
+  const fp = g.map(x => K.reduce((t, k) => t + SCO[k] * (x[k] || 0), 0));
+  const ma = fp.map((v, i) => { const w = fp.slice(Math.max(0, i - 4), i + 1); return w.reduce((t, y) => t + y, 0) / w.length; });
+  const W = 600, H = 170, L = 34, R = 8, T = 10, B = 22, n = fp.length;
+  const lo = Math.min(0, ...fp), hi = Math.max(...fp, p.model || 0, p.gaf || 0, 1) * 1.08;
+  const x = i => L + (n === 1 ? 0 : i * (W - L - R) / (n - 1)), y = v => T + (hi - v) / (hi - lo) * (H - T - B);
+  const bw = Math.max(2, Math.min(14, (W - L - R) / n * 0.6));
+  const bars = fp.map((v, i) => `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${Math.min(y(v), y(0)).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.abs(y(v) - y(0)).toFixed(1)}" fill="var(--line)"><title>${esc(g[i].d)} : ${f1(v)} FP</title></rect>`).join('');
+  const line = ma.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ');
+  const ref = (v, col, lab, dy) => v == null ? '' : `<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="${col}" stroke-dasharray="5 4" stroke-width="1.5"/><text x="${W - R}" y="${(y(v) + dy).toFixed(1)}" text-anchor="end" font-size="11" fill="${col}">${lab} ${f2(v)}</text>`;
+  const ticks = [lo, (lo + hi) / 2, hi].map(v => `<text x="${L - 6}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end" font-size="10" fill="var(--muted)">${f1(v)}</text>`).join('');
+  const dl = d => { const z = new Date(d + 'T12:00:00'); return z.getDate() + ' ' + MOIS[z.getMonth()]; };
+  const last5 = ma[n - 1], trendTxt = p.model ? (last5 > p.model * 1.15 ? 'au-dessus de sa projection' : last5 < p.model * 0.85 ? 'sous sa projection' : 'proche de sa projection') : '';
+  return head + `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="FP par match et moyenne sur 5 matchs" style="display:block;max-width:640px">
+      ${ticks}${bars}<path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>
+      ${ref(p.model, 'var(--accent)', 'Maison', -5)}${ref(p.gaf != null && p.grp !== 'G' ? p.gaf : null, 'var(--muted)', 'Analystes', 13)}
+      <text x="${L}" y="${H - 6}" font-size="10" fill="var(--muted)">${dl(g[0].d)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end" font-size="10" fill="var(--muted)">${dl(g[n - 1].d)}</text></svg>
+    <div class="note">Barres = FP de chaque match ; ligne = moyenne de ses 5 derniers matchs (<b>${f2(last5)}</b>${trendTxt ? ', ' + trendTxt : ''}) ; pointillés = projection maison${p.grp !== 'G' && p.gaf != null ? ' et analystes' : ''}.</div>`;
+}
+// Liste de surveillance : étoile dans la fiche, carte dans Outils › Ballotage
+const watched = p => (D.watch || []).indexOf(p.name) >= 0;
+function toggleWatch(p) {
+  const L = (D.watch || []).slice(), i = L.indexOf(p.name);
+  if (i >= 0) L.splice(i, 1); else L.push(p.name);
+  D.watch = L; rerenderSheet(); if (TAB === 'waivers') render();
+  if (window.google && google.script && google.script.run) google.script.run.withSuccessHandler(t => { try { D.watch = JSON.parse(t); } catch (e) {} }).saveWatch(L);
+}
+// alertes de rôle : promu sur l'AN, temps de jeu en hausse (3 derniers matchs vs sa saison), meilleur trio que d'habitude
+function watchAlerts(p) {
+  const A = [], c = roleChange(p), r = c && c.r;
+  if (c && c.up) A.push('🔔 promu sur l’AN');
+  if (r && p.toi && r.toi / 60 > p.toi * 1.15) A.push(`🔔 temps de jeu +${Math.round((r.toi / 60 / p.toi - 1) * 100)} %`);
+  if (p.lq >= 0.3) A.push('🔔 meilleur trio que d’habitude');
+  if (c && c.down) A.push('⬇ rétrogradé sur l’AN');
+  return A;
+}
+function watchCard() {
+  const all = []; D.teams.forEach(t => t.players.forEach(p => all.push([p, t.team]))); D.waivers.forEach(p => all.push([p, '']));
+  const L = (D.watch || []).map(n => all.find(([p]) => p.name === n)).filter(Boolean);
+  if (!L.length) return `<div class="card"><h2>Ta liste de surveillance</h2><div class="muted small">Ouvre la fiche d’un joueur et touche ☆ Suivre. Tu verras ici ses alertes : promotion sur l’AN, temps de jeu en hausse, meilleur trio.</div></div>`;
+  const rows = L.map(([p, own]) => { const al = watchAlerts(p);
+    return `<tr><td class="l">${pname(p, own)} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span> ${stChip(p.status, p)} ${pChip(p)}</td><td>${f2(p.model)}</td><td>${f2(p.fpg)}</td>
+      <td class="l small">${own ? (own === D.me ? '<span class="chip good">chez toi</span>' : '<span class="chip">pris : ' + esc(own) + '</span>') : '<span class="chip good">libre</span>'}</td>
+      <td class="l small">${al.length ? al.map(a => `<span class="chip ${a[0] === '⬇' ? 'bad' : 'warn'}" style="margin:1px">${a}</span>`).join('') : '<span class="muted">—</span>'}</td></tr>`; }).join('');
+  const nAl = L.filter(([p, own]) => !own && watchAlerts(p).some(a => a[0] === '🔔')).length;
+  return `<div class="card"><h2>Ta liste de surveillance${nAl ? ` <span class="chip warn">${nAl} alerte${nAl > 1 ? 's' : ''}</span>` : ''}</h2><div class="tbl"><table>
+    <tr><th class="l">Joueur</th><th>Maison</th><th>Réel</th><th class="l">Où</th><th class="l">Alertes</th></tr>${rows}</table></div>
+    <div class="legend"><span>Alertes : promu sur l’AN (3 derniers matchs vs les 3 d’avant), temps de jeu des 3 derniers matchs 15 % au-dessus de sa saison, ou trio nettement meilleur que d’habitude.</span></div></div>`;
 }
 const foot = () => `<div class="note" style="margin-top:14px">Stats en date de la dernière mise à jour (${esc(D.updated)}). Sources : LNH · analystes (GAF) · MoneyPuck.com</div>`;
 
@@ -1363,6 +1421,7 @@ function roleChange(p) {
 function roleLines(p) {
   const c = roleChange(p); if (!c) return [];
   const r = c.r, L = [], U = ['pas sur l’AN', '1re vague', '2e vague'];
+  if (p.lq && Math.abs(p.lq) >= 0.1) L.push(`<b>Trio au dernier match :</b> ${p.lq > 0 ? 'meilleur' : 'moins bon'} que ses compagnons habituels (${p.lq > 0 ? '+' : ''}${Math.round(p.lq * 100)} %) → attaque ${p.lq > 0 ? '+' : ''}${Math.round(p.lq * 10)} % dans sa projection (retenu par le backtest).`);
   if (p.inj) L.push(`<b>🚨 Joue peut-être blessé :</b> ${n1(r.toi / 60)} min/match sur ses 3 derniers matchs, 20 % et plus sous son temps habituel. Le modèle baisse sa projection (réglage retenu par le backtest).`);
   L.push(`<b>Avantage numérique (3 derniers matchs) :</b> ${U[c.now]}${c.now ? ` — ${Math.round(r.ppm / 6) / 10} min/match, ${Math.round(r.share * 100)} % du temps d’AN de son équipe` : ''}${c.up ? ' <span class="chip good">promu</span>' : c.down ? ' <span class="chip bad">rétrogradé</span>' : ''}.`);
   if (r.mates && r.mates.length) L.push(`<b>À 5 c. 5 avec :</b> ${r.mates.map(esc).join(' et ')}${c.newMates.length ? ` <span class="chip blue">nouveau</span> <span class="muted">(avant : ${(r.matesPrev || []).map(esc).join(', ')})</span>` : ''}.`);
