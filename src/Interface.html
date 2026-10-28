@@ -1553,15 +1553,19 @@ function oppMult(p, d) {
   const g = teamGames(p).find(x => x[0] === d); if (!g) return 1;
   const m = D.opp.t[g[1]]; return m ? 1 + (m - 1) * offShare(p) : 1;
 }
+// match en cours ce soir : on compte la part du match qui reste (les points déjà faits sont dans le pointage)
+const liveFrac = (p, d) => d === todayStr() && p.live && !p._fa ? (p.liveLeft != null ? p.liveLeft : 0.5) : 0;
+const gameFrac = (p, d) => { const f = liveFrac(p, d); return f > 0 ? f : 1; };
+const playsNow = (p, d) => playsOn(p, d) || liveFrac(p, d) > 0;
 // meilleur alignement d'un soir : F, D, UTIL, G (gardien = FP/départ × part des départs)
 function dayLineup(players, d) {
-  const L = D.config.lineup, v = p => (p.model || 0) * avail(p, d) * oppMult(p, d), by = (a, b) => v(b) - v(a);
-  const sk = players.filter(p => p.grp !== 'G' && v(p) > 0 && playsOn(p, d));
+  const L = D.config.lineup, v = p => (p.model || 0) * avail(p, d) * oppMult(p, d) * gameFrac(p, d), by = (a, b) => v(b) - v(a);
+  const sk = players.filter(p => p.grp !== 'G' && v(p) > 0 && playsNow(p, d));
   const F = sk.filter(p => p.grp === 'F').sort(by), Dd = sk.filter(p => p.grp === 'D').sort(by);
   const util = F.slice(L.F).concat(Dd.slice(L.D)).sort(by).slice(0, L.UTIL);
   const starters = F.slice(0, L.F).concat(Dd.slice(0, L.D), util);
-  const gv = p => goalieEV(p, d) * avail(p, d);
-  const G = players.filter(p => p.grp === 'G' && gv(p) > 0 && playsOn(p, d)).sort((a, b) => gv(b) - gv(a)).slice(0, L.G);
+  const gv = p => goalieEV(p, d) * avail(p, d) * gameFrac(p, d);
+  const G = players.filter(p => p.grp === 'G' && gv(p) > 0 && playsNow(p, d)).sort((a, b) => gv(b) - gv(a)).slice(0, L.G);
   return { fp: starters.reduce((t, p) => t + v(p), 0) + G.reduce((t, p) => t + gv(p), 0), starters: starters, goalies: G,
            free: { F: Math.max(0, L.F - Math.min(L.F, F.length)), D: Math.max(0, L.D - Math.min(L.D, Dd.length)),
                    U: Math.max(0, L.UTIL - util.length), G: Math.max(0, L.G - G.length) } };
@@ -1728,6 +1732,7 @@ function teamReport(m) {
 function applyOvr() {
   const O = D.ovr || {}, t = todayStr();
   const all = []; D.teams.forEach(tm => tm.players.forEach(p => all.push(p))); D.waivers.forEach(p => all.push(p));
+  D.waivers.forEach(p => { p._fa = true; });                // joueurs libres : un match commencé ne peut plus servir
   all.forEach(p => {
     const o = O[p.name]; p._ov = o || null;
     if (p._st0 === undefined) p._st0 = p.status;
@@ -1872,8 +1877,8 @@ function weekOutlook(team) {
   let mean = 0, varr = 0;
   days.forEach(d => {
     const L = dayLineup(team.players, d);
-    L.starters.forEach(p => { const a = avail(p, d); mean += (p.model || 0) * a * oppMult(p, d); varr += varGame(p) * a; games.set(p, (games.get(p) || 0) + a); });
-    L.goalies.forEach(p => { const sh = gShare(p, d) * avail(p, d), m = goalieFP(p, d); mean += m * sh; varr += sh * (varGame(p) + m * m) - (sh * m) ** 2; games.set(p, (games.get(p) || 0) + sh); });
+    L.starters.forEach(p => { const a = avail(p, d) * gameFrac(p, d); mean += (p.model || 0) * a * oppMult(p, d); varr += varGame(p) * a; games.set(p, (games.get(p) || 0) + a); });
+    L.goalies.forEach(p => { const sh = gShare(p, d) * avail(p, d) * gameFrac(p, d), m = goalieFP(p, d); mean += m * sh; varr += sh * (varGame(p) + m * m) - (sh * m) ** 2; games.set(p, (games.get(p) || 0) + sh); });
   });
   games.forEach(n => { varr += (V.sm * n) ** 2; });
   return { mean: mean, sd: Math.sqrt(varr) };

@@ -425,7 +425,20 @@ function weekSchedule_() {
     });
     try { const js = JSON.stringify({ w: weeks, g: games }); if (weeks.length && js.length < 95000) cacheW.put('WEEKS_' + monK, js, 3600); } catch (e) { /* trop gros : pas de cache */ }
   } catch (e) { WARN.push('Calendrier des semaines : ' + e.message); }
-  return { left: left, next: next, today: todayTeams, live: liveTeams, weekEnd: sunday, weeks: weeks, games: games };
+  // matchs en cours : part du match qui reste à jouer (période et horloge), pour compter la fin du match dans les projections
+  const liveLeft = {};
+  if (Object.keys(liveTeams).length) try {
+    const sc = fetchJsonAll_([`${WEB}/score/${today}`])[0] || {};
+    (sc.games || []).forEach(g => {
+      if (g.gameState !== 'LIVE' && g.gameState !== 'CRIT') return;
+      const per = (g.periodDescriptor && g.periodDescriptor.number) || 1, sec = g.clock && g.clock.secondsRemaining != null ? g.clock.secondsRemaining : 600;
+      const inter = g.clock && g.clock.inIntermission;
+      const elapsed = Math.min(3600, (per - 1) * 1200 + (inter ? 1200 : 1200 - sec));
+      const f = per > 3 ? 0 : Math.max(0, Math.round((1 - elapsed / 3600) * 100) / 100);
+      [g.awayTeam && g.awayTeam.abbrev, g.homeTeam && g.homeTeam.abbrev].forEach(t => { if (t) liveLeft[t] = f; });
+    });
+  } catch (e) { /* facultatif */ }
+  return { left: left, next: next, today: todayTeams, live: liveTeams, liveLeft: liveLeft, weekEnd: sunday, weeks: weeks, games: games };
 }
 
 // ---------------- Simulation du reste de la saison ----------------
@@ -567,6 +580,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
       signal: g === 'G' ? '' : signal_(m, p ? p.gp : 0),
       toi: m.toi ? round_(m.toi) : null, pptoi: m.pptoi ? round_(m.pptoi) : null, gsax: m.gsax ? round_(m.gsax) : null,
       left: sch.left[team] || 0, next: sch.next[team] || 0, today: !!sch.today[team], live: !!(sch.live && sch.live[team]),
+      liveLeft: sch.liveLeft && sch.liveLeft[team] != null ? sch.liveLeft[team] : null,
       id: p ? p.id : null,
       ret: ret, injT: ij ? ij.t : null, injC: ij ? ij.c : null,
       x: playerSheet_(g, p, m, p ? mp[p.id] : null, gafPrior, pjPrior, team)
