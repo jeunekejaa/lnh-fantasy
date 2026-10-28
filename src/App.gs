@@ -1229,11 +1229,10 @@ function espnTxApi_() {
   const missIds = Object.keys(miss).map(Number).slice(0, 200);
   if (missIds.length) {
     try {
-      const o = espnOptions_(true);
-      o.headers = Object.assign({}, o.headers, { 'x-fantasy-filter': JSON.stringify({ players: { filterIds: { value: missIds }, limit: missIds.length } }) });
-      const r = UrlFetchApp.fetch(`https://${ESPN_HOSTS[0]}/apis/v3/games/fhl/seasons/${CONFIG.ESPN_SEASON}/segments/0/leagues/${CONFIG.ESPN_LEAGUE_ID}?view=kona_player_info`, o);
+      const r = UrlFetchApp.fetch(`https://${ESPN_HOSTS[0]}/apis/v3/games/fhl/seasons/${CONFIG.ESPN_SEASON}/players?view=players_wl`,
+        { muteHttpExceptions: true, headers: { 'x-fantasy-filter': JSON.stringify({ filterIds: { value: missIds } }) } });
       if (r.getResponseCode() === 200) {
-        (JSON.parse(r.getContentText()).players || []).forEach(x => { const q = x.player || x; if (q && q.id && q.fullName) names[q.id] = q.fullName; });
+        [].concat(JSON.parse(r.getContentText()) || []).forEach(x => { const q = x.player || x; if (q && q.id && q.fullName) names[q.id] = q.fullName; });
         try { PropertiesService.getDocumentProperties().setProperty(LG.NAMES_PROP, JSON.stringify(names)); } catch (e) { /* rien */ }
       }
     } catch (e) { TX_SEEN['ESPN noms : ' + e.message] = 1; }
