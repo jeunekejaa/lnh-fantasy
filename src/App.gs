@@ -336,9 +336,16 @@ function modelGoalie_(p, prior, mp, name, engFpg) {
   const tg = p ? TEAM_GP[p.team] || 0 : 0;
   const fixed = APP.GOALIE_ROLE[name];
   let share = typeof fixed === 'number' ? fixed : (tg >= 3 && n ? Math.min(1, n / tg) : CONFIG.GOALIE_START_SHARE);
+  // Peu de matchs (retour de blessure, échange, rappel) : « matchs joués ÷ matchs de l'équipe » le prend pour un auxiliaire.
+  // Sous 5 matchs, on se fie surtout à son rôle prévu (matchs projetés par les analystes ÷ matchs de la saison).
+  if (typeof fixed !== 'number' && n < 5 && prior && prior.gp > 0) {
+    const season = typeof pjGames_ === 'function' ? pjGames_(String(CONFIG.SEASON)) : 82;
+    const sp = Math.min(0.85, prior.gp / season), w = n / 5;
+    share = w * share + (1 - w) * sp;
+  }
   // part des 10 derniers matchs de son équipe, mélangée à la part de la saison (seulement si le backtest l'a retenue)
   const wR = B && B.gkRecent, rec = p && GK_RECENT[p.id];
-  if (wR && rec != null && typeof fixed !== 'number') share = wR * rec + (1 - wR) * share;
+  if (wR && rec != null && typeof fixed !== 'number' && n >= 5) share = wR * rec + (1 - wR) * share;
   // Chance : buts accordés vs attendus (MoneyPuck). Positif = il a accordé MOINS que prévu → chanceux… ou très bon
   const gsax = mp && mp.gp ? (mp.gxg - mp.gga) / mp.gp : null;
   return { model: perStart, share: share, shareFixed: typeof fixed === 'number', gsax: gsax, luck: null, deserved: null, base: base, k: k };
