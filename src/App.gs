@@ -1223,6 +1223,21 @@ function espnTxApi_() {
     let j; try { j = JSON.parse(r.getContentText()); } catch (e) { return; }
     (j.transactions || []).forEach(t => { if (!all[t.id]) all[t.id] = t; });
   });
+  // joueurs absents des alignements actuels (retirés depuis) : on demande leur nom à ESPN, une fois pour toutes
+  const miss = {};
+  Object.keys(all).forEach(id => (all[id].items || []).forEach(i => { if (i.playerId > 0 && !names[i.playerId]) miss[i.playerId] = 1; }));
+  const missIds = Object.keys(miss).map(Number).slice(0, 200);
+  if (missIds.length) {
+    try {
+      const o = espnOptions_(true);
+      o.headers = Object.assign({}, o.headers, { 'x-fantasy-filter': JSON.stringify({ players: { filterIds: { value: missIds }, limit: missIds.length } }) });
+      const r = UrlFetchApp.fetch(`https://${ESPN_HOSTS[0]}/apis/v3/games/fhl/seasons/${CONFIG.ESPN_SEASON}/segments/0/leagues/${CONFIG.ESPN_LEAGUE_ID}?view=kona_player_info`, o);
+      if (r.getResponseCode() === 200) {
+        (JSON.parse(r.getContentText()).players || []).forEach(x => { const q = x.player || x; if (q && q.id && q.fullName) names[q.id] = q.fullName; });
+        try { PropertiesService.getDocumentProperties().setProperty(LG.NAMES_PROP, JSON.stringify(names)); } catch (e) { /* rien */ }
+      }
+    } catch (e) { TX_SEEN['ESPN noms : ' + e.message] = 1; }
+  }
   const ids = Object.keys(all), out = [];
   ids.forEach(id => { const t = all[id], k = String(t.type || '') + ' ' + String(t.status || ''); TX_SEEN[k] = (TX_SEEN[k] || 0) + 1; });
   const mapItems = list => (list || []).filter(i => i.type === 'TRADE' || i.type === 'ADD' || i.type === 'DROP')
@@ -1294,6 +1309,7 @@ function myMoves_(teamsOut, waivers) {
   const espnTx = (TX_CACHE || []).filter(t => !/^nt/.test(t.id));
   const espnFrom = espnTx.length ? espnTx.map(t => t.date).reduce((a, b) => (a < b ? a : b)) : null;
   if (espnFrom) list = list.filter(m => m.s !== 'nt' || m.d < espnFrom);
+  list = list.filter(m => !/Joueur #/.test(m.k));            // nom inconnu à l'époque : on le reprend avec le bon nom
   const first = props.getProperty('MYMOVES_SINCE') || stamp_();
   if (!props.getProperty('MYMOVES_SINCE')) props.setProperty('MYMOVES_SINCE', first);
   const idx = {}; teamsOut.forEach(t => t.players.forEach(p => { idx[p.name] = p; })); waivers.forEach(p => { if (!idx[p.name]) idx[p.name] = p; });
