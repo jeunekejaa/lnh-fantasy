@@ -655,6 +655,9 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
     .map(p => enrich(p.name, p.team, p.pos, ESPN_STATUS[norm_(p.name)] || '', p))
     .sort((a, b) => b.perGame - a.perGame).slice(0, 900);
 
+  let myMoves = [];
+  try { myMoves = myMoves_(teamsOut, waivers); } catch (e) { WARN.push('Bilan de tes moves : ' + e.message); }
+
   const snap = {
     v: 1, updated: stamp_(), fday: ymd_(fantasyNow_()), names: ESPN_NAME_OF, season: CONFIG.SEASON, me: APP.MY_TEAM, weekEnd: sch.weekEnd, weeks: sch.weeks || [], teamGames: sch.games || {},
     playoffTeams: sched.playoffTeams || 8, currentPeriod: sched.current || null,
@@ -662,7 +665,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
               share: CONFIG.GOALIE_START_SHARE, sims: APP.SIMS, luck: APP.LUCK,
               k: inSeason_() ? Object.assign({}, APP.K, inSeason_().K, { gx: inSeason_().kxg, g: inSeason_().gsrc === 'tirs' ? inSeason_().K.g : inSeason_().kg, gstart: inSeason_().gk ? inSeason_().gk.k : APP.K.gstart }) : APP.K,
               bt: inSeason_() },
-    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS,
+    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), moves: myMoves, journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS,
     teams: teamsOut, waivers: waivers, schedule: sched.games, warn: WARN.slice(),
     sources: ['LNH (api-web.nhle.com)', 'ESPN Fantasy', 'GAF Aggregate Projections', 'MoneyPuck.com']
   };
@@ -1281,6 +1284,34 @@ function getOverrides_() {
   try { return JSON.parse(PropertiesService.getDocumentProperties().getProperty(LG.OVR_PROP) || '{}'); } catch (e) { return {}; }
 }
 // Liste de surveillance (gardée sur le serveur : suit sur téléphone et ordi)
+// Bilan de tes moves : chaque ajout, retrait ou échange de ton équipe est gardé (au-delà des 14 jours d'ESPN)
+// avec la projection maison (FP/match) des joueurs AU MOMENT où l'app l'a vu passer — pour juger la décision plus tard.
+function myMoves_(teamsOut, waivers) {
+  const props = PropertiesService.getDocumentProperties();
+  let list = []; try { list = JSON.parse(props.getProperty('MYMOVES') || '[]'); } catch (e) { list = []; }
+  const first = props.getProperty('MYMOVES_SINCE') || stamp_();
+  if (!props.getProperty('MYMOVES_SINCE')) props.setProperty('MYMOVES_SINCE', first);
+  const idx = {}; teamsOut.forEach(t => t.players.forEach(p => { idx[p.name] = p; })); waivers.forEach(p => { if (!idx[p.name]) idx[p.name] = p; });
+  const have = {}; list.forEach(m => { have[m.k] = true; });
+  const r2 = x => Math.round((+x || 0) * 100) / 100;
+  const pl = n => { const p = idx[n]; return p ? { n: n, id: p.id || null, g: p.grp, m: r2(p.model) } : { n: n, id: null, g: null, m: null }; };
+  let added = 0;
+  (TX_CACHE || []).forEach(t => {
+    const mine = t.items.filter(i => i.to === APP.MY_TEAM || i.from === APP.MY_TEAM);
+    if (!mine.length) return;
+    const ins = mine.filter(i => i.to === APP.MY_TEAM).map(i => i.name), outs = mine.filter(i => i.from === APP.MY_TEAM).map(i => i.name);
+    // ESPN montre parfois un échange comme des retraits + ajouts au même moment : on ignore un move dont les ajoutés
+    // sont les joueurs reçus dans un échange du même jour (déjà compté comme échange)
+    const k = t.date + '|' + ins.slice().sort().join(',') + '|' + outs.slice().sort().join(',');
+    if (have[k]) return;
+    have[k] = true; added++;
+    list.push({ k: k, d: t.date, tr: !!t.trade, late: t.date < first, i: ins.map(pl), o: outs.map(pl) });
+  });
+  list.sort((a, b) => (a.d < b.d ? 1 : -1));
+  list = list.slice(0, 45);
+  if (added) { try { props.setProperty('MYMOVES', JSON.stringify(list)); } catch (e) { WARN.push('Bilan de tes moves : trop gros pour être gardé'); } }
+  return list;
+}
 function getWatch_() { try { return JSON.parse(PropertiesService.getDocumentProperties().getProperty('WATCH') || '[]'); } catch (e) { return []; } }
 function saveWatch(list) {          // appelée par l'app
   const clean = (Array.isArray(list) ? list : []).map(String).filter(Boolean).slice(0, 60);

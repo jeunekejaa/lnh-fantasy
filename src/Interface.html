@@ -1903,7 +1903,67 @@ function tradeVerdict(res) {
   if (fooled) v += ` À ses yeux, ${esc(fooled.team)} a reçu plus qu’il a donné (${Math.round(fooled.perc * 100)} %), mais le modèle dit qu’il s’affaiblit : classique achat d’un joueur au sommet de sa chance.`;
   return v;
 }
+// ---------- Bilan de tes moves : ce que chaque décision a vraiment rapporté ----------
+// Fenêtre : du jour où le move compte (après 18 h → le lendemain) jusqu'à hier. Le joueur ajouté compte jusqu'à ce que tu le retires.
+// « Prévu » = projection maison (FP/match) au moment du move × matchs vraiment joués : l'écart réel − prévu, c'est la chance.
+let MV_ON = false;
+function mvEff(d) { const day = d.slice(0, 10), h = +d.slice(11, 13) || 0; return h >= 18 ? ymdAdd(day, 1) : day; }
+function mvList() {
+  const L = (D.moves || []).filter(m => m.i.length || m.o.length);
+  // ESPN montre parfois un échange aussi comme retraits + ajouts : on écarte ces doublons (mêmes joueurs, à 12 h d'un échange)
+  const trades = L.filter(m => m.tr), near = (a, b) => Math.abs(new Date(a.replace(' ', 'T')) - new Date(b.replace(' ', 'T'))) < 12 * 3600e3;
+  return L.filter(m => m.tr || !trades.some(t => near(t.d, m.d) && m.i.concat(m.o).some(x => t.i.concat(t.o).some(y => y.n === x.n))));
+}
+function mvSide(list, from, untilOf, end) {
+  let real = 0, exp = 0, n = 0, ok = true;
+  const rows = list.map(x => {
+    const p = findP(x.n) || (x.id ? { id: x.id, grp: x.g } : null);
+    if (!p || !p.id) return { x: x, r: { n: 0, fp: 0 }, m: 0 };          // pas encore de match dans la LNH cette saison
+    const to = untilOf ? untilOf(x.n) : end, R = to < from ? { n: 0, fp: 0 } : realWeek(p, { s: from, e: to });
+    if (typeof R !== 'object') { ok = false; return { x: x, r: null, wait: R }; }
+    const m = x.m != null ? x.m : (p.model || 0);
+    real += R.fp; exp += m * R.n; n += R.n;
+    return { x: x, r: R, m: m, to: to };
+  });
+  return { real: real, exp: exp, n: n, ok: ok, rows: rows };
+}
+function movesCard() {
+  const L = mvList();
+  if (!D.moves) return '';
+  if (!L.length) return `<div class="card"><h2>Bilan de tes moves</h2><div class="empty">Aucun move de ton équipe enregistré pour l’instant.</div></div>`;
+  const head = `<div class="card"><h2>Bilan de tes moves</h2>`;
+  if (!MV_ON) return head + `<div class="small muted">Pour chaque ajout, retrait ou échange : les FP que tes nouveaux joueurs ont vraiment faits depuis, contre ceux que tu aurais eus en gardant les autres.</div>
+    <button class="btn" id="mvgo" style="margin-top:8px">Calculer le bilan (${L.length} moves)</button></div>`;
+  const end = ymdAdd(todayStr(), -1);
+  // jusqu'à quand chaque joueur ajouté est resté : prochain move où il part
+  const asc = L.slice().reverse();
+  let tR = 0, tE = 0, wait = false;
+  const rows = L.map(m => {
+    const from = mvEff(m.d);
+    const untilOf = n => { const nx = asc.find(z => z.d > m.d && z.o.some(y => y.n === n)); return nx ? ymdAdd(mvEff(nx.d), -1) : end; };
+    // chaque arrivé compte tant qu'il reste ; les partis comptent jusqu'au départ du dernier arrivé (ou hier)
+    const to = m.i.length ? m.i.map(x => untilOf(x.n)).reduce((a, b) => (a > b ? a : b)) : end;
+    const I = mvSide(m.i, from, untilOf, end), O = mvSide(m.o, from, () => to, end);
+    if (!I.ok || !O.ok) { wait = wait || I.rows.concat(O.rows).some(r => r.wait === 'loading'); }
+    const dR = I.real - O.real, dE = I.exp - O.exp;
+    if (I.ok && O.ok) { tR += dR; tE += dE; }
+    const nm = (S, sg) => S.rows.map(r => `<div><span class="${sg === '+' ? 'up' : 'down'}">${sg}</span> ${esc(dn(r.x.n))}${r.r ? ` <span class="muted small">${f1(r.r.fp)} FP · ${r.r.n} m.</span>` : ''}</div>`).join('');
+    const span = to < from ? 'annulé le jour même' : from === to ? dShort(from) : dShort(from) + ' → ' + dShort(to);
+    const ver = !(I.ok && O.ok) ? '<span class="muted">…</span>' : `<b class="${dR >= 0 ? 'up' : 'down'}">${sgn(dR)}</b>`;
+    const exp = !(I.ok && O.ok) ? '' : `<span class="${dE >= 0 ? 'up' : 'down'}">${sgn(dE)}</span>`;
+    return `<tr><td class="l">${m.tr ? '🔁 ' : ''}<span class="small muted">${esc(span)}</span>${nm(I, '+')}${nm(O, '−')}</td><td>${ver}</td><td title="Projection maison × matchs joués">${exp}</td></tr>`;
+  }).join('');
+  if (wait) setTimeout(() => { if (TAB === 'tx') render(); }, 700);
+  const luck = tR - tE;
+  const sum = `Au total, tes moves t’ont rapporté <b class="${tR >= 0 ? 'up' : 'down'}">${sgn(tR)} FP</b> par rapport à garder tes joueurs. La maison en prévoyait <b>${sgn(tE)}</b> sur les mêmes matchs : ${Math.abs(luck) < 5 ? 'résultat conforme aux attentes.' : luck > 0 ? `tu as eu <b>${f1(luck)} FP de chance</b> en plus.` : `la malchance t’a coûté <b>${f1(-luck)} FP</b> — les décisions étaient meilleures que le résultat.`}`;
+  const late = L.some(m => m.late);
+  return head + `<div class="verdict">${sum}</div><div class="tbl" style="margin-top:8px"><table><tr><th class="l">Move (période jugée)</th><th title="FP réels des arrivés − FP réels des partis, mêmes jours">Réel</th><th title="Ce que la projection maison prévoyait sur les mêmes matchs">Prévu</th></tr>${rows}</table></div>
+    <div class="small muted" style="margin-top:6px">Chaque joueur arrivé compte du jour où le move compte jusqu’à ce que tu le retires ; les joueurs partis comptent jusqu’au départ du dernier arrivé (ou hier). Un joueur qui sert de monnaie d’échange le lendemain compte donc dans les deux moves. Les deux côtés comptent tous leurs matchs, même ceux où le joueur aurait été sur le banc.${late ? ' Pour les moves faits avant le suivi, « prévu » utilise la projection actuelle.' : ''}</div></div>`;
+}
 function vTx() {
+  return movesCard() + vTxList();
+}
+function vTxList() {
   const tx = D.tx || [];
   if (!tx.length) return `<div class="card"><h2>Transactions de la ligue</h2><div class="empty">${D.tx ? 'Aucune transaction dans les 14 derniers jours.' : 'Mets les données à jour pour lire les transactions ESPN.'}</div>${txSeenNote()}</div>`;
   const pl = (l, team) => l.map(p => `${pname(p, team)} <span class="muted small">${f2(p.model)}</span> ${pChip(p)}`).join(', ') || '—';
@@ -1928,7 +1988,7 @@ function txSeenNote() {
   const t = D.txSeen; if (!t || !Object.keys(t).length) return '';
   return `<div class="small muted" style="margin-top:6px">Lu chez ESPN : ${Object.keys(t).sort().map(k => `${esc(k)} ×${t[k]}`).join(' · ')}</div>`;
 }
-function bindTx() {}
+function bindTx() { const b = $('#mvgo'); if (b) b.onclick = () => { MV_ON = true; render(); }; }
 
 // ---------- Probabilité de gagner le duel de la semaine (en direct) ----------
 const SCOW = { s: [3, 2, 0.5, 0.5, 0.2, 0.2, 0.4], g: [3, -1, 0.2, 3, 1] };
