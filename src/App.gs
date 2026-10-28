@@ -206,7 +206,7 @@ const fp_ = s => { const S = CONFIG.SCORING; return S.G * s.g + S.A * s.a + S.PP
 const blend_ = (prior, obs, n, k) => (k * prior + n * obs) / (k + n);
 
 // Réglages appris par le backtest 2025-26 (🧪), sinon valeurs de base de APP.K
-let TSTR = null, WKROS = null, CUR_TEAMS = null, WEEKST = null, STARTERS = null, TX_SEEN = {}, OPP_ADJ = null, BT_P = undefined, PJ_GK = undefined, TX_CACHE = [], GK_RECENT = {}, JOURNAL = null, ROLES = null;
+let MPG = null, TSTR = null, WKROS = null, CUR_TEAMS = null, WEEKST = null, STARTERS = null, TX_SEEN = {}, OPP_ADJ = null, BT_P = undefined, PJ_GK = undefined, TX_CACHE = [], GK_RECENT = {}, JOURNAL = null, ROLES = null;
 function inSeason_() {
   if (BT_P === undefined) { BT_P = null; try { if (typeof btParams_ === 'function') BT_P = btParams_(); } catch (e) { /* rien */ } }
   return BT_P;
@@ -391,7 +391,7 @@ function weekSchedule_() {
   const nextMon = ymd_(new Date(now.getTime() + (8 - dow) * 86400000));
   const nextSun = ymd_(new Date(now.getTime() + (14 - dow) * 86400000));
   const j = fetchJsonAll_([`${WEB}/schedule/${today}`, `${WEB}/schedule/${nextMon}`]);
-  const left = {}, next = {}, todayTeams = {}, liveTeams = {}, seen = {};
+  const left = {}, next = {}, todayTeams = {}, liveTeams = {}, seen = {}, weekGames = [];
   const add = (m, t) => { m[t] = (m[t] || 0) + 1; };
   // Les deux calendriers (7 jours chacun, à partir d'aujourd'hui et du lundi suivant) se chevauchent :
   // on ne compte chaque match qu'une fois.
@@ -399,6 +399,7 @@ function weekSchedule_() {
     if (g.gameType !== CONFIG.GAME_TYPE || seen[g.id]) return;
     seen[g.id] = true;
     const teams = [g.awayTeam.abbrev, g.homeTeam.abbrev];
+    if (day.date >= today && day.date <= sunday) weekGames.push({ id: g.id, date: day.date, a: g.awayTeam.abbrev, h: g.homeTeam.abbrev });
     if (day.date === today && (g.gameState === 'LIVE' || g.gameState === 'CRIT')) teams.forEach(t => { liveTeams[t] = true; });   // match en cours
     if (day.date >= today && day.date <= sunday && (g.gameState === 'FUT' || g.gameState === 'PRE')) {
       teams.forEach(t => add(left, t));
@@ -445,7 +446,7 @@ function weekSchedule_() {
       [g.awayTeam && g.awayTeam.abbrev, g.homeTeam && g.homeTeam.abbrev].forEach(t => { if (t) liveLeft[t] = f; });
     });
   } catch (e) { /* facultatif */ }
-  return { left: left, next: next, today: todayTeams, live: liveTeams, liveLeft: liveLeft, weekEnd: sunday, weeks: weeks, games: games };
+  return { left: left, next: next, today: todayTeams, live: liveTeams, liveLeft: liveLeft, weekGames: weekGames, weekEnd: sunday, weeks: weeks, games: games };
 }
 
 // ---------------- Simulation du reste de la saison ----------------
@@ -627,6 +628,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
   mark_('Duel ESPN jour par jour');
   try { WKROS = espnWeekRosters_(); } catch (e) { WARN.push('Duel ESPN jour par jour : ' + e.message); }
   mark_('Gardiens partants (DailyFaceoff)');
+  try { MPG = mpGames_(sch.weekGames); } catch (e) { WARN.push('MoneyPuck (gardiens partants, chances de victoire) : ' + e.message); }
   try { STARTERS = dfoStarters_(); } catch (e) { WARN.push('Gardiens partants : ' + e.message); }
   mark_('Défense adverse');
   try { OPP_ADJ = oppAdjust_(); } catch (e) { WARN.push('Adversaires : ' + e.message); }
@@ -651,7 +653,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
               share: CONFIG.GOALIE_START_SHARE, sims: APP.SIMS, luck: APP.LUCK,
               k: inSeason_() ? Object.assign({}, APP.K, inSeason_().K, { gx: inSeason_().kxg, g: inSeason_().gsrc === 'tirs' ? inSeason_().K.g : inSeason_().kg, gstart: inSeason_().gk ? inSeason_().gk.k : APP.K.gstart }) : APP.K,
               bt: inSeason_() },
-    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, wk: WEEKST, tstr: TSTR, wkr: WKROS,
+    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS,
     teams: teamsOut, waivers: waivers, schedule: sched.games, warn: WARN.slice(),
     sources: ['LNH (api-web.nhle.com)', 'ESPN Fantasy', 'GAF Aggregate Projections', 'MoneyPuck.com']
   };
@@ -922,6 +924,36 @@ function powerByPeriod_(teamsOut, sched, weekEnd) {
     t.powerBy = by;
     if (n) t.power = round_(sum / n);                                  // force moyenne du reste de la saison
   });
+}
+// MoneyPuck, match par match (d'ici dimanche) : chances de victoire de chaque équipe et probabilité de départ de chaque gardien.
+// { 'AAAA-MM-JJ': { ÉQUIPE: { w: 0.48, g: { idLNH: 0.42, … } } } } — chaque match gardé 2 h.
+function mpGames_(games) {
+  if (!games || !games.length) return null;
+  const cache = CacheService.getScriptCache(), out = {}, todo = [];
+  games.forEach(g => { const hit = cache.get('MPG_' + g.id); if (hit) put_(out, g, JSON.parse(hit)); else todo.push(g); });
+  if (todo.length) {
+    const B = 'https://moneypuck.com/moneypuck/', reqs = [];
+    todo.forEach(g => ['predictions/' + g.id + '.csv', 'start_predictions/' + g.id + 'A.csv', 'start_predictions/' + g.id + 'H.csv']
+      .forEach(u => reqs.push({ url: B + u, muteHttpExceptions: true })));
+    const res = UrlFetchApp.fetchAll(reqs);
+    const csv = r => { if (r.getResponseCode() !== 200) return []; const L = r.getContentText().trim().split(/\r?\n/); if (L.length < 2 || !/,/.test(L[0])) return [];
+      const H = L[0].split(','); return L.slice(1).map(l => { const c = l.split(','), o = {}; H.forEach((h, i) => { o[h] = c[i]; }); return o; }); };
+    todo.forEach((g, i) => {
+      const pr = csv(res[3 * i])[0], ga = csv(res[3 * i + 1]), gh = csv(res[3 * i + 2]);
+      const hw = pr ? +pr.preGameMoneyPuckHomeWinPrediction || +pr.preGameHomeTeamWinOverallScore : NaN;
+      const v = { hw: isFinite(hw) && hw > 0 ? Math.round(hw * 1000) / 1000 : null, ga: {}, gh: {} };
+      ga.forEach(x => { if (x.goalie_id) v.ga[x.goalie_id] = Math.round(+x.final_start_probability * 1000) / 1000; });
+      gh.forEach(x => { if (x.goalie_id) v.gh[x.goalie_id] = Math.round(+x.final_start_probability * 1000) / 1000; });
+      if (v.hw != null || ga.length || gh.length) { try { cache.put('MPG_' + g.id, JSON.stringify(v), 7200); } catch (e) {} }
+      put_(out, g, v);
+    });
+  }
+  return out;
+  function put_(o, g, v) {
+    const d = o[g.date] || (o[g.date] = {});
+    if (v.hw != null || Object.keys(v.ga).length) d[g.a] = { w: v.hw != null ? Math.round((1 - v.hw) * 1000) / 1000 : null, g: v.ga };
+    if (v.hw != null || Object.keys(v.gh).length) d[g.h] = { w: v.hw, g: v.gh };
+  }
 }
 // Équipe LNH actuelle de chaque joueur (alignements officiels) : un joueur échangé change d'équipe tout de suite,
 // même s'il n'a pas encore joué pour sa nouvelle équipe. Gardé 1 h. { id: { idLNH: 'ABC' }, nom: { nomnormalisé: 'ABC' } }

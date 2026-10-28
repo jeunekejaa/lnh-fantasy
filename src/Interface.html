@@ -1641,7 +1641,8 @@ function gameWin(ab, d) {
   const g = (D.teamGames && D.teamGames[ab] || []).find(x => x[0] === d); if (!g) return null;
   const A = tStr(ab), B = tStr(g[1]); if (!A || !B) return null;
   const ea = A.gf * B.ga / A.lg, eb = B.gf * A.ga / A.lg;
-  return { p: Math.min(0.85, Math.max(0.15, pyth(ea, eb) + (g[2] ? 0.02 : -0.02))), base: pyth(A.gf, A.ga), oppOff: B.gf / A.lg };
+  const mp = D.mpg && D.mpg[d] && D.mpg[d][ab], pw = mp && mp.w != null ? +mp.w : null;   // MoneyPuck si dispo
+  return { p: pw != null ? pw : Math.min(0.85, Math.max(0.15, pyth(ea, eb) + (g[2] ? 0.02 : -0.02))), base: pyth(A.gf, A.ga), oppOff: B.gf / A.lg, src: pw != null ? 'MoneyPuck' : 'maison' };
 }
 // FP d'un gardien S'IL EST PARTANT ce soir-là : sa projection, ajustée selon les chances de victoire (3 FP) et l'attaque adverse
 // (un but de plus = −1 FP et un arrêt de moins −0,2)
@@ -1760,10 +1761,16 @@ function startedOn(p, d) {
   if (s) return s.me ? (s.st === 'c' ? 1 : 0.85) : 0;
   return null;
 }
+// MoneyPuck : probabilité de départ (et chances de victoire) de ce soir-là, si on l'a
+const mpTeam = (p, d) => D.mpg && D.mpg[d] && D.mpg[d][p.nhl] || null;
+const mpStart = (p, d) => { const t = mpTeam(p, d); if (!t || !t.g || !Object.keys(t.g).length || p.id == null) return null; const v = t.g[p.id] != null ? t.g[p.id] : t.g[String(p.id)]; return v != null ? +v : 0; };
 const gShare = (p, d) => {
   if (p._ov && p._ov.start === d) return 1;
   const s = starterOf(p, d);
-  if (s) return s.me ? (s.st === 'c' ? 1 : 0.85) : (s.st === 'c' ? 0 : 0.15);
+  if (s && s.st === 'c') return s.me ? 1 : 0;                      // confirmé (DailyFaceoff) : on le sait
+  const mp = mpStart(p, d);
+  if (mp != null) return mp;                                       // MoneyPuck : modèle dédié (repos, deux soirs de suite, nouvelles)
+  if (s) return s.me ? 0.85 : 0.15;
   // deux soirs de suite (back-to-back) : le partant de la veille joue rarement le lendemain, l'autre gardien prend souvent le 2e match
   const prev = ymdAdd(d, -1), tg = (D.teamGames && D.teamGames[p.nhl]) || [];
   if (tg.some(g => g[0] === prev) && tg.some(g => g[0] === d)) {
