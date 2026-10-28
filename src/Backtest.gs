@@ -43,7 +43,7 @@ const BT_G_LABEL = { g: 'buts réels', tirs: 'tirs × % habituel', xg: 'buts att
 
 function runBacktest() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  ss.toast('Backtest 2025-26 à 4 dates (2 à 5 minutes)…', '🧪', 30);
+  try { ss.toast('Backtest 2025-26 à 4 dates (2 à 5 minutes)…', '🧪', 30); } catch (e) { /* lancé depuis l'app web : pas de fenêtre */ }
   const t0 = Date.now(), warn = [];
 
   // 1) Bases d'avant-saison : GAF 2025-26 + moteur maison (3 saisons précédentes)
@@ -242,6 +242,7 @@ function runBacktest() {
   // 7c) Optimisation finale (FP/match, moyenne des 4 dates) : poids analystes/moteur en cours de saison, k par position,
   //     k qui varie avec le nombre de matchs, et correction par catégorie de tendance. Chaque levier n'est gardé
   //     que s'il fait gagner au moins BT_FINAL.MIN ET s'il aide à au moins 3 des 4 dates.
+  try { const AG = btAges_(); sets.forEach(st => st.sk.forEach(r => { r.age = AG[r.id] || null; })); } catch (e) { warn.push('Âges introuvables : ' + e.message); }
   const final = btFinal_(sets, C, gafW, SW, mae);
   // 7d) Gardiens : la part des 10 derniers matchs prédit-elle mieux les départs à venir ? 7e) Volatilité : fourchettes calibrées
   const gShare = btGoalieShare_(sets);
@@ -278,7 +279,7 @@ function runBacktest() {
     methods: methodRes, goalies: goalies, tendances: tendances, final: final, gardiensRecents: gShare, volatilite: vol, misses: misses, seconds: Math.round((Date.now() - t0) / 1000)
   };
   btWrite_(ss, res);
-  ss.toast(`Backtest terminé (${sets.length} dates, ${res.seconds} s). Voir la feuille « Backtest ».`, '🧪', 10);
+  try { ss.toast(`Backtest terminé (${sets.length} dates, ${res.seconds} s). Voir la feuille « Backtest ».`, '🧪', 10); } catch (e) { /* idem */ }
   return res;
 }
 
@@ -302,11 +303,13 @@ const BT_CLS = ['progression', 'chanceux', 'malchanceux', 'panne'];
 function btFinal_(sets, C, w0, SW, mae) {
   const K = BT.K_GRID, mixW = (g, m, w) => { const o = {}; SK_STATS.forEach(k => { o[k] = w * (g[k] || 0) + (1 - w) * (m[k] || 0); }); return o; };
   const baseFor = (r, w) => { if (w === w0 || !r.gaf || !r.pjr) return r; r._b = r._b || {}; return r._b[w] || (r._b[w] = Object.assign({}, r, { base: mixW(r.gaf, r.pjr, w) })); };
-  const neutral = () => ({ w: w0, gamma: 0, kpos: { F: {}, D: {} }, mult: {}, bias: {}, alpha: 0, injM: 1, injB: 0 });
+  const neutral = () => ({ w: w0, gamma: 0, kpos: { F: {}, D: {} }, mult: {}, bias: {}, alpha: 0, injM: 1, injB: 0, ageB: 0, wpos: {} });
   const clone = X => JSON.parse(JSON.stringify(X));
   const predR = (r, st, X) => {
-    const rr = baseFor(r, X.w), cm = r.cls && X.mult[r.cls] != null ? X.mult[r.cls] : 1;
-    const gf = (X.gamma ? Math.pow(Math.max(1, r.n) / 15, X.gamma) : 1) * (X.alpha ? Math.pow(r.kr || 1, X.alpha) : 1) * (r.inj ? X.injM : 1);
+    const rr = baseFor(r, X.wpos && X.wpos[r.pos] != null ? X.wpos[r.pos] : X.w), cm = r.cls && X.mult[r.cls] != null ? X.mult[r.cls] : 1;
+    // âge : k × (âge ÷ 27)^ageB — ageB > 0 = on croit plus vite la saison d'un jeune, plus lentement celle d'un vétéran
+    const gf = (X.gamma ? Math.pow(Math.max(1, r.n) / 15, X.gamma) : 1) * (X.alpha ? Math.pow(r.kr || 1, X.alpha) : 1) * (r.inj ? X.injM : 1)
+             * (X.ageB && r.age ? Math.pow(Math.max(18, Math.min(40, r.age)) / 27, X.ageB) : 1);
     let fp = 0;
     SK_STATS.forEach(s => { const kp = X.kpos[r.pos][s]; fp += SW[s] * btPred_(rr, s, C[s].v, (kp != null ? kp : C[s].k) * cm * gf, st); });
     return fp + (r.cls && X.bias[r.cls] ? X.bias[r.cls] : 0) + (r.inj ? X.injB : 0);
@@ -323,6 +326,8 @@ function btFinal_(sets, C, w0, SW, mae) {
       if (on('w')) BT_FINAL.w.forEach(v => { if (v !== X.w) { const Y = clone(X); Y.w = v; moved = tryX(Y) || moved; } });
       if (on('gamma')) BT_FINAL.gamma.forEach(v => { if (v !== X.gamma) { const Y = clone(X); Y.gamma = v; moved = tryX(Y) || moved; } });
       if (on('alpha')) [-1, -0.5, 0.5, 1].forEach(v => { if (v !== X.alpha) { const Y = clone(X); Y.alpha = v; moved = tryX(Y) || moved; } });
+      if (on('age')) [-3, -2, -1, -0.5, 0.5, 1, 2, 3].forEach(v => { if (v !== X.ageB) { const Y = clone(X); Y.ageB = v; moved = tryX(Y) || moved; } });
+      if (on('wpos')) ['F', 'D'].forEach(pos => BT_FINAL.w.forEach(v => { const cur = X.wpos[pos] != null ? X.wpos[pos] : X.w; if (v !== cur) { const Y = clone(X); Y.wpos[pos] = v; moved = tryX(Y) || moved; } }));
       if (on('inj')) { BT_FINAL.mult.forEach(v => { if (v !== X.injM) { const Y = clone(X); Y.injM = v; moved = tryX(Y) || moved; } }); BT_FINAL.bias.forEach(v => { if (v !== X.injB) { const Y = clone(X); Y.injB = v; moved = tryX(Y) || moved; } }); }
       if (on('kpos')) ['F', 'D'].forEach(pos => SK_STATS.forEach(s => K.forEach(k => {
         const cur = X.kpos[pos][s] != null ? X.kpos[pos][s] : C[s].k;
@@ -343,6 +348,8 @@ function btFinal_(sets, C, w0, SW, mae) {
     { id: 'mult', nom: 'Vitesse de confiance selon la tendance', off: Y => { Y.mult = {}; }, val: Y => Object.keys(Y.mult).map(c => c + ' ×' + Y.mult[c]).join(', ') || '—' },
     { id: 'alpha', nom: 'k individuel (selon la variabilité de son niveau d’une saison à l’autre)', off: Y => { Y.alpha = 0; }, val: Y => `k × (variabilité ÷ typique)^${Y.alpha}` },
     { id: 'inj', nom: 'Joueur qui joue blessé (temps de jeu −20 % sur 3 matchs)', off: Y => { Y.injM = 1; Y.injB = 0; }, val: Y => `k ×${Y.injM}, ${Y.injB > 0 ? '+' : ''}${Y.injB} FP/match` },
+    { id: 'age', nom: 'k selon l’âge (jeunes : on croit la saison plus vite)', off: Y => { Y.ageB = 0; }, val: Y => `k × (âge ÷ 27)^${Y.ageB}` },
+    { id: 'wpos', nom: 'Poids analystes / moteur différent pour attaquants et défenseurs', off: Y => { Y.wpos = {}; }, val: Y => ['F', 'D'].map(p => p + ' : analystes ' + Math.round((Y.wpos[p] != null ? Y.wpos[p] : Y.w) * 100) + ' %').join(' · ') },
     { id: 'bias', nom: 'Correction selon la tendance (FP/match)', off: Y => { Y.bias = {}; }, val: Y => Object.keys(Y.bias).filter(c => Y.bias[c]).map(c => c + ' ' + (Y.bias[c] > 0 ? '+' : '') + Y.bias[c]).join(', ') || '—' }
   ];
   // Validation croisée : chaque levier est réglé (seul) sur une moitié des joueurs et mesuré sur l'autre moitié, dans les deux sens
@@ -360,7 +367,8 @@ function btFinal_(sets, C, w0, SW, mae) {
   return { avant: Math.round(avg(b0) * 10000) / 10000, apres: Math.round(avg(b1) * 10000) / 10000,
            avantParDate: b0.map(x => Math.round(x * 1000) / 1000), apresParDate: b1.map(x => Math.round(x * 1000) / 1000), leviers: rows,
            retenu: kept.length ? { w: kept.indexOf('w') >= 0 ? F.w : null, gamma: F.gamma || 0, kpos: F.kpos, mult: F.mult, bias: F.bias, alpha: F.alpha || 0,
-                                   inj: kept.indexOf('inj') >= 0 ? { m: F.injM, b: F.injB } : null } : null };
+                                   inj: kept.indexOf('inj') >= 0 ? { m: F.injM, b: F.injB } : null,
+                                   ageB: kept.indexOf('age') >= 0 ? F.ageB : 0, wpos: kept.indexOf('wpos') >= 0 ? F.wpos : null } : null };
 }
 
 // Joueur qui joue blessé : temps de jeu moyen des 3 derniers matchs ≤ 80 % de sa moyenne d'avant (au moins 8 matchs)
@@ -525,6 +533,17 @@ function btEngine_() {
 }
 
 // GAF 2025-26 (feuille publique de Crome) → stats projetées par match
+// Âge de chaque patineur au 1er octobre 2025 (API stats LNH, fiches) — gardé 7 jours
+function btAges_() {
+  const hit = pjCacheGet_('bt_ages_20252026'); if (hit) return hit;
+  const exp = encodeURIComponent('seasonId=20252026 and gameTypeId=2');
+  const r = UrlFetchApp.fetch(`https://api.nhle.com/stats/rest/en/skater/bios?isAggregate=false&isGame=false&start=0&limit=-1&cayenneExp=${exp}`, { muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) throw new Error('code ' + r.getResponseCode());
+  const out = {}, ref = new Date('2025-10-01T12:00:00Z').getTime();
+  (JSON.parse(r.getContentText()).data || []).forEach(x => { if (x.playerId && x.birthDate) out[x.playerId] = Math.round((ref - new Date(x.birthDate + 'T12:00:00Z').getTime()) / 3.15576e10 * 10) / 10; });
+  pjCachePut_('bt_ages_20252026', out);
+  return out;
+}
 function btGaf_() {
   const r = UrlFetchApp.fetch(BT.GAF_URL, { muteHttpExceptions: true });
   if (r.getResponseCode() !== 200) throw new Error('Projections GAF 2025-26 introuvables (code ' + r.getResponseCode() + ')');

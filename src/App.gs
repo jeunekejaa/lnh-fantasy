@@ -52,6 +52,11 @@ function doGet(e) {
       const cur = getOverrides_()[e.parameter.n] || {};
       return ContentService.createTextOutput(saveOverride(e.parameter.n, Object.assign({}, cur, { start: e.parameter.d || '' }))).setMimeType(ContentService.MimeType.JSON);
     }
+    if (what === 'runbt') {                          // relance le backtest 2025-26 (le même que le menu) et renvoie ses résultats
+      const L = LockService.getScriptLock(); if (!L.tryLock(2000)) return ContentService.createTextOutput('{"err":"occupé"}');
+      try { runBacktest(); } finally { L.releaseLock(); }
+      return ContentService.createTextOutput(getBacktestData() || '{}').setMimeType(ContentService.MimeType.JSON);
+    }
     if (what === 'ver') return ContentService.createTextOutput(codeStatus_()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'update') return ContentService.createTextOutput(checkCodeFromApp()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'refresh') return ContentService.createTextOutput(refreshLocked_(false)).setMimeType(ContentService.MimeType.JSON);
