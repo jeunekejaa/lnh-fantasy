@@ -528,12 +528,12 @@ function vTodo() {
   const H = WK.h || 'court';
   const hzBtns = `<div class="seg" id="wkhz" role="group" aria-label="Horizon">${[['court', 'Cette semaine'], ['long', 'Long terme'], ['hail', '🎲 Hail Mary']]
       .map(([h, l]) => `<button class="${H === h ? 'on' : ''}" data-h="${h}">${l}</button>`).join('')}</div>`;
-  const acq = povOn() ? {} : D.espn || {}, left = acq.acqLimit != null && acq.acqUsed != null ? Math.max(0, acq.acqLimit - acq.acqUsed) : null;
+  const acq = povOn() ? {} : D.espn || {}, left = acqLeft(acq, daysWk);
   const plan = streamPlan(m, daysWk, left == null ? 2 : Math.min(left, 3));
   const slotRow = slotsByDay(m.players, daysWk);
   const shortCard = `<h2>Ajouts court terme : alignement jour par jour</h2>
     <div class="small" style="margin-bottom:8px"><b>Places vides cette semaine</b> (avec ton alignement actuel) : ${slotRow}</div>
-    ${left != null ? `<div class="small muted" style="margin-bottom:8px">Acquisitions cette semaine : ${acq.acqUsed} sur ${acq.acqLimit} utilisée${acq.acqUsed > 1 ? 's' : ''} — il t’en reste <b>${left}</b>.</div>` : ''}
+    ${left != null ? `<div class="small muted" style="margin-bottom:8px">Acquisitions cette semaine : ${acq.acqUsed} sur ${acq.acqLimit} utilisée${acq.acqUsed > 1 ? 's' : ''}${acq.acqPerDay ? ` (maximum ${acq.acqPerDay} par jour)` : ''} — il t’en reste <b>${left}</b>.</div>` : ''}
     ${plan.steps.length ? `<div class="card hero" style="margin:0 0 12px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><div class="lbl" style="color:var(--accent)">Le plan de la semaine · ${plan.steps.length} transaction${plan.steps.length > 1 ? 's' : ''}</div><div class="big up" style="font-size:28px;white-space:nowrap">+${f1(plan.gain)} FP</div></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px">${plan.steps.map((x, i) =>
@@ -1491,7 +1491,7 @@ function vWeek() {
   const A = duelSide(m), B = duelSide(o), d = duelOdds(m), lead = (r.live || 0) - (r.oppLive || 0);
   const pw = d ? Math.round(d.p * 100) : null;
   let planTxt = '';
-  if (isMe) try { const acq = D.espn || {}, left = acq.acqLimit != null && acq.acqUsed != null ? Math.max(0, acq.acqLimit - acq.acqUsed) : null;
+  if (isMe) try { const acq = D.espn || {}, left = acqLeft(acq, horizonDays(D.weekEnd));
     const pl = left === 0 ? null : streamPlan(m, horizonDays(D.weekEnd), left == null ? 2 : Math.min(left, 3));
     if (pl && pl.steps.length) planTxt = `<button class="card hero" data-go="todo" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;color:var(--ink);font:inherit;cursor:pointer;padding:12px 14px">
       <svg viewBox="0 0 24 24" aria-hidden="true" style="width:20px;height:20px;flex:none;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>
@@ -1779,6 +1779,13 @@ function streamSearch(m, days, forced, daysWk) {
   return out.sort((a, b) => b.gainWk - a.gainWk || b.gain - a.gain).slice(0, 12);
 }
 // plan de la semaine : les meilleures transactions, l'une après l'autre, dans la limite d'acquisitions
+// Acquisitions qui restent cette semaine. Limite par jour (ta ligue : 1 par jour) : jamais plus que les jours qui restent.
+function acqLeft(acq, days) {
+  if (!acq || acq.acqLimit == null || acq.acqUsed == null) return null;
+  let left = Math.max(0, acq.acqLimit - acq.acqUsed);
+  if (acq.acqPerDay && days && days.length) left = Math.min(left, acq.acqPerDay * days.length);
+  return left;
+}
 function streamPlan(m, days, n) {
   let roster = m.players.slice(), gain = 0;
   const steps = [], used = {};
