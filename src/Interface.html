@@ -127,6 +127,49 @@ th.srt[data-dir]::after{content:attr(data-dir);margin-left:3px;color:var(--accen
 .fo tr.dim td{opacity:.55}
 .fo tr.tot td{border-top:2px solid var(--line);font-weight:600}
 @media (max-width:760px){.fo2{gap:10px}.fo{font-size:11.5px}.fo .hs,.fo .pos,.fo .chip{display:none}.fo th,.fo td{padding:5px 3px}.fo td.l{max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+
+/* ---------- Téléphone (iPhone 14 : 390 px) : aucun défilement de côté ---------- */
+@media (max-width:600px){
+  main{padding:4px 12px 16px}
+  .card{padding:14px 12px}
+  th,td{padding:7px 5px}
+  /* tableaux trop larges : le texte va à la ligne */
+  table.m-wrap th{white-space:normal;font-size:10px;line-height:1.2;vertical-align:bottom}
+  table.m-wrap td.mw,table.m-wrap td.mh{white-space:normal}
+  table.m-wrap td.mh{min-width:150px}
+  table .chip .ct{display:none}
+  table .chip{padding:1px 4px}
+  table.m-wrap .chip{font-size:10px;padding:1px 6px}
+  /* colonnes secondaires repliées sous le nom */
+  table .mf{display:none}
+  .msub{display:block;font-size:11.5px;font-weight:400;line-height:1.4;margin-top:3px;color:#C9D1DC;white-space:normal}
+  .msub .mk{color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;margin-right:3px}
+  .msub .ms{margin-right:10px;display:inline-block}
+  /* tableaux de texte : une fiche par ligne */
+  table.m-stack,table.m-stack tbody,table.m-stack tr,table.m-stack td{display:block;width:auto}
+  table.m-stack tr.m-head{display:none}
+  table.m-stack tr{padding:9px 0;border-bottom:1px solid var(--line2)}
+  table.m-stack tr:last-child{border-bottom:0}
+  table.m-stack td{border:0;padding:2px 0;text-align:left;white-space:normal;overflow-wrap:anywhere}
+  table.m-stack td:empty{display:none}
+  table.m-stack td.mi{display:inline-block;margin-right:14px}
+  table.m-stack td[data-label]::before{content:attr(data-label);color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;margin-right:6px}
+  table.m-stack td.mw::before{display:block;margin-bottom:2px}
+  table.m-stack td.mw{margin-top:4px}
+  table.m-stack td:first-child{font-weight:600}
+  table.m-stack td:first-child::before{display:none}
+  /* les 6 duels : grille au lieu d'un carrousel */
+  .duels{display:grid!important;grid-template-columns:1fr 1fr;overflow-x:visible!important;scroll-snap-type:none!important}
+  .duels>button{min-width:0;padding:8px!important}
+  /* face-à-face : nom de famille seulement */
+  .fo .fn{display:none}
+  .fo td.l{max-width:none}
+  .fo th.l{white-space:normal;line-height:1.15}
+  .fo th,.fo td{padding:5px 2px}
+  .fo2{gap:8px}
+  .seg button{font-size:12.5px}
+  .controls select,.controls input{min-width:0;flex:1 1 140px;max-width:100%}
+}
 </style>
 </head>
 <body>
@@ -280,7 +323,69 @@ function render() {
   document.querySelectorAll('[data-duel]').forEach(b => b.onclick = () => { WKV.sel = b.dataset.duel; render(); });
   enableSorting();
   espnNames($('#view'));
+  mobileFit($('#view'));
 }
+// ---------- Téléphone : ajuste chaque tableau à la largeur de l'écran ----------
+// 1) le texte va à la ligne ; 2) sinon les colonnes secondaires se replient sous le nom (« Analystes 4.41 · MJ 13 ») ;
+// 3) sinon (tableaux de texte) chaque ligne devient une petite fiche avec ses étiquettes.
+const MOBQ = window.matchMedia('(max-width:600px)');
+const COLPRIO = [/^#$/, /^(Joueur|Équipe|Gardien|Stat|Idée|Move|Soir|Quand)/, /^Maison/, /^FP$/, /^Force$/, /^Séries/, /^Fiche/, /^Réel$/, /^Gain/, /^Long terme/, /^Court terme/, /restants|^Rst/, /^FP\/sem/, /^Prévu/];
+function colScore(txt, i) { const k = COLPRIO.findIndex(r => r.test(txt)); return k >= 0 ? k : 100 + i; }
+function mobileFit(root) {
+  if (!root || !MOBQ.matches) return;
+  root.querySelectorAll('table').forEach(tbl => {
+    if (tbl.dataset.fit || tbl.closest('.fo,#ps')) return;
+    tbl.dataset.fit = '1';
+    const box = tbl.parentElement, fits = () => tbl.offsetWidth <= box.clientWidth + 1;
+    if (!box || fits()) return;
+    tbl.classList.add('m-wrap');
+    Array.from(tbl.rows).forEach(r => Array.from(r.cells).forEach(c => { if (c.textContent.trim().length > 16) c.classList.add('mw'); }));
+    const rows = Array.from(tbl.rows), head = rows[0], ths = head ? Array.from(head.cells) : [];
+    const hasHead = ths.length > 1 && ths.every(c => c.tagName === 'TH' && c.colSpan === 1);
+    const label = c => c.textContent.replace(/[▲▼↑↓]/g, '').trim();
+    // texte long dans les cellules (listes de noms) → fiches ; sinon on replie des colonnes
+    const texty = rows.slice(1, 8).some(r => Array.from(r.cells).slice(1).some(c => c.textContent.trim().length > 28));
+    // ça rentre en allant à la ligne, sauf si des colonnes de texte deviennent trop étroites (une ligne par mot)
+    if (fits() && !(texty && ths.length >= 3 && Array.from(tbl.querySelectorAll('td.mw')).some(c => c.offsetWidth < 170))) return;
+    if (hasHead && !texty && ths.length > 2) {
+      // la colonne du nom reçoit les colonnes repliées ; elle garde au moins 150 px
+      let host = ths.findIndex(c => /^(Joueur|Équipe|Gardien|Stat|Idée|Move)/.test(label(c))); if (host < 0) host = 0;
+      const n = ths.length, order = ths.map((c, i) => ({ i: i, s: colScore(label(c), i) })).filter(o => o.i !== host).sort((a, b) => b.s - a.s);
+      rows.forEach(r => { if (r.cells.length === n) r.cells[host].classList.add('mh'); });
+      const roomy = () => fits() && head.cells[host].offsetWidth >= 140;
+      const hidden = [];
+      for (const o of order) {
+        if (roomy() || n - hidden.length <= 2) break;
+        hidden.push(o.i);
+        rows.forEach(r => { if (r.cells.length === n) r.cells[o.i].classList.add('mf'); });
+      }
+      if (hidden.length) {
+        hidden.sort((a, b) => a - b);
+        rows.slice(1).forEach(r => {
+          if (r.cells.length !== n) return;
+          const bits = hidden.map(i => { const c = r.cells[i], t = c.textContent.trim(); return t && t !== '–' ? `<span class="ms"><span class="mk">${esc(label(ths[i]))}</span><span class="${c.className.replace('mf', '')}">${c.innerHTML}</span></span>` : ''; }).join('');
+          if (bits) r.cells[host].insertAdjacentHTML('beforeend', `<span class="msub">${bits}</span>`);
+        });
+      }
+      if (fits()) return;
+      rows.forEach(r => Array.from(r.cells).forEach(c => c.classList.remove('mf', 'mh')));
+      tbl.querySelectorAll('.msub').forEach(x => x.remove());
+    }
+    tbl.classList.remove('m-wrap'); tbl.classList.add('m-stack');
+    if (hasHead) head.classList.add('m-head');
+    rows.slice(hasHead ? 1 : 0).forEach(r => Array.from(r.cells).forEach((c, i) => {
+      if (hasHead && r.cells.length === ths.length && i > 0 && label(ths[i])) c.dataset.label = label(ths[i]);
+      if (i > 0 && c.textContent.trim().length <= 16) c.classList.add('mi');
+    }));
+  });
+}
+(function () {
+  let t = null;
+  const obs = new MutationObserver(() => { if (t) return; t = requestAnimationFrame(() => { t = null; mobileFit(document.getElementById('view')); }); });
+  const hook = () => { const v = document.getElementById('view'); if (v) obs.observe(v, { childList: true, subtree: true }); };
+  if (document.getElementById('view')) hook(); else window.addEventListener('DOMContentLoaded', hook);
+  MOBQ.addEventListener && MOBQ.addEventListener('change', () => { try { render(); } catch (e) { /* données pas encore chargées */ } });
+})();
 // Les équipes s'affichent sous leur nom ESPN actuel (la feuille du classeur garde l'ancien nom, qui sert de clé partout)
 const dn = n => (D && D.names && D.names[n]) || n;
 function espnNames(root) {
@@ -1329,11 +1434,16 @@ function duelSide(t) {
   const cls = k => t.players.filter(p => { const x = trend(p); return x && x.cls === k; });
   return { rows: rows, left: left, cls: cls, espn: !!R };
 }
+// Nom avec le prénom masquable (téléphone : nom de famille seulement)
+function pnameShort(p, owner) {
+  const h = pname(p, owner), n = p.name || '', i = n.indexOf(' ');
+  return i > 0 ? h.replace('>' + esc(n) + '<', '><span class="fn">' + esc(n.slice(0, i)) + ' </span>' + esc(n.slice(i + 1)) + '<') : h;
+}
 function duelTable(t, side, first) {
   const dot = p => { const x = trend(p); return x && x.cls !== 'conforme' && TREND[x.cls] ? `<span title="${TREND[x.cls].l}">${TREND[x.cls].e}</span>` : ''; };
   const tot = side.rows.reduce((s, x) => s + x.fp, 0);
   return `<table class="fo"><tr><th class="l" style="color:${t.team === D.me ? 'var(--accent)' : first ? 'var(--ink)' : 'var(--opp)'}">${t.team === D.me ? 'Toi' : esc(t.team)}</th><th class="hs" title="Matchs joués dans l'alignement (pas au banc) cette semaine">MJ</th><th title="FP comptés cette semaine : seulement les jours où il était dans l'alignement de cette équipe">FP</th><th title="FP comptés − projection maison × matchs joués">±</th><th class="hs" title="Matchs restants cette semaine">Rst</th></tr>
-    ${side.rows.map(x => `<tr${OUT[x.p.status] || x.drop ? ' class="dim"' : ''}><td class="l">${dot(x.p)} ${pname(x.p, x.drop ? '' : t.team)} <span class="pos">${esc(x.p.pos)}</span>${x.drop ? ' <span class="chip">retiré</span>' : x.add ? ' <span class="chip blue">ajouté</span>' : ''}${!x.drop && x.p.live ? ' <span class="chip bad" title="Son match est commencé">🔴 en cours</span>' : ''}${OUT[x.p.status] && !x.drop ? ' ' + stChip(x.p.status, x.p) : ''}</td><td class="hs">${x.gp}</td><td title="${x.bench ? f1(x.bench) + ' FP au banc (non comptés)' : ''}"><b>${f1(x.fp)}</b></td>
+    ${side.rows.map(x => `<tr${OUT[x.p.status] || x.drop ? ' class="dim"' : ''}><td class="l">${dot(x.p)} ${pnameShort(x.p, x.drop ? '' : t.team)} <span class="pos">${esc(x.p.pos)}</span>${x.drop ? ' <span class="chip">retiré</span>' : x.add ? ' <span class="chip blue">ajouté</span>' : ''}${!x.drop && x.p.live ? ' <span class="chip bad" title="Son match est commencé">🔴 en cours</span>' : ''}${OUT[x.p.status] && !x.drop ? ' ' + stChip(x.p.status, x.p) : ''}</td><td class="hs">${x.gp}</td><td title="${x.bench ? f1(x.bench) + ' FP au banc (non comptés)' : ''}"><b>${f1(x.fp)}</b></td>
       <td class="${x.d >= 1 ? 'up' : x.d <= -1 ? 'down' : 'muted'}" title="attendu ${f1(x.exp)}">${x.gp ? sgn(x.d, 1) : ''}</td><td class="hs">${x.drop || x.p.grp === 'G' ? '' : x.p.left || 0}</td></tr>`).join('')}
     <tr class="tot"><td class="l">Total</td><td class="hs">${side.rows.reduce((s, x) => s + x.gp, 0)}</td><td><b>${f1(tot)}</b></td><td class="${side.rows.reduce((s, x) => s + x.d, 0) >= 0 ? 'up' : 'down'}">${sgn(side.rows.reduce((s, x) => s + (x.gp ? x.d : 0), 0), 1)}</td><td class="hs">${side.left}</td></tr></table>`;
 }
@@ -1361,7 +1471,7 @@ function weekStrip(per) {
       <div style="text-align:center"><div class="lbl">Semaine ${per}${per === cur ? ' · en cours' : ' · à venir'}</div><div class="small muted">${live ? 'pointage actuel · chances de gagner' : 'projection selon la force des équipes'}</div></div>
       <button class="btn" data-wk="1" aria-label="Semaine suivante" ${per >= last ? 'disabled style="opacity:.35"' : ''}>›</button>
     </div>
-    <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scroll-snap-type:x mandatory">${list.map(x => {
+    <div class="duels" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scroll-snap-type:x mandatory">${list.map(x => {
       const on = live && (x.a.team === sel || x.b.team === sel), pa = Math.round(x.pa * 100);
       const side = (t, sc, e, col) => `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><span style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${t.team === D.me ? 'var(--accent)' : 'var(--ink)'}">${short(t.team)}</span><b class="big" style="font-size:18px;color:${col}">${live ? f1(sc) : f1(e)}</b></div>`;
       return `<button data-duel="${esc(x.a.team)}" ${live ? '' : 'disabled'} style="flex:0 0 200px;scroll-snap-align:start;text-align:left;font:inherit;color:var(--ink);background:${on ? 'var(--me)' : 'var(--card2)'};border:1px solid ${on ? '#1E4A63' : 'var(--line)'};border-radius:12px;padding:10px;cursor:${live ? 'pointer' : 'default'}">
@@ -1534,7 +1644,7 @@ function trend(p) {
 const pChip = p => ovChip(p) + (p.inj ? '<span class="chip bad" title="Temps de jeu −20 % sur ses 3 derniers matchs : joue peut-être blessé">🚨</span>' : '') + pChip0(p);
 const ovChip = p => (p._ov ? `<span class="chip" title="Mon info : ${esc([p._ov.pts ? 'mon estimé : ' + p._ov.pts + ' pts' : '', p._ov.out ? 'absent jusqu’au ' + p._ov.out : '', p._ov.start ? 'partant le ' + p._ov.start : '', p._ov.role || '', p._ov.note || ''].filter(Boolean).join(' · '))}">📝</span> ` : '');
 const pChip0 = p => { const t = trend(p); if (!t) return sigChip(p.signal); if (t.cls === 'conforme') return '';
-  const T = TREND[t.cls]; return `<span class="chip ${T.c}" title="${esc(T.t)}">${T.e} ${T.l}</span>`; };
+  const T = TREND[t.cls]; return `<span class="chip ${T.c}" title="${esc(T.t)}">${T.e}<span class="ct"> ${T.l}</span></span>`; };
 const sgnPct = r => (r >= 0 ? '+' : '−') + Math.round(Math.abs(r) * 100) + ' %';
 function trendBox(p) {
   const t = trend(p); if (!t) return '';
