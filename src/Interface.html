@@ -187,9 +187,9 @@ th.srt[data-dir]::after{content:attr(data-dir);margin-left:3px;color:var(--accen
 
 <script>
 let D = null, TAB = 'week';
-const GROUPS = { ligue: ['board', 'tx'], team: ['team'], week: ['week'], todo: ['todo'], outils: ['trade', 'waivers', 'search', 'about'] };
+const GROUPS = { ligue: ['board', 'tx'], team: ['team'], week: ['week'], todo: ['todo'], outils: ['trade', 'waivers', 'search', 'pred', 'about'] };
 const GLABEL = { ligue: 'Ligue', team: 'Équipes', week: 'Semaine', todo: 'Que faire ?', outils: 'Outils' };
-const TLABEL = { board: 'Classement', tx: 'Transactions', trade: 'Échange', waivers: 'Ballotage', search: 'Chercher', about: 'Modèle' };
+const TLABEL = { board: 'Classement', tx: 'Transactions', trade: 'Échange', waivers: 'Ballotage', search: 'Chercher', pred: 'Prédictions', about: 'Modèle' };
 const LASTSUB = { ligue: 'board', outils: 'trade' };
 const groupOf = t => Object.keys(GROUPS).find(g => GROUPS[g].indexOf(t) >= 0) || 'week';
 function navState() {
@@ -309,8 +309,9 @@ function render() {
     + (staleDay() ? `<div class="warnbox">⚠ Ces données datent du <b>${esc(dShort(todayStr()))}</b> : « ce soir », les matchs restants et les partants sont ceux de cette journée-là. Appuie sur <b>Mettre à jour</b>.</div>` : '');
   navState();
   const g = groupOf(TAB), segs = GROUPS[g].length > 1 ? `<div class="seg mob" role="group" aria-label="${GLABEL[g]}">${GROUPS[g].map(t => `<button data-sub="${t}" class="${t === TAB ? 'on' : ''}">${TLABEL[t]}</button>`).join('')}</div>` : '';
-  $('#view').innerHTML = segs + warn + ({ board: vBoard, team: vTeam, week: vWeek, todo: () => withPov(vTodo), waivers: vWaivers, search: vSearch, trend: vTrend, tx: vTx, log: vLog, trade: vTrade, about: vAbout }[TAB])();
+  $('#view').innerHTML = segs + warn + ({ board: vBoard, team: vTeam, week: vWeek, todo: () => withPov(vTodo), waivers: vWaivers, search: vSearch, pred: vPred, trend: vTrend, tx: vTx, log: vLog, trade: vTrade, about: vAbout }[TAB])();
   if (TAB === 'search') bindSearch();
+  if (TAB === 'pred') bindPred();
   if (TAB === 'todo') bindWeek();
   if (TAB === 'todo') bindTodo();
   if (TAB === 'waivers') bindWaivers();
@@ -649,6 +650,124 @@ function bindWeek() {
 // Chercher un joueur : tous les alignements + tous les joueurs libres
 let SQ = '';
 const fold = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+// ---------- Outils › Prédictions 2026-27 : B / A / PTS (et gardiens) de chaque joueur à la fin d'un mois ----------
+// Total = réel à date + projection maison (stats par match) × matchs attendus d'ici la date choisie.
+// Matchs attendus = matchs de son équipe d'ici là (calendrier LNH) × 94 % (repos, petits bobos) ; un blessé ne compte qu'à partir
+// de sa date de retour (sans date : 2 semaines pour la liste des blessés, 1 semaine sinon). Gardiens : × sa part des départs.
+let PRV = { cut: 'end', pos: 'sk', own: 'all', nhl: 'all', split: false, sort: 'pts', dir: -1, q: '', n: 100, tab: { sk: 'pts', d: 'pts', g: 'w', r: 'pts' } };
+const MOISF = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+function predCuts() {
+  const t = todayStr(), out = [];
+  let y = +t.slice(0, 4), m = +t.slice(5, 7);
+  while (y < 2027 || m < 4) {
+    const last = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+    out.push([last, 'Fin ' + MOISF[m - 1]]);
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  out.push(['end', 'Fin de saison']);
+  return out;
+}
+function predGames(p, cut) {
+  const t = todayStr(), end = cut === 'end' ? '2027-12-31' : cut;
+  let from = t;
+  if (OUT[p.status]) from = p.ret && p.ret > t ? p.ret : ymdAdd(t, p.status === 'INJURY_RESERVE' ? 14 : 7);
+  let n = (D.teamGames[p.nhl] || []).filter(g => g[0] > t && g[0] >= from && g[0] <= end).length;
+  if (from === t && p.today && !p.live) n += 1;
+  if (p.live) n += p.liveLeft || 0;
+  return n;
+}
+function predRow(p) {
+  const x = p.x || {}, s = x.s, r = x.r; if (!s || !r) return null;
+  const gp = p.gp || 0, games = predGames(p, PRV.cut);
+  if (p.grp === 'G') {
+    const st = games * (p.share != null ? p.share : D.config.share);
+    const w = s[0] + r[0] * st, ga = s[1] + r[1] * st, sv = s[2] + r[2] * st, so = s[3] + r[3] * st, gpT = gp + st;
+    return { p: p, g: true, gp: gpT, gp0: gp, w: w, w0: s[0], so: so, so0: s[3], gaa: gpT ? ga / gpT : null, svp: sv + ga ? sv / (sv + ga) : null };
+  }
+  // « Mon estimé » (ex. McDavid 175) est un total sur tous les matchs de son équipe : pas de rabais de 94 %
+  const mine = D.ovr && D.ovr[p.name] && D.ovr[p.name].pts > 0;
+  const eg = games * (mine ? 1 : (D.config.injury || 0.94)), g = s[0] + r[0] * eg, a = s[1] + r[1] * eg;
+  return { p: p, g: false, gp: gp + eg, gp0: gp, b: g, b0: s[0], a: a, a0: s[1], pts: g + a, pts0: s[0] + s[1] };
+}
+function predAll() {
+  const own = {}; D.teams.forEach(t => t.players.forEach(p => { own[p.name] = t.team; }));
+  const seen = {}, all = [];
+  D.teams.forEach(t => t.players.forEach(p => { if (!seen[p.name]) { seen[p.name] = 1; all.push(Object.assign({ owner: t.team }, p)); } }));
+  D.waivers.forEach(p => { if (!seen[p.name]) { seen[p.name] = 1; all.push(Object.assign({ owner: '' }, p)); } });
+  const R = {}; (D.rookies || []).forEach(id => { R[id] = 1; });
+  return all.map(p => { const r = predRow(p); if (r) r.rk = !!R[p.id]; return r; }).filter(Boolean);
+}
+function vPred() {
+  const cuts = predCuts(); if (!cuts.some(c => c[0] === PRV.cut)) PRV.cut = 'end';
+  const rows = predAll();
+  const ownOk = r => PRV.own === 'all' || (PRV.own === 'libre' ? !r.p.owner : r.p.owner === PRV.own);
+  const nhlOk = r => PRV.nhl === 'all' || r.p.nhl === PRV.nhl;
+  const base = rows.filter(r => ownOk(r) && nhlOk(r));
+  const nhls = Object.keys(D.teamGames || {}).sort();
+  const sel = (id, v, opts) => `<select id="${id}">${opts.map(([k, l]) => `<option value="${esc(k)}" ${k === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+  const controls = `<div class="controls">
+      ${sel('pr-cut', PRV.cut, cuts)}
+      ${sel('pr-pos', PRV.pos, [['sk', 'Patineurs'], ['F', 'Attaquants'], ['D', 'Défenseurs'], ['G', 'Gardiens']])}
+      ${sel('pr-own', PRV.own, [['all', 'Tous les joueurs'], ['libre', 'Joueurs libres'], [D.me, 'Mon équipe']].concat(D.teams.filter(t => t.team !== D.me).map(t => [t.team, dn(t.team)])))}
+      ${sel('pr-nhl', PRV.nhl, [['all', 'Toutes les équipes LNH']].concat(nhls.map(t => [t, t])))}
+      <label class="small" style="display:flex;align-items:center;gap:6px;min-height:42px"><input type="checkbox" id="pr-split" ${PRV.split ? 'checked' : ''} style="width:18px;height:18px;min-height:0"> Réel + projeté</label>
+    </div>`;
+  const cutLbl = (cuts.find(c => c[0] === PRV.cut) || [, ''])[1].toLowerCase();
+  // ---- palmarès top 10
+  const nm = r => `${pname(r.p, r.p.owner)} <span class="pos">${esc(r.p.pos)} · ${esc(r.p.nhl)}</span>`;
+  const gMin = Math.max(4, 0.25 * Math.max(0, ...base.filter(r => r.g).map(r => r.gp)));
+  const SK = [['pts', 'Points'], ['b', 'Buts'], ['a', 'Passes']], GK = [['w', 'Victoires'], ['gaa', 'Moyenne'], ['svp', '% arrêts'], ['so', 'Blanchissages']];
+  const fmt = (k, v) => k === 'gaa' ? (v == null ? '–' : v.toFixed(2)) : k === 'svp' ? (v == null ? '–' : v.toFixed(3).replace(/^0/, '')) : f0(v);
+  const card = (id, title, list, keys, note) => {
+    const k = PRV.tab[id], asc = k === 'gaa';
+    const L = list.filter(r => r[k] != null && (k === 'gaa' || k === 'svp' ? r.gp >= gMin : true)).sort((a, b) => asc ? a[k] - b[k] : b[k] - a[k]).slice(0, 10);
+    return `<div class="card" style="margin:0"><h2>${title}</h2>
+      <div class="seg" style="margin-bottom:8px">${keys.map(([kk, l]) => `<button data-pt="${id}:${kk}" class="${kk === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      ${L.length ? `<table class="nosort">${L.map((r, i) => `<tr${i === 0 ? ' class="me"' : ''}><td style="width:28px" class="muted">${i + 1}</td><td class="l">${nm(r)}</td><td><b>${fmt(k, r[k])}</b></td></tr>`).join('')}</table>` : '<div class="muted small">Aucun joueur avec ces filtres.</div>'}
+      ${note ? `<div class="small muted" style="margin-top:6px">${note}</div>` : ''}</div>`;
+  };
+  const sk = base.filter(r => !r.g), cards = `<div class="two" style="margin-bottom:14px">
+      ${card('sk', 'Patineurs', sk, SK)}
+      ${card('g', 'Gardiens', base.filter(r => r.g), GK, `Moyenne et % d’arrêts : au moins ${f0(gMin)} matchs.`)}
+      ${card('d', 'Défenseurs', sk.filter(r => r.p.grp === 'D'), SK)}
+      ${card('r', 'Recrues', sk.filter(r => r.rk), SK)}
+    </div>`;
+  // ---- liste complète
+  const q = fold(PRV.q).trim();
+  let L = base.filter(r => PRV.pos === 'G' ? r.g : !r.g && (PRV.pos === 'sk' || r.p.grp === PRV.pos)).filter(r => q.length < 2 || fold(r.p.name).includes(q));
+  const cols = PRV.pos === 'G'
+    ? [['gp', 'MJ'], ['w', 'V'], ['gaa', 'Moy.'], ['svp', '% arr.'], ['so', 'BL']]
+    : [['gp', 'MJ'], ['b', 'B'], ['a', 'A'], ['pts', 'PTS']];
+  if (!cols.some(c => c[0] === PRV.sort)) { PRV.sort = PRV.pos === 'G' ? 'w' : 'pts'; PRV.dir = -1; }
+  const k = PRV.sort, dir = PRV.dir;
+  L.sort((a, b) => ((a[k] == null) - (b[k] == null)) || dir * ((a[k] || 0) - (b[k] || 0)));
+  const total = L.length; L = L.slice(0, PRV.n);
+  const cell = (r, kk) => {
+    if (kk === 'gaa' || kk === 'svp') return fmt(kk, r[kk]);
+    const v = r[kk], r0 = r[kk + '0'];
+    const main = kk === 'gp' ? f0(v) : `<b>${f0(v)}</b>`;
+    return PRV.split && r0 != null ? `${main}<span class="muted small" style="white-space:nowrap"> (${f0(r0)} + ${f0(v - r0)})</span>` : main;
+  };
+  const tbl = `<div class="tbl"><table class="nosort"><tr><th style="width:34px">#</th><th class="l">Joueur</th>${cols.map(([kk, l]) => `<th class="srt" data-ps="${kk}" title="Trier"${kk === k ? ` data-dir="${dir < 0 ? '▼' : '▲'}"` : ''}>${l}</th>`).join('')}</tr>
+    ${L.map((r, i) => `<tr><td class="muted">${i + 1}</td><td class="l">${nm(r)}${r.rk ? ' <span class="chip blue">recrue</span>' : ''}${r.p.owner === D.me ? ' <span class="chip good">toi</span>' : ''}</td>${cols.map(([kk]) => `<td>${cell(r, kk)}</td>`).join('')}</tr>`).join('')}</table></div>
+    ${total > L.length ? `<button class="btn" id="pr-more" style="width:100%;margin-top:10px">Afficher plus (${total - L.length} autres)</button>` : ''}`;
+  return `<div class="card"><h2>Prédictions 2026-27 · ${esc(cutLbl)}</h2>${controls}
+      <div class="small muted">Total = réel à date + projection maison (stats par match) × matchs attendus d’ici ${PRV.cut === 'end' ? 'la fin de la saison' : 'cette date'}. Matchs attendus = matchs de son équipe × 94 % ; un blessé compte à partir de sa date de retour. Gardiens : × sa part des départs.${PRV.split ? ' Entre parenthèses : déjà fait + projeté.' : ''}</div></div>
+    ${cards}
+    <div class="card"><h2>Tous les joueurs</h2><div class="controls"><input id="pr-q" placeholder="Chercher un joueur" value="${esc(PRV.q)}" style="flex:1;min-width:160px" autocomplete="off"></div>${tbl}</div>`;
+}
+function bindPred() {
+  const on = (id, f) => { const e = $('#' + id); if (e) e.onchange = f; };
+  on('pr-cut', e => { PRV.cut = e.target.value; render(); });
+  on('pr-pos', e => { PRV.pos = e.target.value; PRV.n = 100; render(); });
+  on('pr-own', e => { PRV.own = e.target.value; render(); });
+  on('pr-nhl', e => { PRV.nhl = e.target.value; render(); });
+  on('pr-split', e => { PRV.split = e.target.checked; render(); });
+  const q = $('#pr-q'); if (q) q.oninput = e => { PRV.q = e.target.value; clearTimeout(q._t); q._t = setTimeout(() => { render(); const i = $('#pr-q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250); };
+  const m = $('#pr-more'); if (m) m.onclick = () => { PRV.n += 100; render(); };
+  document.querySelectorAll('[data-pt]').forEach(b => b.onclick = () => { const [c, k] = b.dataset.pt.split(':'); PRV.tab[c] = k; render(); });
+  document.querySelectorAll('[data-ps]').forEach(th => th.onclick = () => { const k = th.dataset.ps; PRV.dir = PRV.sort === k ? -PRV.dir : (k === 'gaa' ? 1 : -1); PRV.sort = k; render(); });
+}
 function vSearch() {
   const all = [];
   D.teams.forEach(t => t.players.forEach(p => all.push(Object.assign({ owner: t.team }, p))));
@@ -1186,6 +1305,7 @@ function sortTable(tbl, col, dir) {
 }
 function enableSorting() {
   document.querySelectorAll('#view table').forEach((tbl, ti) => {
+    if (tbl.classList.contains('nosort')) return;
     const head = tbl.querySelector('tr'); if (!head || !head.querySelector('th')) return;
     if (Array.from(tbl.querySelectorAll('tr')).slice(1).some(r => r.querySelector('td[colspan]'))) return;
     head.querySelectorAll('th').forEach((th, ci) => {

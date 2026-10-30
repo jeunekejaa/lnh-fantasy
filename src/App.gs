@@ -665,7 +665,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
               share: CONFIG.GOALIE_START_SHARE, sims: APP.SIMS, luck: APP.LUCK,
               k: inSeason_() ? Object.assign({}, APP.K, inSeason_().K, { gx: inSeason_().kxg, g: inSeason_().gsrc === 'tirs' ? inSeason_().K.g : inSeason_().kg, gstart: inSeason_().gk ? inSeason_().gk.k : APP.K.gstart }) : APP.K,
               bt: inSeason_() },
-    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), moves: myMoves, journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS,
+    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), rookies: rookies_(), moves: myMoves, journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS,
     teams: teamsOut, waivers: waivers, schedule: sched.games, warn: WARN.slice(),
     sources: ['LNH (api-web.nhle.com)', 'ESPN Fantasy', 'GAF Aggregate Projections', 'MoneyPuck.com']
   };
@@ -1335,6 +1335,19 @@ function myMoves_(teamsOut, waivers) {
   list = list.slice(0, 45);
   if (added || espnFrom) { try { props.setProperty('MYMOVES2', JSON.stringify(list)); } catch (e) { WARN.push('Bilan de tes moves : trop gros pour être gardé'); } }
   return list;
+}
+// Recrues de la saison (définition LNH : filtre isRookie des stats officielles), gardées 12 h — onglet Prédictions
+function rookies_() {
+  const cache = CacheService.getScriptCache(), hit = cache.get('ROOKIES');
+  if (hit) { try { return JSON.parse(hit); } catch (e) { /* on refait */ } }
+  try {
+    const exp = encodeURIComponent(`seasonId=${CONFIG.SEASON} and gameTypeId=${CONFIG.GAME_TYPE} and isRookie="1"`);
+    const ids = [];
+    fetchJsonAll_(['skater', 'goalie'].map(k => `https://api.nhle.com/stats/rest/en/${k}/summary?limit=400&cayenneExp=${exp}`))
+      .forEach(j => ((j && j.data) || []).forEach(r => { if (r.playerId) ids.push(r.playerId); }));
+    if (ids.length) cache.put('ROOKIES', JSON.stringify(ids), 43200);
+    return ids;
+  } catch (e) { WARN.push('Recrues : ' + e.message); return []; }
 }
 function getWatch_() { try { return JSON.parse(PropertiesService.getDocumentProperties().getProperty('WATCH') || '[]'); } catch (e) { return []; } }
 function saveWatch(list) {          // appelée par l'app
