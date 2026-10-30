@@ -303,10 +303,13 @@ const BT_CLS = ['progression', 'chanceux', 'malchanceux', 'panne'];
 function btFinal_(sets, C, w0, SW, mae) {
   const K = BT.K_GRID, mixW = (g, m, w) => { const o = {}; SK_STATS.forEach(k => { o[k] = w * (g[k] || 0) + (1 - w) * (m[k] || 0); }); return o; };
   const baseFor = (r, w) => { if (w === w0 || !r.gaf || !r.pjr) return r; r._b = r._b || {}; return r._b[w] || (r._b[w] = Object.assign({}, r, { base: mixW(r.gaf, r.pjr, w) })); };
-  const neutral = () => ({ w: w0, gamma: 0, kpos: { F: {}, D: {} }, mult: {}, bias: {}, alpha: 0, injM: 1, injB: 0, ageB: 0, wpos: {} });
+  const neutral = () => ({ w: w0, gamma: 0, kpos: { F: {}, D: {} }, mult: {}, bias: {}, alpha: 0, injM: 1, injB: 0, ageB: 0, wpos: {}, yB: 0 });
+  // jeunes en progression : base d'avant-saison × (1 + yB × (26 − âge) ÷ 4) sur les stats offensives (buts, passes, pts AN, tirs)
+  const OFF = ['g', 'a', 'ppp', 'sog'];
+  const youngFor = (r, yB) => { if (!yB || !r.age || r.age >= 26) return r; const f = 1 + yB * (26 - r.age) / 4, b = Object.assign({}, r.base); OFF.forEach(k => { b[k] = (b[k] || 0) * f; }); return Object.assign({}, r, { base: b }); };
   const clone = X => JSON.parse(JSON.stringify(X));
   const predR = (r, st, X) => {
-    const rr = baseFor(r, X.wpos && X.wpos[r.pos] != null ? X.wpos[r.pos] : X.w), cm = r.cls && X.mult[r.cls] != null ? X.mult[r.cls] : 1;
+    const rr = youngFor(baseFor(r, X.wpos && X.wpos[r.pos] != null ? X.wpos[r.pos] : X.w), X.yB), cm = r.cls && X.mult[r.cls] != null ? X.mult[r.cls] : 1;
     // âge : k × (âge ÷ 27)^ageB — ageB > 0 = on croit plus vite la saison d'un jeune, plus lentement celle d'un vétéran
     const gf = (X.gamma ? Math.pow(Math.max(1, r.n) / 15, X.gamma) : 1) * (X.alpha ? Math.pow(r.kr || 1, X.alpha) : 1) * (r.inj ? X.injM : 1)
              * (X.ageB && r.age ? Math.pow(Math.max(18, Math.min(40, r.age)) / 27, X.ageB) : 1);
@@ -327,6 +330,7 @@ function btFinal_(sets, C, w0, SW, mae) {
       if (on('gamma')) BT_FINAL.gamma.forEach(v => { if (v !== X.gamma) { const Y = clone(X); Y.gamma = v; moved = tryX(Y) || moved; } });
       if (on('alpha')) [-1, -0.5, 0.5, 1].forEach(v => { if (v !== X.alpha) { const Y = clone(X); Y.alpha = v; moved = tryX(Y) || moved; } });
       if (on('age')) [-3, -2, -1, -0.5, 0.5, 1, 2, 3].forEach(v => { if (v !== X.ageB) { const Y = clone(X); Y.ageB = v; moved = tryX(Y) || moved; } });
+      if (on('young')) [0.02, 0.04, 0.06, 0.08, 0.1, 0.15, 0.2].forEach(v => { if (v !== X.yB) { const Y = clone(X); Y.yB = v; moved = tryX(Y) || moved; } });
       if (on('wpos')) ['F', 'D'].forEach(pos => BT_FINAL.w.forEach(v => { const cur = X.wpos[pos] != null ? X.wpos[pos] : X.w; if (v !== cur) { const Y = clone(X); Y.wpos[pos] = v; moved = tryX(Y) || moved; } }));
       if (on('inj')) { BT_FINAL.mult.forEach(v => { if (v !== X.injM) { const Y = clone(X); Y.injM = v; moved = tryX(Y) || moved; } }); BT_FINAL.bias.forEach(v => { if (v !== X.injB) { const Y = clone(X); Y.injB = v; moved = tryX(Y) || moved; } }); }
       if (on('kpos')) ['F', 'D'].forEach(pos => SK_STATS.forEach(s => K.forEach(k => {
@@ -349,6 +353,7 @@ function btFinal_(sets, C, w0, SW, mae) {
     { id: 'alpha', nom: 'k individuel (selon la variabilité de son niveau d’une saison à l’autre)', off: Y => { Y.alpha = 0; }, val: Y => `k × (variabilité ÷ typique)^${Y.alpha}` },
     { id: 'inj', nom: 'Joueur qui joue blessé (temps de jeu −20 % sur 3 matchs)', off: Y => { Y.injM = 1; Y.injB = 0; }, val: Y => `k ×${Y.injM}, ${Y.injB > 0 ? '+' : ''}${Y.injB} FP/match` },
     { id: 'age', nom: 'k selon l’âge (jeunes : on croit la saison plus vite)', off: Y => { Y.ageB = 0; }, val: Y => `k × (âge ÷ 27)^${Y.ageB}` },
+    { id: 'young', nom: 'Jeunes (moins de 26 ans) : base d’avant-saison relevée', off: Y => { Y.yB = 0; }, val: Y => `base offensive × (1 + ${Y.yB} × (26 − âge) ÷ 4)` },
     { id: 'wpos', nom: 'Poids analystes / moteur différent pour attaquants et défenseurs', off: Y => { Y.wpos = {}; }, val: Y => ['F', 'D'].map(p => p + ' : analystes ' + Math.round((Y.wpos[p] != null ? Y.wpos[p] : Y.w) * 100) + ' %').join(' · ') },
     { id: 'bias', nom: 'Correction selon la tendance (FP/match)', off: Y => { Y.bias = {}; }, val: Y => Object.keys(Y.bias).filter(c => Y.bias[c]).map(c => c + ' ' + (Y.bias[c] > 0 ? '+' : '') + Y.bias[c]).join(', ') || '—' }
   ];
@@ -361,14 +366,26 @@ function btFinal_(sets, C, w0, SW, mae) {
     return { id: L.id, nom: L.nom, reglage: L.val(Xall), gainHorsEchantillon: Math.round(cv * 10000) / 10000,
              moities: g.map(x => Math.round(x * 10000) / 10000).join(' / '), datesGagnees: wins + '/' + sets.length, retenu: ok };
   });
+  // Diagnostic : le modèle (sans levier) se trompe-t-il dans un sens pour certains groupes ? (prédit − réel, FP et points par match)
+  const X0 = neutral(), groups = [['21 ans et moins', r => r.age && r.age < 22], ['22 à 24 ans', r => r.age >= 22 && r.age < 25], ['25 à 28 ans', r => r.age >= 25 && r.age < 29],
+    ['29 à 32 ans', r => r.age >= 29 && r.age < 33], ['33 ans et plus', r => r.age >= 33], ['Top 50 prédits', null], ['Tous', r => true]];
+  const biaisAge = groups.map(([nom, f]) => {
+    let n = 0, dFp = 0, pP = 0, aP = 0;
+    sets.forEach(st => {
+      let L = st.sk;
+      if (!f) L = L.slice().sort((a, b) => predR(b, st, X0) - predR(a, st, X0)).slice(0, 50); else L = L.filter(f);
+      L.forEach(r => { n++; dFp += predR(r, st, X0) - r.restFp; pP += btPred_(r, 'g', C.g.v, C.g.k, st) + btPred_(r, 'a', C.a.v, C.a.k, st); aP += (r.act.g || 0) + (r.act.a || 0); });
+    });
+    return { groupe: nom, n: n, biaisFp: n ? Math.round(dFp / n * 1000) / 1000 : null, ptsPredits: n ? Math.round(pP / n * 1000) / 1000 : null, ptsReels: n ? Math.round(aP / n * 1000) / 1000 : null };
+  });
   const kept = rows.filter(r => r.retenu).map(r => r.id);
   const F = kept.length ? fit(null, kept) : neutral();
   const b0 = perDate(neutral()), b1 = perDate(F), avg = d => d.reduce((t, x) => t + x, 0) / d.length;
-  return { avant: Math.round(avg(b0) * 10000) / 10000, apres: Math.round(avg(b1) * 10000) / 10000,
+  return { biaisAge: biaisAge, avant: Math.round(avg(b0) * 10000) / 10000, apres: Math.round(avg(b1) * 10000) / 10000,
            avantParDate: b0.map(x => Math.round(x * 1000) / 1000), apresParDate: b1.map(x => Math.round(x * 1000) / 1000), leviers: rows,
            retenu: kept.length ? { w: kept.indexOf('w') >= 0 ? F.w : null, gamma: F.gamma || 0, kpos: F.kpos, mult: F.mult, bias: F.bias, alpha: F.alpha || 0,
                                    inj: kept.indexOf('inj') >= 0 ? { m: F.injM, b: F.injB } : null,
-                                   ageB: kept.indexOf('age') >= 0 ? F.ageB : 0, wpos: kept.indexOf('wpos') >= 0 ? F.wpos : null } : null };
+                                   ageB: kept.indexOf('age') >= 0 ? F.ageB : 0, wpos: kept.indexOf('wpos') >= 0 ? F.wpos : null, yB: kept.indexOf('young') >= 0 ? F.yB : 0 } : null };
 }
 
 // Joueur qui joue blessé : temps de jeu moyen des 3 derniers matchs ≤ 80 % de sa moyenne d'avant (au moins 8 matchs)
