@@ -733,7 +733,7 @@ function vPred() {
   };
   const sk = base.filter(r => !r.g), cards = `<div class="two" style="margin-bottom:14px">
       ${card('sk', 'Patineurs', sk, SK)}
-      ${card('g', 'Gardiens', base.filter(r => r.g), GK, `Moyenne et % d’arrêts : au moins ${f0(gMin)} matchs.`)}
+      ${card('g', 'Gardiens', base.filter(r => r.g), GK, `Moyenne et % d’arrêts : au moins ${f0(gMin)} matchs. Une projection est une moyenne : en vrai, la chance des tirs étale les résultats (le meilleur finit souvent vers ,920, une vingtaine de partants au-dessus de ,900).`)}
       ${card('d', 'Défenseurs', sk.filter(r => r.p.grp === 'D'), SK)}
       ${card('r', 'Recrues', sk.filter(r => r.rk), SK)}
     </div>`;
