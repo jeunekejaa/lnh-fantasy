@@ -689,14 +689,15 @@ function playerSheet_(g, p, m, mp, gafPrior, pjPrior, team) {
     o.base = r3(m.base); o.k = m.k;
     // Prévision stat par stat (par match joué) : GAF mélangé à la saison avec le même k que les FP,
     // puis ramenée au niveau réel de la ligue (2025-26) : les analystes donnent ~25,3 arrêts par match (réel 23,5),
-    // 2,89 buts accordés (réel 2,74), 0,50 victoire (réel 0,47). On ne force PLUS cette ligne de stats à égaler les FP maison :
+    // 2,89 buts accordés (réel 2,74), 0,50 victoire (réel 0,47) : ils surestiment surtout les tirs reçus. On ne force PLUS cette ligne de stats à égaler les FP maison :
     // l'ancien forçage mettait l'écart sur les buts accordés et faisait tomber tous les % d'arrêts sous ,900.
     const GK = ['w', 'ga', 'sv', 'so', 'otl'], LG = [0.5, 2.9, 25.5, 0.06, 0.1], n = p ? p.gp || 0 : 0, S = CONFIG.SCORING;
     const gr = gafPrior && gafPrior.sv ? GK.map(k => gafPrior[k] || 0) : null;
     if (gr) o.gr = gr.map(r3);
     const pr = gr || LG, k = m.k || 100;
     const r = GK.map((key, i) => (k * pr[i] + n * (o.s ? o.s[i] / Math.max(1, n) : 0) * (n ? 1 : 0)) / (k + n));
-    const CAL = [0.95, 0.96, 0.93, 0.85, 1];          // victoires, buts accordés, arrêts, blanchissages, défaites en prol.
+    // moins de TIRS (arrêts ET buts × 0,93) : le % d'arrêts de chaque gardien reste celui des analystes mélangé à sa saison
+    const CAL = [0.95, 0.93, 0.93, 0.85, 1];          // victoires, buts accordés, arrêts, blanchissages, défaites en prol.
     for (let i = 0; i < 5; i++) r[i] *= CAL[i];
     o.r = r.map(r3);
     if (mp && mp.gp) { o.xga = r3(mp.gxg); o.ga = mp.gga; o.mgp = mp.gp; }
