@@ -687,7 +687,14 @@ function predRow(p) {
   if (p.grp === 'G') {
     const st = games * (p.share != null ? p.share : D.config.share);
     const w = s[0] + r[0] * st, ga = s[1] + r[1] * st, sv = s[2] + r[2] * st, so = s[3] + r[3] * st, gpT = gp + st;
-    return { p: p, g: true, gp: gpT, gp0: gp, w: w, w0: s[0], so: so, so0: s[3], gaa: gpT ? ga / gpT : null, svp: sv + ga ? sv / (sv + ga) : null };
+    // fourchette « 8 fois sur 10 » : hasard des tirs qui restent + incertitude sur son vrai talent (,0075 : écart mesuré
+    // au backtest 2022-23 à 2025-26 une fois le hasard des tirs retiré)
+    const R = (r[1] + r[2]) * st, tot = sv + ga, t = r[1] + r[2] ? r[2] / (r[1] + r[2]) : 0.89;
+    const sdRest = R > 0 ? Math.sqrt(t * (1 - t) / R + 0.0075 * 0.0075) : 0, z = 1.2816;
+    const svp = tot ? sv / tot : null, sdF = tot ? sdRest * R / tot : 0, gaa = gpT ? ga / gpT : null, sdGA = sdRest * R;
+    return { p: p, g: true, gp: gpT, gp0: gp, w: w, w0: s[0], so: so, so0: s[3], gaa: gaa, svp: svp,
+             svpLo: svp != null ? svp - z * sdF : null, svpHi: svp != null ? svp + z * sdF : null,
+             gaaLo: gpT ? Math.max(0, (ga - z * sdGA) / gpT) : null, gaaHi: gpT ? (ga + z * sdGA) / gpT : null };
   }
   // « Mon estimé » (ex. McDavid 175) est un total sur tous les matchs de son équipe : pas de rabais de 94 %
   const mine = D.ovr && D.ovr[p.name] && D.ovr[p.name].pts > 0;
@@ -723,17 +730,20 @@ function vPred() {
   const gMin = Math.max(4, 0.25 * Math.max(0, ...base.filter(r => r.g).map(r => r.gp)));
   const SK = [['pts', 'Points'], ['b', 'Buts'], ['a', 'Passes']], GK = [['w', 'Victoires'], ['gaa', 'Moyenne'], ['svp', '% arrêts'], ['so', 'Blanchissages']];
   const fmt = (k, v) => k === 'gaa' ? (v == null ? '–' : v.toFixed(2)) : k === 'svp' ? (v == null ? '–' : v.toFixed(3).replace(/^0/, '')) : f0(v);
+  // % d'arrêts et moyenne : classés sur le PLAFOND (le haut de la fourchette 8 fois sur 10 ; pour la moyenne, le bas)
+  const ceilK = { svp: 'svpHi', gaa: 'gaaLo' };
+  const val = (k, r) => ceilK[k] ? `<b>${fmt(k, r[ceilK[k]])}</b> <span class="muted small" style="white-space:nowrap">proj. ${fmt(k, r[k])}</span>` : `<b>${fmt(k, r[k])}</b>`;
   const card = (id, title, list, keys, note) => {
-    const k = PRV.tab[id], asc = k === 'gaa';
-    const L = list.filter(r => r[k] != null && (k === 'gaa' || k === 'svp' ? r.gp >= gMin : true)).sort((a, b) => asc ? a[k] - b[k] : b[k] - a[k]).slice(0, 10);
+    const k = PRV.tab[id], kk = ceilK[k] || k, asc = k === 'gaa';
+    const L = list.filter(r => r[kk] != null && (k === 'gaa' || k === 'svp' ? r.gp >= gMin : true)).sort((a, b) => asc ? a[kk] - b[kk] : b[kk] - a[kk]).slice(0, 10);
     return `<div class="card" style="margin:0"><h2>${title}</h2>
       <div class="seg" style="margin-bottom:8px">${keys.map(([kk, l]) => `<button data-pt="${id}:${kk}" class="${kk === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-      ${L.length ? `<table class="nosort">${L.map((r, i) => `<tr${i === 0 ? ' class="me"' : ''}><td style="width:28px" class="muted">${i + 1}</td><td class="l">${nm(r)}</td><td><b>${fmt(k, r[k])}</b></td></tr>`).join('')}</table>` : '<div class="muted small">Aucun joueur avec ces filtres.</div>'}
+      ${L.length ? `<table class="nosort">${L.map((r, i) => `<tr${i === 0 ? ' class="me"' : ''}><td style="width:28px" class="muted">${i + 1}</td><td class="l">${nm(r)}</td><td>${val(k, r)}</td></tr>`).join('')}</table>` : '<div class="muted small">Aucun joueur avec ces filtres.</div>'}
       ${note ? `<div class="small muted" style="margin-top:6px">${note}</div>` : ''}</div>`;
   };
   const sk = base.filter(r => !r.g), cards = `<div class="two" style="margin-bottom:14px">
       ${card('sk', 'Patineurs', sk, SK)}
-      ${card('g', 'Gardiens', base.filter(r => r.g), GK, `Moyenne et % d’arrêts : au moins ${f0(gMin)} matchs. Une projection est une moyenne : en vrai, la chance des tirs étale les résultats (le meilleur finit souvent vers ,920, une vingtaine de partants au-dessus de ,900).`)}
+      ${card('g', 'Gardiens', base.filter(r => r.g), GK, PRV.tab.g === 'svp' || PRV.tab.g === 'gaa' ? `Classés sur le <b>plafond</b> : ce qu’il atteint s’il est dans ses 10 % meilleures saisons possibles (gros chiffre), à côté de la projection (son résultat le plus probable). Au moins ${f0(gMin)} matchs.` : '')}
       ${card('d', 'Défenseurs', sk.filter(r => r.p.grp === 'D'), SK)}
       ${card('r', 'Recrues', sk.filter(r => r.rk), SK)}
     </div>`;
@@ -741,14 +751,16 @@ function vPred() {
   const q = fold(PRV.q).trim();
   let L = base.filter(r => PRV.pos === 'G' ? r.g : !r.g && (PRV.pos === 'sk' || r.p.grp === PRV.pos)).filter(r => q.length < 2 || fold(r.p.name).includes(q));
   const cols = PRV.pos === 'G'
-    ? [['gp', 'MJ'], ['w', 'V'], ['gaa', 'Moy.'], ['svp', '% arr.'], ['so', 'BL']]
+    ? [['gp', 'MJ'], ['w', 'V'], ['gaaLo', 'Moy. (plancher)'], ['svpHi', '% arr. (plafond)'], ['so', 'BL']]
     : [['gp', 'MJ'], ['b', 'B'], ['a', 'A'], ['pts', 'PTS']];
   if (!cols.some(c => c[0] === PRV.sort)) { PRV.sort = PRV.pos === 'G' ? 'w' : 'pts'; PRV.dir = -1; }
   const k = PRV.sort, dir = PRV.dir;
-  L.sort((a, b) => ((a[k] == null) - (b[k] == null)) || dir * ((a[k] || 0) - (b[k] || 0)));
+  const few = r => (k === 'svpHi' || k === 'gaaLo') && r.gp < gMin;   // trop peu de matchs : en bas du classement
+  L.sort((a, b) => ((a[k] == null) - (b[k] == null)) || (few(a) - few(b)) || dir * ((a[k] || 0) - (b[k] || 0)));
   const total = L.length; L = L.slice(0, PRV.n);
   const cell = (r, kk) => {
-    if (kk === 'gaa' || kk === 'svp') return fmt(kk, r[kk]);
+    if (kk === 'svpHi') return r.svp == null ? '–' : `<b>${fmt('svp', r.svpHi)}</b><span class="muted small" style="white-space:nowrap"> proj. ${fmt('svp', r.svp)} (${fmt('svp', r.svpLo)}–${fmt('svp', r.svpHi)})</span>`;
+    if (kk === 'gaaLo') return r.gaa == null ? '–' : `<b>${fmt('gaa', r.gaaLo)}</b><span class="muted small" style="white-space:nowrap"> proj. ${fmt('gaa', r.gaa)} (${fmt('gaa', r.gaaLo)}–${fmt('gaa', r.gaaHi)})</span>`;
     const v = r[kk], r0 = r[kk + '0'];
     const main = kk === 'gp' ? f0(v) : `<b>${f0(v)}</b>`;
     return PRV.split && r0 != null ? `${main}<span class="muted small" style="white-space:nowrap"> (${f0(r0)} + ${f0(v - r0)})</span>` : main;
@@ -771,7 +783,7 @@ function bindPred() {
   const q = $('#pr-q'); if (q) q.oninput = e => { PRV.q = e.target.value; clearTimeout(q._t); q._t = setTimeout(() => { render(); const i = $('#pr-q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }, 250); };
   const m = $('#pr-more'); if (m) m.onclick = () => { PRV.n += 100; render(); };
   document.querySelectorAll('[data-pt]').forEach(b => b.onclick = () => { const [c, k] = b.dataset.pt.split(':'); PRV.tab[c] = k; render(); });
-  document.querySelectorAll('[data-ps]').forEach(th => th.onclick = () => { const k = th.dataset.ps; PRV.dir = PRV.sort === k ? -PRV.dir : (k === 'gaa' ? 1 : -1); PRV.sort = k; render(); });
+  document.querySelectorAll('[data-ps]').forEach(th => th.onclick = () => { const k = th.dataset.ps; PRV.dir = PRV.sort === k ? -PRV.dir : (k === 'gaa' || k === 'gaaLo' ? 1 : -1); PRV.sort = k; render(); });
 }
 function vSearch() {
   const all = [];
