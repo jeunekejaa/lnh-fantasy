@@ -630,7 +630,7 @@ function predictSeason(season) {
 function pjCurrentPriors_() {
   const props = PropertiesService.getDocumentProperties(), today = ymd_(new Date());
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (props.getProperty('PJ_CUR_DATE4') === today) {
+  if (props.getProperty('PJ_CUR_DATE5') === today) {
     const sh = ss.getSheetByName('PJ Courant');
     if (sh && sh.getLastRow()) return JSON.parse(sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].join(''));
   }
@@ -640,7 +640,7 @@ function pjCurrentPriors_() {
   const proj = pjProjectSeason_(CONFIG.SEASON, P, data), out = {};
   const last = data[pjPrev_(CONFIG.SEASON, 1)] || { sk: {} }, lmp = last.mp || {};
   Object.keys(proj).forEach(id => {
-    const p = proj[id], o = Object.assign({ fpg: p.fpg, gp: p.gp, sa: round_(p.sa) }, p.rate), h = last.sk[id], m = lmp[id];
+    const p = proj[id], o = Object.assign({ fpg: p.fpg, gp: p.gp, sa: round_(p.sa), age: p.age != null ? Math.round(p.age * 10) / 10 : null }, p.rate), h = last.sk[id], m = lmp[id];
     if (h && h.gp >= 20 && m) { const mo = pjMpObj_(m); o.ppa = round_(mo.ppatt / h.gp); o.ppt = Math.round(mo.pptoi / h.gp); }
     // la saison passée du joueur, par match (pour « processus vs résultats » : panne, malchance, chance, vraie progression)
     if (h && h.gp >= 15) {
@@ -665,6 +665,6 @@ function pjCurrentPriors_() {
   const json = JSON.stringify(out), parts = [];
   for (let i = 0; i < json.length; i += 45000) parts.push(json.slice(i, i + 45000));
   const sh = hiddenSheet_(ss, 'PJ Courant'); sh.clearContents(); sh.getRange(1, 1, 1, parts.length).setValues([parts]);
-  props.setProperty('PJ_CUR_DATE4', today);
+  props.setProperty('PJ_CUR_DATE5', today);
   return out;
 }

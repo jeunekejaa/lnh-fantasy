@@ -247,6 +247,12 @@ function modelSkater_(p, prior, mp, pos, pj, lg, gafP) {
     roleF = Math.max(0.6, Math.min(1.6, Math.pow(toiNow / pj.ly.toi, FN.toiB)));
     ['g', 'a', 'sog', 'hit', 'blk'].forEach(k => { if (pr[k] != null) pr[k] *= roleF; });
   }
+  // Courbe d'âge (retenue par le backtest une fois les buts « moitié réels, moitié attendus » en place, et forte au labo 3 saisons) :
+  // base offensive × (1 + yB × (27 − âge) ÷ 5) — les jeunes progressent plus que prévu, les vétérans déclinent
+  if (FN && FN.yB && pj && pj.age) {
+    const a = Math.max(19, Math.min(36, pj.age)), f = Math.max(0.7, 1 + FN.yB * (27 - a) / 5);
+    ['g', 'a', 'ppp', 'sog'].forEach(k => { if (pr[k] != null) pr[k] *= f; });
+  }
   // plancher : le backtest (5 matchs et plus) peut choisir k = 0 ; sur 1 à 4 matchs, ce serait croire le réel aveuglément
   Object.keys(K).forEach(s => { if (K[s] < 5) K[s] = 5; });
   const hasMp = mp && mp.gp > 0;
