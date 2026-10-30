@@ -384,10 +384,15 @@ function btFinal_(sets, C, w0, SW, mae) {
     });
     return { groupe: nom, n: n, biaisFp: n ? Math.round(dFp / n * 1000) / 1000 : null, ptsPredits: n ? Math.round(pP / n * 1000) / 1000 : null, ptsReels: n ? Math.round(aP / n * 1000) / 1000 : null };
   });
+  // Tous les leviers ensemble (retenus ET rejetés), réglés ensemble sur une moitié, mesurés sur l'autre : le gain total réaliste
+  const allIds = levers.map(L => L.id), posIds = rows.filter(r => r.gainHorsEchantillon > 0).map(r => r.id);
+  const joint = ids => { const g = [0, 1].map(h => { const X = fit(h, ids); return obj(neutral(), 1 - h) - obj(X, 1 - h); });
+    return { leviers: ids.join(', '), gain: Math.round((g[0] + g[1]) / 2 * 10000) / 10000, moities: g.map(x => Math.round(x * 10000) / 10000).join(' / ') }; };
+  const ensemble = { tous: joint(allIds), positifs: joint(posIds), retenus: joint(rows.filter(r => r.retenu).map(r => r.id)) };
   const kept = rows.filter(r => r.retenu).map(r => r.id);
   const F = kept.length ? fit(null, kept) : neutral();
   const b0 = perDate(neutral()), b1 = perDate(F), avg = d => d.reduce((t, x) => t + x, 0) / d.length;
-  return { biaisAge: biaisAge, avant: Math.round(avg(b0) * 10000) / 10000, apres: Math.round(avg(b1) * 10000) / 10000,
+  return { ensemble: ensemble, biaisAge: biaisAge, avant: Math.round(avg(b0) * 10000) / 10000, apres: Math.round(avg(b1) * 10000) / 10000,
            avantParDate: b0.map(x => Math.round(x * 1000) / 1000), apresParDate: b1.map(x => Math.round(x * 1000) / 1000), leviers: rows,
            retenu: kept.length ? { w: kept.indexOf('w') >= 0 ? F.w : null, gamma: F.gamma || 0, kpos: F.kpos, mult: F.mult, bias: F.bias, alpha: F.alpha || 0,
                                    inj: kept.indexOf('inj') >= 0 ? { m: F.injM, b: F.injB } : null,
