@@ -533,11 +533,11 @@ function vTodo() {
   const slotRow = slotsByDay(m.players, daysWk);
   const shortCard = `<h2>Ajouts court terme : alignement jour par jour</h2>
     <div class="small" style="margin-bottom:8px"><b>Places vides cette semaine</b> (avec ton alignement actuel) : ${slotRow}</div>
-    ${left != null ? `<div class="small muted" style="margin-bottom:8px">Acquisitions cette semaine : ${acq.acqUsed} sur ${acq.acqLimit} utilisée${acq.acqUsed > 1 ? 's' : ''}${acq.acqPerDay ? ` (maximum ${acq.acqPerDay} par jour)` : ''} — il t’en reste <b>${left}</b>.</div>` : ''}
+    ${left != null ? `<div class="small muted" style="margin-bottom:8px">Acquisitions cette semaine : ${acq.acqUsed} sur ${acq.acqLimit} utilisée${acq.acqUsed > 1 ? 's' : ''} — il t’en reste <b>${left}</b>.</div>` : ''}
     ${plan.steps.length ? `<div class="card hero" style="margin:0 0 12px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><div class="lbl" style="color:var(--accent)">Le plan de la semaine · ${plan.steps.length} transaction${plan.steps.length > 1 ? 's' : ''}</div><div class="big up" style="font-size:28px;white-space:nowrap">+${f1(plan.gain)} FP</div></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px">${plan.steps.map((x, i) =>
-      `<div class="tile" style="background:#0E1A24"><div class="small muted">${i + 1} · ${D.espn && D.espn.acqPerDay && x.from ? `à faire le <b>${dLabel(x.from)}</b> · joue ` : ''}${x.days.map(d => dLabel(d)).join(', ')}</div>
+      `<div class="tile" style="background:#0E1A24"><div class="small muted">${i + 1} · ${x.days.map(d => dLabel(d)).join(', ')}</div>
         <div style="margin-top:4px"><span class="muted">Retire</span> ${pname(x.w, D.me)}</div><div><span class="muted">Prends</span> ${pname(x.p, '')} <span class="pos">${esc(x.p.pos)} · ${esc(x.p.nhl)}</span></div>
         <div class="up" style="font-weight:700;margin-top:4px">+${f1(x.gain)} FP</div>${(x.w.model || 0) > (x.p.model || 0) + 0.1 ? `<div class="small down" style="margin-top:2px">À long terme, ${esc(x.w.name)} vaut plus (${f2(x.w.model)} vs ${f2(x.p.model)})</div>` : ''}</div>`).join('')}</div></div>`
       : `<div class="muted small" style="margin-bottom:8px">${left === 0 ? 'Plus d’acquisition possible cette semaine.' : 'Aucun ajout ne remplit utilement tes places vides d’ici dimanche.'}</div>`}
@@ -1779,21 +1779,16 @@ function streamSearch(m, days, forced, daysWk) {
   return out.sort((a, b) => b.gainWk - a.gainWk || b.gain - a.gain).slice(0, 12);
 }
 // plan de la semaine : les meilleures transactions, l'une après l'autre, dans la limite d'acquisitions
-// Acquisitions qui restent cette semaine. Limite par jour (ta ligue : 1 par jour) : jamais plus que les jours qui restent.
-function acqLeft(acq, days) {
+// Acquisitions qui restent cette semaine (ta ligue : 7 par duel, utilisables quand tu veux)
+function acqLeft(acq) {
   if (!acq || acq.acqLimit == null || acq.acqUsed == null) return null;
-  let left = Math.max(0, acq.acqLimit - acq.acqUsed);
-  if (acq.acqPerDay && days && days.length) left = Math.min(left, acq.acqPerDay * days.length);
-  return left;
+  return Math.max(0, acq.acqLimit - acq.acqUsed);
 }
 function streamPlan(m, days, n) {
   let roster = m.players.slice(), gain = 0;
   const steps = [], used = {};
-  // limite par jour (ta ligue : 1 acquisition par jour) : le 1er move compte dès aujourd'hui, le 2e dès demain, etc.
-  const perDay = !povOn() && D.espn && D.espn.acqPerDay ? D.espn.acqPerDay : 0;
   for (let i = 0; i < n; i++) {
-    const dd = perDay ? days.slice(Math.floor(i / perDay)) : days;
-    if (!dd.length) break;
+    const dd = days;
     const base = planFp(roster, dd), drops = dropCandidates({ players: roster }), pool = faPool(dd, used);
     let best = null;
     pool.forEach(p => drops.forEach(w => {

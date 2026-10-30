@@ -755,8 +755,8 @@ function espnLeagueInfo_() {
   return { cur: cur, regCount: sch.matchupPeriodCount || null, poLen: sch.playoffMatchupPeriodLength || 1,
            poTeams: sch.playoffTeamCount || null, periods: Object.keys(mp).length ? mp : null,
            firstScoringDay: (j.status && j.status.firstScoringPeriod) || 1, curScoringDay: j.scoringPeriodId || (j.status && j.status.latestScoringPeriod) || null,
-           // « matchupLimitPerScoringPeriod » : la limite est PAR JOUR (ex. 1 par jour = 7 par semaine), pas par semaine
-           acqPerDay: acq.matchupLimitPerScoringPeriod && acq.matchupAcquisitionLimit > 0 ? acq.matchupAcquisitionLimit : null,
+           // « matchupLimitPerScoringPeriod » : la limite est donnée par jour de duel (1 × 7 jours = 7 par semaine),
+           // mais elles s'utilisent quand on veut dans la semaine (toutes le même jour si on veut)
            acqLimit: acq.matchupAcquisitionLimit != null && acq.matchupAcquisitionLimit >= 0 ? acq.matchupAcquisitionLimit * (acq.matchupLimitPerScoringPeriod ? 7 : 1) : null,
            acqUsed: used, acqSeason: total, acqSeasonLimit: acq.acquisitionLimit != null && acq.acquisitionLimit >= 0 ? acq.acquisitionLimit : null };
 }
