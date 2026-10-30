@@ -586,6 +586,7 @@ function hailMary(m, n) {
     const res = [];
     pool.forEach(p => { let best = null;
       drops(roster).forEach(w => {
+        if (leavesHole(roster, w, p)) return;
         const rr = roster.filter(q => q !== w).concat([p]), x = oddsWith(m, rr, ob);
         if (!best || x.p > best.x.p) best = { p: p, w: w, x: x, r: rr }; });
       if (best) { best.dp = best.x.p - cur.p; res.push(best); } });
@@ -1757,6 +1758,9 @@ function faPool(days, exclude) {
 // un retrait qui créerait une place vide toute la saison (ex. retirer un défenseur pour prendre un attaquant quand tu en as juste 6) : interdit
 function leavesHole(roster, w, p) {
   if (w.grp === p.grp) return false;
+  // maximum de gardiens dans l'alignement complet (ta ligue : 3)
+  const gMax = D.espn && D.espn.gMax;
+  if (gMax && p.grp === 'G' && roster.filter(q => q.grp === 'G' && q !== w).length >= gMax) return true;
   const need = { F: D.config.lineup.F, D: D.config.lineup.D, G: D.config.lineup.G }[w.grp] || 0;
   return roster.filter(q => q.grp === w.grp && q !== w && !OUT[q.status]).length < need;
 }

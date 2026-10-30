@@ -757,6 +757,7 @@ function espnLeagueInfo_() {
            firstScoringDay: (j.status && j.status.firstScoringPeriod) || 1, curScoringDay: j.scoringPeriodId || (j.status && j.status.latestScoringPeriod) || null,
            // « matchupLimitPerScoringPeriod » : la limite est donnée par jour de duel (1 × 7 jours = 7 par semaine),
            // mais elles s'utilisent quand on veut dans la semaine (toutes le même jour si on veut)
+           gMax: set.rosterSettings && set.rosterSettings.positionLimits && +set.rosterSettings.positionLimits['5'] > 0 ? +set.rosterSettings.positionLimits['5'] : null,
            acqLimit: acq.matchupAcquisitionLimit != null && acq.matchupAcquisitionLimit >= 0 ? acq.matchupAcquisitionLimit * (acq.matchupLimitPerScoringPeriod ? 7 : 1) : null,
            acqUsed: used, acqSeason: total, acqSeasonLimit: acq.acquisitionLimit != null && acq.acquisitionLimit >= 0 ? acq.acquisitionLimit : null };
 }
