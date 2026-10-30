@@ -32,7 +32,7 @@ const BT = {
            encodeURIComponent('Player Values - Pts'),
   K_GRID: [0, 2, 4, 6, 8, 10, 12, 15, 20, 25, 30, 35, 40, 50, 60, 80, 100, 130, 160, 200, 300, 500, 1000],
   // options testées, stat par stat (1re valeur = option désactivée)
-  OPT: { g: ['g', 'tirs', 'xg'], a: [1, 0.75, 0.5, 0.25, 0], sog: [0, 0.25, 0.5, 0.75, 1], ppp: [0, 0.25, 0.5, 0.75, 1] },
+  OPT: { g: ['g', 'tirs', 'xg', 'mix'], a: [1, 0.75, 0.5, 0.25, 0], sog: [0, 0.25, 0.5, 0.75, 1], ppp: [0, 0.25, 0.5, 0.75, 1] },
   G_K: [0, 5, 10, 15, 20, 30, 50, 75, 100, 150, 200, 300], G_B: [0.25, 0, -0.25, -0.5, -0.75, -1],
   MIN_GAIN: 0.0002,            // gain minimal (erreur par match de la stat) pour garder une option (réglage stat par stat)
   MIN_GAIN_FP: 0.0005          // gain minimal (FP par match) pour garder une option (réglage final)
@@ -511,6 +511,7 @@ function btPred_(r, s, v, k, st) {
   if (s === 'g') {
     if (v === 'tirs') obs = n ? (+e.sog || 0) / n * (b.sog > 0 ? b.g / b.sog : (r.pos === 'D' ? 0.05 : 0.1)) : 0;
     else if (v === 'xg') obs = n ? r.ixg / n : 0;
+    else if (v === 'mix') obs = n ? (0.5 * (+e.g || 0) + 0.5 * r.ixg) / n : 0;     // moitié buts réels, moitié buts attendus (labo 3 saisons)
   } else if (s === 'a' && v != null && v < 1 && x.a1 + x.a2 > 0) {
     obs = n ? Math.max(0, (+e.a || 0) - (1 - v) * (x.a2 - x.a1 * st.r21[r.pos])) / n : 0;
   } else if (s === 'sog' && v) {

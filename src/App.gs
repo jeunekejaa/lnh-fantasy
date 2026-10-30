@@ -223,7 +223,7 @@ function modelSkater_(p, prior, mp, pos, pj, lg, gafP) {
   const n = p ? p.gp || 0 : 0;
   const rate = k => (n ? (+p[k] || 0) / n : 0);
   const B = inSeason_();
-  const K = Object.assign({}, APP.K, B ? Object.assign({}, B.K, { gx: B.kxg, g: B.gsrc === 'tirs' ? B.K.g : B.kg }) : {});
+  const K = Object.assign({}, APP.K, B ? Object.assign({}, B.K, { gx: B.kxg, g: B.gsrc === 'tirs' || B.gsrc === 'mix' ? B.K.g : B.kg }) : {});
   // Optimisation finale du backtest (seulement les leviers retenus) : k par position, k selon le nombre de matchs,
   // vitesse de confiance et correction selon la tendance du joueur (progression, chanceux, malchanceux, panne)
   const FN = B && B.final;
@@ -254,7 +254,8 @@ function modelSkater_(p, prior, mp, pos, pj, lg, gafP) {
   // (la source vient du backtest : buts attendus, tirs × % habituel ou buts réels — celle qui a le mieux prédit)
   let gObs = rate('g'), kG = K.g;
   const xgObs = hasMp ? mp.ixg / mp.gp : null;
-  if (B && B.gsrc && B.gsrc !== 'xg') { if (B.gsrc === 'tirs' && pr.sog > 0) gObs = rate('sog') * pr.g / pr.sog; }
+  if (B && B.gsrc === 'mix') { if (hasMp) gObs = 0.5 * rate('g') + 0.5 * xgObs; }   // moitié buts réels, moitié buts attendus
+  else if (B && B.gsrc && B.gsrc !== 'xg') { if (B.gsrc === 'tirs' && pr.sog > 0) gObs = rate('sog') * pr.g / pr.sog; }
   else if (hasMp) { gObs = xgObs; kG = K.gx; }
   else if (B && B.gsrc === 'tirs' && pr.sog > 0) gObs = rate('sog') * pr.g / pr.sog;
   // Passes : passes secondaires ramenées vers ce que ses passes primaires laissent attendre (poids appris lam)
@@ -672,7 +673,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
     playoffTeams: sched.playoffTeams || 8, currentPeriod: sched.current || null,
     config: { gpw: CONFIG.GAMES_PER_WEEK, lineup: CONFIG.LINEUP, sd: APP.WEEK_SD, injury: APP.INJURY_FACTOR,
               share: CONFIG.GOALIE_START_SHARE, sims: APP.SIMS, luck: APP.LUCK,
-              k: inSeason_() ? Object.assign({}, APP.K, inSeason_().K, { gx: inSeason_().kxg, g: inSeason_().gsrc === 'tirs' ? inSeason_().K.g : inSeason_().kg, gstart: inSeason_().gk ? inSeason_().gk.k : APP.K.gstart }) : APP.K,
+              k: inSeason_() ? Object.assign({}, APP.K, inSeason_().K, { gx: inSeason_().kxg, g: inSeason_().gsrc === 'tirs' || inSeason_().gsrc === 'mix' ? inSeason_().K.g : inSeason_().kg, gstart: inSeason_().gk ? inSeason_().gk.k : APP.K.gstart }) : APP.K,
               bt: inSeason_() },
     espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), rookies: rookies_(), lsv: LSV, moves: myMoves, journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS,
     teams: teamsOut, waivers: waivers, schedule: sched.games, warn: WARN.slice(),
