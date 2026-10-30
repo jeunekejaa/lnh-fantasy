@@ -630,7 +630,7 @@ function predictSeason(season) {
 function pjCurrentPriors_() {
   const props = PropertiesService.getDocumentProperties(), today = ymd_(new Date());
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (props.getProperty('PJ_CUR_DATE5') === today) {
+  if (props.getProperty('PJ_CUR_DATE6') === today) {
     const sh = ss.getSheetByName('PJ Courant');
     if (sh && sh.getLastRow()) return JSON.parse(sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].join(''));
   }
@@ -648,6 +648,12 @@ function pjCurrentPriors_() {
       if (m) { const mo = pjMpObj_(m); Object.assign(ly, { xg: round_(mo.xg / h.gp), att: round_(mo.att / h.gp), onxg: round_(mo.onxg / h.gp), ong: round_(mo.ong / h.gp) }); }
       o.ly = ly;
     }
+    // pour la correction apprise : TJ moyen sur 3 saisons (pondéré par les MJ), MJ sur 3 saisons, points/match et minutes en AN la saison passée
+    let tm = 0, tg = 0;
+    Object.keys(data).forEach(s => { const x = data[s] && data[s].sk[id]; if (x && x.gp) { tm += (x.toi || 0) / 60 * x.gp; tg += x.gp; } });
+    if (tg) { o.t3 = round_(tm / tg); o.g3 = tg; }
+    if (h && h.gp) o.pl = round_((h.g + h.a) / h.gp);
+    if (h && h.gp && m) { const mo = pjMpObj_(m); o.pt = round_(mo.pptoi / h.gp / 60); }
     out[id] = o;
   });
   // variabilité de son niveau d'une saison à l'autre ÷ celle d'un joueur typique (k individuel, si le backtest le retient)
@@ -665,6 +671,6 @@ function pjCurrentPriors_() {
   const json = JSON.stringify(out), parts = [];
   for (let i = 0; i < json.length; i += 45000) parts.push(json.slice(i, i + 45000));
   const sh = hiddenSheet_(ss, 'PJ Courant'); sh.clearContents(); sh.getRange(1, 1, 1, parts.length).setValues([parts]);
-  props.setProperty('PJ_CUR_DATE5', today);
+  props.setProperty('PJ_CUR_DATE6', today);
   return out;
 }

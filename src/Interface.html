@@ -237,7 +237,7 @@ function load(force) {
   if (force) progress(true);
   const ok = txt => {
     if (!txt) { if (force) progress(false); $('#view').innerHTML = '<div class="empty">Aucune donnée encore. Lance « Update » dans ton Google Sheets, puis recharge.</div>'; $('#stamp').textContent = ''; return; }
-    D = JSON.parse(txt); OWN = null; applyOvr(); render(); if (force) progress(false);
+    D = JSON.parse(txt); OWN = null; applyOvr(); render(); try { logCal(); } catch (e) { /* rien */ } if (force) progress(false);
   };
   const ko = e => { if (force) progress(false); $('#stamp').textContent = 'Erreur : ' + (e && e.message || e); };
   if (window.google && google.script && google.script.run) {
@@ -792,7 +792,80 @@ function bindPred() {
 let ODDS = null, ODF = { kind: 'm_pts', name: '', line: '0.5', over: '', under: '', date: '' };
 function vStrat() {
   if (ODDS === null) ODDS = (D.odds || []).slice();
-  return stratPlayoffs() + stratRace() + stratManagers() + stratOdds();
+  return stratLines() + stratTiming() + stratPlayoffs() + stratRace() + stratManagers() + stratCal() + stratOdds();
+}
+// Idée 3 · Trios du jour (DailyFaceoff) : promotions et rétrogradations récentes de tes joueurs et des meilleurs joueurs libres
+const LNAME = { f1: '1er trio', f2: '2e trio', f3: '3e trio', f4: '4e trio', d1: '1re paire', d2: '2e paire', d3: '3e paire', pp1: 'AN1', pp2: 'AN2' };
+function lineOf(p) { const L = D.lines && D.lines.p && D.lines.p[norm(p.name)]; return L && (!p.nhl || L[2] === p.nhl) ? L : null; }
+function lineChip(p) { const L = lineOf(p); if (!L || !(L[0] || L[1])) return '';
+  const top = L[0] === 'f1' || L[0] === 'd1' || L[1] === 'pp1';
+  return `<span class="chip ${top ? 'good' : ''}" title="Trio du jour (DailyFaceoff)">${[L[0] && LNAME[L[0]], L[1] && LNAME[L[1]]].filter(Boolean).join(' · ')}</span>`; }
+function stratLines() {
+  if (!D.lines) return `<div class="card"><h2>Trios du jour</h2><div class="empty">Trios DailyFaceoff pas encore chargés (prochaine actualisation).</div></div>`;
+  const mine = {}, fa = {};
+  me().players.forEach(p => { mine[norm(p.name)] = p; });
+  D.waivers.filter(p => (p.model || 0) >= 1.5).forEach(p => { fa[norm(p.name)] = p; });
+  const rk = g => g ? +g[1] : 9, up = x => (x.b && x.a && x.b[0] === x.a[0] && rk(x.b) < rk(x.a)) || (!x.a && x.b && rk(x.b) <= 2) || (x.pb === 'pp1' && x.pa !== 'pp1') || (x.pb && !x.pa);
+  const ev = (D.lines.log || []).slice().reverse().filter(x => mine[x.k] || fa[x.k]);
+  const seen = {}, rows = ev.filter(x => !seen[x.k] && (seen[x.k] = 1));
+  const desc = x => { const a = []; if ((x.a || '') !== (x.b || '')) a.push(`${x.a ? LNAME[x.a] : 'absent'} → <b>${x.b ? LNAME[x.b] : 'absent'}</b>`);
+    if ((x.pa || '') !== (x.pb || '')) a.push(`AN : ${x.pa ? LNAME[x.pa] : 'aucune'} → <b>${x.pb ? LNAME[x.pb] : 'aucune'}</b>`); return a.join(' · '); };
+  const line = x => { const p = mine[x.k] || fa[x.k], u = up(x);
+    return `<div class="small" style="margin:5px 0;display:flex;gap:6px;flex-wrap:wrap;align-items:baseline"><span class="chip ${u ? 'good' : 'bad'}">${u ? '▲ promu' : '▼ recule'}</span>${pname(p, mine[x.k] ? D.me : '')}
+      <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span> <span>${desc(x)}</span> <span class="muted">${esc(dShort(x.d))}${mine[x.k] ? '' : ' · libre, ' + f2(p.model) + ' FP/m'}</span></div>`; };
+  const myNow = me().players.filter(p => lineOf(p)).map(p => `${esc(p.name.split(' ').slice(-1)[0])} ${lineChip(p)}`);
+  return `<div class="card"><h2>Trios du jour</h2>
+    ${rows.length ? rows.slice(0, 14).map(line).join('') : '<div class="muted small">Aucun changement de trio ou d’AN pour tes joueurs ou les bons joueurs libres ces 7 derniers jours.</div>'}
+    <div class="lbl" style="margin:12px 0 6px">Tes joueurs aujourd’hui</div><div class="small" style="display:flex;flex-wrap:wrap;gap:8px">${myNow.join('') || '—'}</div>
+    <div class="legend"><span>Source : DailyFaceoff (mis à jour avant chaque match). Un joueur promu ce matin, l’app ne le voit dans ses stats qu’après quelques matchs : c’est là qu’un ajout prend de l’avance sur les autres.</span><span>Information seulement : pas d’historique pour valider un effet chiffré dans le modèle.</span></div></div>`;
+}
+// Idée 12 · Moment des échanges : la FP/match que les autres voient vs la suite attendue
+// Labo 10 saisons (23 500 cas) : le modèle est juste dans tous les groupes, mais un joueur à +20 % ou plus au-dessus du modèle
+// rend en moyenne 0,6 à 0,8 FP/match de moins pour le reste de la saison que ce qu'il montre (et l'inverse pour les froids).
+// L'écart de perception est le plus grand en novembre-décembre : c'est le moment de vendre haut / acheter bas.
+function stratTiming() {
+  const sk = p => p.grp !== 'G' && (p.gp || 0) >= 5 && p.fpg != null && (p.model || 0) > 0.8 && !OUT[p.status];
+  const gap = p => p.fpg / p.model - 1;
+  const sell = me().players.filter(p => sk(p) && !PROTECT[p.name] && gap(p) >= 0.2).sort((a, b) => (b.fpg - b.model) - (a.fpg - a.model));
+  const buy = [];
+  D.teams.filter(t => t.team !== D.me && !NO_TRADE.test(t.team)).forEach(t => t.players.forEach(p => { if (sk(p) && !AVOID[p.name] && gap(p) <= -0.2 && (p.model || 0) >= 2) buy.push([p, t.team]); }));
+  buy.sort((a, b) => (b[0].model - b[0].fpg) - (a[0].model - a[0].fpg));
+  const row = (p, team) => `<tr><td class="l">${pname(p, team)} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span>${team !== D.me ? `<div class="msub small muted">${esc(team)}</div>` : ''}</td><td>${p.gp}</td><td>${f2(p.fpg)}</td><td><b>${f2(p.model)}</b></td><td class="${p.fpg > p.model ? 'down' : 'up'}">${p.fpg > p.model ? '−' : '+'}${f2(Math.abs(p.fpg - p.model))}</td></tr>`;
+  const head = '<tr><th class="l">Joueur</th><th>MJ</th><th>Vu (FP/m)</th><th>Suite attendue</th><th>Écart</th></tr>';
+  const mo = +String(D.fday || '').slice(5, 7), hot = mo === 11 || mo === 12 || mo === 10;
+  return `<div class="card"><h2>Moment des échanges</h2>
+    <div class="small" style="margin-bottom:8px">${hot ? '<b class="up">Fenêtre idéale maintenant</b> : en octobre-décembre, l’écart entre ce que les autres voient et la vraie valeur est le plus grand.' : 'L’écart de perception diminue au fil de la saison (plus grand en novembre-décembre).'}</div>
+    <div class="lbl" style="margin-bottom:6px">Vendre haut : tes joueurs que les autres surévaluent</div>
+    ${sell.length ? `<div class="tbl"><table>${head}${sell.slice(0, 8).map(p => row(p, D.me)).join('')}</table></div>` : '<div class="muted small">Aucun de tes joueurs n’est 20 % au-dessus de sa vraie valeur.</div>'}
+    <div class="lbl" style="margin:12px 0 6px">Acheter bas : joueurs adverses sous-évalués</div>
+    ${buy.length ? `<div class="tbl"><table>${head}${buy.slice(0, 8).map(x => row(x[0], x[1])).join('')}</table></div>` : '<div class="muted small">Aucun joueur adverse 20 % sous sa vraie valeur.</div>'}
+    <div class="legend"><span>Labo, 10 saisons (23 500 cas) : un joueur 20 % ou plus au-dessus du modèle produit ensuite 0,6 à 0,8 FP/match de moins que ce qu’il montre ; le modèle, lui, reste juste dans chaque groupe. Les gérants jugent sur « Vu ».</span><span>Jamais d’échange avec « ${esc((D.teams.find(t => NO_TRADE.test(t.team)) || {}).team || '—')} » · Snuggerud jamais proposé.</span></div></div>`;
+}
+// Idée 9 · Calibration des chances de victoire : l'app note ses chances au début de chaque semaine, ESPN donne le résultat
+function logCal() {
+  if (povOn() || !D.espn || !D.espn.cur) return;
+  const per = D.espn.cur, have = {}; (D.cal || []).forEach(x => { have[x.per + '|' + x.team] = 1; });
+  const days = horizonDays(D.weekEnd).length, frac = Math.max(0, Math.min(1, 1 - days / 7));
+  const add = [];
+  D.teams.forEach(t => { if (have[per + '|' + t.team]) return; const o = duelOdds(t); if (!o) return;
+    add.push({ per: per, team: t.team, espn: (D.names || {})[t.team] || t.team, opp: o.oppName, p: Math.round(o.p * 1000) / 1000, me: Math.round(o.me * 10) / 10, op: Math.round(o.opp * 10) / 10, frac: Math.round(frac * 100) / 100, at: D.fday }); });
+  if (!add.length) return;
+  D.cal = (D.cal || []).concat(add);
+  google.script.run.withSuccessHandler(r => { try { const v = JSON.parse(r); if (Array.isArray(v)) D.cal = v; } catch (e) {} }).saveCal(add);
+}
+function stratCal() {
+  const L = (D.cal || []).filter(x => x.win != null), early = L.filter(x => x.frac <= 0.3);
+  const bins = [[0, 0.3], [0.3, 0.5], [0.5, 0.7], [0.7, 1.01]];
+  const tab = A => bins.map(([a, b]) => { const g = A.filter(x => x.p >= a && x.p < b);
+    return `<tr><td class="l">${Math.round(a * 100)} à ${Math.min(100, Math.round(b * 100))} %</td><td>${g.length}</td><td>${g.length ? pct(g.reduce((t, x) => t + x.p, 0) / g.length) : '–'}</td><td><b>${g.length ? pct(g.reduce((t, x) => t + x.win, 0) / g.length) : '–'}</b></td></tr>`; }).join('');
+  const brier = A => A.length ? A.reduce((t, x) => t + (x.p - x.win) ** 2, 0) / A.length : null;
+  const b = brier(L);
+  return `<div class="card"><h2>Calibration des chances de victoire</h2>
+    <div class="small" style="margin-bottom:8px">Quand l’app dit 70 %, gagne-t-on vraiment 7 fois sur 10 ? L’app note ses chances pour les 6 duels chaque semaine, ESPN donne le résultat.
+      ${L.length ? ` <b>${L.length}</b> duels terminés notés${b != null ? ` · score de Brier <b>${b.toFixed(3)}</b> (0,25 = pile ou face, plus bas = mieux)` : ''}.` : ' Les premiers résultats arrivent à la fin de cette semaine.'}</div>
+    ${L.length ? `<div class="tbl"><table><tr><th class="l">L’app disait</th><th>Duels</th><th>Moyenne prévue</th><th>Gagnés en vrai</th></tr>${tab(L)}</table></div>
+      ${early.length && early.length < L.length ? `<div class="small muted" style="margin-top:6px">Notés en début de semaine seulement : ${early.length} duels, Brier ${brier(early).toFixed(3)}.</div>` : ''}` : ''}
+    <div class="legend"><span>Vérification déjà faite sur les 4 premières semaines : l’écart-type d’un pointage hebdo prévu par le modèle (≈ 22 FP) est le même que celui mesuré dans ta ligue (22 FP). Les fourchettes sont donc bien réglées.</span><span>Une entrée notée en milieu de semaine (colonne « part jouée ») est plus facile à prédire : on les distingue.</span></div></div>`;
 }
 // 15 · Séries du pool
 function stratPlayoffs() {
@@ -1292,7 +1365,7 @@ function sheetHtml(p) {
   const x = p.x || {}, S = D.config, isG = p.grp === 'G';
   const owner = p.owner === undefined ? ownerOf(p) : p.owner;
   const own = owner ? (owner === D.me ? '<span class="chip good">ton équipe</span>' : `<span class="chip">${esc(owner)}</span>`) : '<span class="chip warn">libre</span>';
-  const head = `<div class="hd"><div><h2>${esc(p.name)} <button class="btn" id="wstar" style="min-height:30px;padding:0 10px;font-size:13px;vertical-align:middle">${watched(p) ? '★ Suivi' : '☆ Suivre'}</button></h2><div class="muted small" style="margin-top:4px">${esc(p.pos)} · ${esc(p.nhl)} · ${p.gp || 0} MJ ${own} ${stChip(p.status, p)} ${pChip(p)}</div></div><button class="x" aria-label="Fermer">✕</button></div>`;
+  const head = `<div class="hd"><div><h2>${esc(p.name)} <button class="btn" id="wstar" style="min-height:30px;padding:0 10px;font-size:13px;vertical-align:middle">${watched(p) ? '★ Suivi' : '☆ Suivre'}</button></h2><div class="muted small" style="margin-top:4px">${esc(p.pos)} · ${esc(p.nhl)} · ${p.gp || 0} MJ ${own} ${stChip(p.status, p)} ${pChip(p)} ${lineChip(p)}${p.ml && Math.abs(p.ml - 1) >= 0.01 ? ` <span class="chip" title="Correction apprise sur 10 saisons (validée avec analystes sur 5 saisons)">ajusté ${p.ml > 1 ? '+' : '−'}${Math.round(Math.abs(p.ml - 1) * 100)} %</span>` : ''}</div></div><button class="x" aria-label="Fermer">✕</button></div>`;
   const wk = `<h3>Calendrier</h3><div class="grid">${kp(p.left + (p.live ? ' <span class="chip bad">🔴 en cours</span>' : p.today ? ' <span class="chip good">ce soir</span>' : ''), 'Matchs restants cette semaine')}${kp(p.next, 'Matchs la semaine prochaine')}
     ${kp(f1((p.perGame ?? p.model) * p.left), 'FP attendus d’ici dimanche', 'Projection maison × matchs restants cette semaine')}${kp(f1((p.perGame ?? p.model) * p.next), 'FP attendus sem. proch.')}</div>
     ${nextGames(p)}`;

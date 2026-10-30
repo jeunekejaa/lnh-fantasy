@@ -18,6 +18,7 @@ const APP = {
   DATA_SHEET: 'APP Data',
   MP_SHEET: 'MP Cache',
   SIMS: 2000,              // saisons simulées pour les chances de séries
+  ML_W: 0.3,               // part de la correction apprise (labo : ×0,25 à ×0,5 gagnent les 5 saisons avec analystes ; prudent)
   WEEK_SD: 24,             // écart-type d'un pointage hebdomadaire (mesuré sur les semaines 1 à 3)
   GAMES_LEFT_DEFAULT: 3,   // matchs par semaine quand le calendrier est inconnu
   INJURY_FACTOR: 0.94,     // part des matchs réellement joués (blessures, repos)
@@ -209,6 +210,16 @@ const DEPTH_PRIOR = {
 const grp_ = pos => { const p = String(pos || ''); return p === 'G' ? 'G' : (p.split(/[,\/ ]/).indexOf('D') >= 0 ? 'D' : 'F'); };
 const fp_ = s => { const S = CONFIG.SCORING; return S.G * s.g + S.A * s.a + S.PPP * s.ppp + S.SHP * s.shp + S.SOG * s.sog + S.HIT * s.hit + S.BLK * s.blk; };
 const blend_ = (prior, obs, n, k) => (k * prior + n * obs) / (k + n);
+// Évalue les arbres de ML_MODEL (HistGradientBoosting exporté du labo) : base + somme des feuilles atteintes
+function mlCorr_(x) {
+  let s = ML_MODEL.b;
+  for (let t = 0; t < ML_MODEL.t.length; t++) {
+    const T = ML_MODEL.t[t]; let i = 0;
+    while (!T[5][i]) i = x[T[0][i]] <= T[1][i] ? T[2][i] : T[3][i];
+    s += T[4][i];
+  }
+  return s;
+}
 
 // Réglages appris par le backtest 2025-26 (🧪), sinon valeurs de base de APP.K
 let MPG = null, TSTR = null, WKROS = null, CUR_TEAMS = null, WEEKST = null, STARTERS = null, TX_SEEN = {}, OPP_ADJ = null, BT_P = undefined, PJ_GK = undefined, TX_CACHE = [], GK_RECENT = {}, JOURNAL = null, ROLES = null;
@@ -241,7 +252,7 @@ function modelSkater_(p, prior, mp, pos, pj, lg, gafP) {
   // Rôle (retenu par le backtest, et confirmé sur 3 saisons au labo) : temps de jeu par match cette saison ÷ celui de la saison
   // passée, à la puissance toiB (0,5), appliqué à la base d'avant-saison — un joueur promu sur le 1er trio produit plus que sa base.
   // 5 matchs et plus cette saison, 15 et plus la saison passée ; facteur borné entre 0,6 et 1,6.
-  let roleF = null;
+  let roleF = null, mlF = null;
   const toiNow = mp && mp.gp >= 5 && mp.toi > 0 ? mp.toi / mp.gp / 60 : null;
   if (FN && FN.toiB && pj && pj.ly && pj.ly.toi > 0 && pj.ly.gp >= 15 && n >= 5 && toiNow) {
     roleF = Math.max(0.6, Math.min(1.6, Math.pow(toiNow / pj.ly.toi, FN.toiB)));
@@ -294,6 +305,22 @@ function modelSkater_(p, prior, mp, pos, pj, lg, gafP) {
     shp: blend_(pr.shp, rate('shp'), n, K.shp), sog: blend_(pr.sog, sogObs, n, K.sog),
     hit: blend_(pr.hit, rate('hit'), n, K.hit), blk: blend_(pr.blk, rate('blk'), n, K.blk)
   };
+  // Correction par apprentissage automatique (5 saisons AVEC analystes, chaque saison prédite par un modèle entraîné sans elle :
+  // +0,0016 à +0,0020 FP/match, 5 saisons gagnées sur 5). Arbres entraînés au labo sur 10 saisons (fichier MlModel.gs),
+  // appliqués à ML_W (prudent) de leur correction ; la correction est répartie sur toutes les stats du joueur.
+  if (typeof ML_MODEL !== 'undefined' && APP.ML_W && n >= 5 && p) {
+    try {
+      const SCL = { g: 3, a: 2, ppp: 0.5, shp: 0.5, sog: 0.2, hit: 0.2, blk: 0.4 }, KS = ['g', 'a', 'ppp', 'shp', 'sog', 'hit', 'blk'];
+      const hf = KS.reduce((t, k) => t + SCL[k] * (proj[k] || 0), 0);
+      const x = [hf].concat(KS.map(k => proj[k] || 0), KS.map(k => rate(k)), [n, (pj && pj.age) || 27, toiNow || 0, hasMp ? mp.ixg / mp.gp : 0, g === 'D' ? 1 : 0,
+        (pj && pj.t3) || 0, hasMp && mp.pptoi ? mp.pptoi / mp.gp / 60 : 0, (pj && pj.pt) || 0, (pj && pj.g3) || 0, (pj && pj.pl) || 0]);
+      if (x.every(v => isFinite(v)) && hf > 0.3) {
+        const c = mlCorr_(x), f = Math.max(0.75, Math.min(1.25, (hf + APP.ML_W * c) / hf));
+        KS.forEach(k => { if (proj[k] != null) proj[k] *= f; });
+        mlF = Math.round(f * 1000) / 1000;
+      }
+    } catch (e) { /* modèle absent ou invalide : on garde la projection */ }
+  }
   // compagnons de trio (attaquants) : nouveau trio meilleur ou pire que d'habitude → attaque ±10 % au plus
   const lq = g === 'F' && p && LINEQ && LINEQ[p.id] != null ? LINEQ[p.id] : 0;
   if (lq) ['g', 'a', 'ppp', 'shp', 'sog'].forEach(k => { proj[k] *= 1 + 0.1 * lq; });
@@ -307,7 +334,7 @@ function modelSkater_(p, prior, mp, pos, pj, lg, gafP) {
   const actual = n ? (p.fpg || 0) : null;
   return {
     model: fp_(proj), deserved: deserved, luck: n && hasMp ? actual - deserved : null,
-    toi: hasMp && mp.gp ? mp.toi / mp.gp / 60 : null, pptoi: hasMp && mp.gp ? mp.pptoi / mp.gp / 60 : null, role: roleF != null ? Math.round(roleF * 100) / 100 : null,
+    toi: hasMp && mp.gp ? mp.toi / mp.gp / 60 : null, pptoi: hasMp && mp.gp ? mp.pptoi / mp.gp / 60 : null, role: roleF != null ? Math.round(roleF * 100) / 100 : null, ml: mlF,
     // part des matchs restants qu'il jouera (labo 10 saisons, bons réguliers) : 0,815 + 0,1 × sa part de matchs joués les saisons passées
     // (un joueur durable ≈ 91-92 %, un joueur souvent blessé ≈ 88 % ; sans historique 88 %) — au lieu de 94 % pour tout le monde
     avail: pj && pj.gp ? Math.round(Math.max(0.8, Math.min(0.92, 0.815 + 0.1 * Math.min(1, pj.gp / (typeof pjGames_ === 'function' ? pjGames_(String(CONFIG.SEASON)) : 82)))) * 1000) / 1000 : 0.88,
@@ -614,7 +641,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
       perGame: round_(g === 'G' ? m.model * (m.share || CONFIG.GOALIE_START_SHARE) : m.model),   // FP attendus par match de son équipe
       deserved: m.deserved === null ? null : round_(m.deserved), luck: m.luck === null ? null : round_(m.luck),
       signal: g === 'G' ? '' : signal_(m, p ? p.gp : 0),
-      toi: m.toi ? round_(m.toi) : null, pptoi: m.pptoi ? round_(m.pptoi) : null, role: m.role != null ? m.role : undefined, avail: m.avail != null ? m.avail : undefined, gsax: m.gsax ? round_(m.gsax) : null,
+      toi: m.toi ? round_(m.toi) : null, pptoi: m.pptoi ? round_(m.pptoi) : null, role: m.role != null ? m.role : undefined, ml: m.ml != null ? m.ml : undefined, avail: m.avail != null ? m.avail : undefined, gsax: m.gsax ? round_(m.gsax) : null,
       left: sch.left[team] || 0, next: sch.next[team] || 0, today: !!sch.today[team], live: !!(sch.live && sch.live[team]),
       liveLeft: sch.liveLeft && sch.liveLeft[team] != null ? sch.liveLeft[team] : null,
       id: p ? p.id : null,
@@ -658,6 +685,9 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
   mark_('Gardiens partants (DailyFaceoff)');
   try { MPG = mpGames_(sch.weekGames); } catch (e) { WARN.push('MoneyPuck (gardiens partants, chances de victoire) : ' + e.message); }
   try { STARTERS = dfoStarters_(); } catch (e) { WARN.push('Gardiens partants : ' + e.message); }
+  mark_('Trios du jour (DailyFaceoff)');
+  try { DFOL = dfoForApp_(dfoLines_()); } catch (e) { WARN.push('Trios du jour : ' + e.message); }
+  try { CAL = calResolve_(); } catch (e) { CAL = getCal_(); WARN.push('Calibration : ' + e.message); }
   mark_('Défense adverse');
   try { OPP_ADJ = oppAdjust_(); } catch (e) { WARN.push('Adversaires : ' + e.message); }
   mark_('Journal ESPN');
@@ -687,7 +717,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
               share: CONFIG.GOALIE_START_SHARE, sims: APP.SIMS, luck: APP.LUCK,
               k: inSeason_() ? Object.assign({}, APP.K, inSeason_().K, { gx: inSeason_().kxg, g: inSeason_().gsrc === 'tirs' || inSeason_().gsrc === 'mix' ? inSeason_().K.g : inSeason_().kg, gstart: inSeason_().gk ? inSeason_().gk.k : APP.K.gstart }) : APP.K,
               bt: inSeason_() },
-    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), rookies: rookies_(), lsv: LSV, odds: getOdds_(), moves: myMoves, journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS,
+    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), rookies: rookies_(), lsv: LSV, odds: getOdds_(), moves: myMoves, journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS, lines: DFOL, cal: CAL,
     teams: teamsOut, waivers: waivers, schedule: sched.games, warn: WARN.slice(),
     sources: ['LNH (api-web.nhle.com)', 'ESPN Fantasy', 'GAF Aggregate Projections', 'MoneyPuck.com']
   };
@@ -1082,7 +1112,7 @@ function oppAdjust_() {
 // Présences sur la glace (feuilles de présences LNH, après chaque match) : qui est sur la 1re vague d'AN, avec qui il joue à 5 c. 5.
 // 6 derniers matchs de chaque équipe (3 récents vs 3 d'avant → promotions et changements de duo). Résumés gardés dans « APP Glace ».
 const ICE = { GAMES_PER_TEAM: 6, MAX_NEW: 40, SHEET: 'APP Glace' };
-let ICE_STORE = {}, LINEQ = {};
+let ICE_STORE = {}, LINEQ = {}, DFOL = null, CAL = [];
 // Compagnons de trio (retenu par le backtest par match 2025-26, coef 0,1) : qualité de ses 2 principaux coéquipiers à 5 c. 5
 // au DERNIER match (FP d'attaque par match de la saison) vs la moyenne de ses coéquipiers sur toute la saison → −1 à +1
 function lineQuality_(players) {
@@ -1397,6 +1427,84 @@ function espnOwnership_() {
     if (p.fullName) out[norm_(p.fullName)] = { o: Math.round((o.percentOwned || 0) * 10) / 10, c: Math.round((o.percentChange || 0) * 100) / 100 }; });
   try { cache.put('OWN2', JSON.stringify(out), 3 * 3600); } catch (e) { /* rien */ }
   return out;
+}
+// ---------------- Trios du jour (idée 3) : DailyFaceoff, page « line-combinations » de chaque équipe ----------------
+// Pas de validation historique possible (DailyFaceoff ne garde pas l'historique) : information seulement, aucun effet sur le modèle.
+// Rafraîchi au plus toutes les 3 h ; garde les changements (promotions / rétrogradations) des 7 derniers jours.
+const DFO_SLUG = { ANA: 'anaheim-ducks', BOS: 'boston-bruins', BUF: 'buffalo-sabres', CGY: 'calgary-flames', CAR: 'carolina-hurricanes', CHI: 'chicago-blackhawks',
+  COL: 'colorado-avalanche', CBJ: 'columbus-blue-jackets', DAL: 'dallas-stars', DET: 'detroit-red-wings', EDM: 'edmonton-oilers', FLA: 'florida-panthers',
+  LAK: 'los-angeles-kings', MIN: 'minnesota-wild', MTL: 'montreal-canadiens', NSH: 'nashville-predators', NJD: 'new-jersey-devils', NYI: 'new-york-islanders',
+  NYR: 'new-york-rangers', OTT: 'ottawa-senators', PHI: 'philadelphia-flyers', PIT: 'pittsburgh-penguins', SJS: 'san-jose-sharks', SEA: 'seattle-kraken',
+  STL: 'st-louis-blues', TBL: 'tampa-bay-lightning', TOR: 'toronto-maple-leafs', UTA: 'utah-mammoth', VAN: 'vancouver-canucks', VGK: 'vegas-golden-knights',
+  WSH: 'washington-capitals', WPG: 'winnipeg-jets' };
+function dfoLines_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet(), sh = hiddenSheet_(ss, 'DFO Trios');
+  let st = { at: 0, cur: {}, log: [] };
+  try { const v = sh.getRange(1, 1, Math.max(1, sh.getLastRow()), 1).getValues().map(r => r[0]).join(''); if (v) st = JSON.parse(v); } catch (e) { /* vide */ }
+  if (Date.now() - (st.at || 0) < 3 * 3600 * 1000) return st;
+  const UA = { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36', 'Accept': 'text/html' };
+  const T = Object.keys(DFO_SLUG), today = Utilities.formatDate(new Date(), CONFIG.TZ || 'America/Toronto', 'yyyy-MM-dd');
+  const rank = g => g ? (g[0] === 'f' ? +g[1] : g[0] === 'd' ? +g[1] : 9) : 9;
+  for (let b = 0; b < T.length; b += 8) {
+    const part = T.slice(b, b + 8);
+    const res = UrlFetchApp.fetchAll(part.map(t => ({ url: 'https://www.dailyfaceoff.com/teams/' + DFO_SLUG[t] + '/line-combinations', muteHttpExceptions: true, followRedirects: true, headers: UA })));
+    res.forEach((r, i) => {
+      const t = part[i]; if (r.getResponseCode() !== 200) return;
+      const m = r.getContentText().match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/); if (!m) return;
+      let c; try { c = JSON.parse(m[1]).props.pageProps.combinations; } catch (e) { return; }
+      if (!c || !c.players) return;
+      const p = {};
+      c.players.forEach(x => { const k = norm_(x.name); if (!k) return; p[k] = p[k] || ['', '', x.name];
+        if (x.categoryIdentifier === 'ev' && /^[fd]\d$/.test(x.groupIdentifier)) p[k][0] = x.groupIdentifier;
+        if (x.categoryIdentifier === 'pp') p[k][1] = x.groupIdentifier; });
+      const old = st.cur[t];
+      if (old && old.u !== c.updatedAt) Object.keys(p).forEach(k => {
+        const o = old.p[k], n = p[k]; if (!o) { if (n[0]) st.log.push({ d: today, t: t, n: n[2], k: k, a: '', b: n[0], pa: '', pb: n[1] }); return; }
+        const evUp = n[0] && o[0] && n[0][0] === o[0][0] && rank(n[0]) !== rank(o[0]), ppCh = (n[1] || '') !== (o[1] || '');
+        if (evUp || ppCh) st.log.push({ d: today, t: t, n: n[2], k: k, a: o[0], b: n[0], pa: o[1] || '', pb: n[1] || '' });
+      });
+      st.cur[t] = { u: c.updatedAt, s: c.sourceName || '', p: p };
+    });
+  }
+  const lim = Utilities.formatDate(new Date(Date.now() - 7 * 86400000), CONFIG.TZ || 'America/Toronto', 'yyyy-MM-dd');
+  st.log = st.log.filter(x => x.d >= lim).slice(-150); st.at = Date.now();
+  const json = JSON.stringify(st), ch = [];
+  for (let i = 0; i < json.length; i += 40000) ch.push([json.slice(i, i + 40000)]);
+  sh.clearContents(); sh.getRange(1, 1, ch.length, 1).setValues(ch);
+  return st;
+}
+function dfoForApp_(st) {      // version compacte pour l'app : nom normalisé → [trio, AN, équipe] + changements récents
+  const out = {}; Object.keys(st.cur || {}).forEach(t => { const T = st.cur[t]; Object.keys(T.p).forEach(k => { out[k] = [T.p[k][0], T.p[k][1], t]; }); });
+  return { p: out, log: st.log || [], src: Object.keys(st.cur || {}).reduce((o, t) => { o[t] = [st.cur[t].u, st.cur[t].s]; return o; }, {}) };
+}
+// ---------------- Calibration des chances de victoire (idée 9) ----------------
+// L'app note, une fois par semaine et par duel, la probabilité calculée (et la part de la semaine déjà jouée) ; le serveur
+// ajoute le résultat ESPN quand le duel est terminé. Avec le temps : « quand l'app dit 70 %, gagne-t-on 7 fois sur 10 ? »
+function getCal_() { try { return JSON.parse(PropertiesService.getDocumentProperties().getProperty('CAL2') || '[]'); } catch (e) { return []; } }
+function saveCal(list) {           // appelée par l'app : ajoute les entrées absentes (période + équipe)
+  const cur = getCal_(), have = {};
+  cur.forEach(x => { have[x.per + '|' + x.team] = true; });
+  (Array.isArray(list) ? list : []).forEach(x => { if (x && x.per && x.team && !have[x.per + '|' + x.team]) { cur.push(x); have[x.per + '|' + x.team] = true; } });
+  const keep = cur.slice(-400);
+  PropertiesService.getDocumentProperties().setProperty('CAL2', JSON.stringify(keep));
+  return JSON.stringify(keep);
+}
+function calResolve_() {           // résultats ESPN des duels terminés
+  const cal = getCal_(); if (!cal.length || !CONFIG.ESPN_LEAGUE_ID) return cal;
+  if (!cal.some(x => x.win == null)) return cal;
+  const r = UrlFetchApp.fetch(`https://${ESPN_HOSTS[0]}/apis/v3/games/fhl/seasons/${CONFIG.ESPN_SEASON}/segments/0/leagues/${CONFIG.ESPN_LEAGUE_ID}?view=mMatchupScore&view=mTeam`, { muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) return cal;
+  const j = JSON.parse(r.getContentText()), name = {};
+  (j.teams || []).forEach(t => { name[t.id] = t.name || ((t.location || '') + ' ' + (t.nickname || '')).trim(); });
+  const res = {};
+  (j.schedule || []).forEach(m => { if (!m.winner || m.winner === 'UNDECIDED' || !m.home || !m.away) return;
+    const h = name[m.home.teamId], a = name[m.away.teamId];
+    res[m.matchupPeriodId + '|' + h] = { win: m.winner === 'HOME' ? 1 : m.winner === 'AWAY' ? 0 : 0.5, pf: m.home.totalPoints, pa: m.away.totalPoints };
+    res[m.matchupPeriodId + '|' + a] = { win: m.winner === 'AWAY' ? 1 : m.winner === 'HOME' ? 0 : 0.5, pf: m.away.totalPoints, pa: m.home.totalPoints }; });
+  let ch = false;
+  cal.forEach(x => { const z = res[x.per + '|' + (x.espn || x.team)] || res[x.per + '|' + x.team]; if (x.win == null && z) { Object.assign(x, z); ch = true; } });
+  if (ch) PropertiesService.getDocumentProperties().setProperty('CAL2', JSON.stringify(cal));
+  return cal;
 }
 // Journal des cotes (idée 5) : lignes de paris notées par Ulysse, avec la probabilité du modèle au moment de l'entrée
 function getOdds_() { try { return JSON.parse(PropertiesService.getDocumentProperties().getProperty('ODDS') || '[]'); } catch (e) { return []; } }
