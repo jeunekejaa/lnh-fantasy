@@ -308,6 +308,9 @@ function modelSkater_(p, prior, mp, pos, pj, lg, gafP) {
   return {
     model: fp_(proj), deserved: deserved, luck: n && hasMp ? actual - deserved : null,
     toi: hasMp && mp.gp ? mp.toi / mp.gp / 60 : null, pptoi: hasMp && mp.gp ? mp.pptoi / mp.gp / 60 : null, role: roleF != null ? Math.round(roleF * 100) / 100 : null,
+    // part des matchs restants qu'il jouera (labo 10 saisons, bons réguliers) : 0,815 + 0,1 × sa part de matchs joués les saisons passées
+    // (un joueur durable ≈ 91-92 %, un joueur souvent blessé ≈ 88 % ; sans historique 88 %) — au lieu de 94 % pour tout le monde
+    avail: pj && pj.gp ? Math.round(Math.max(0.8, Math.min(0.92, 0.815 + 0.1 * Math.min(1, pj.gp / (typeof pjGames_ === 'function' ? pjGames_(String(CONFIG.SEASON)) : 82)))) * 1000) / 1000 : 0.88,
     ixg: hasMp && mp.gp ? mp.ixg / mp.gp : null, ppRole: ppRole, rates: proj, trend: cls, inj: inj || undefined, lq: lq || 0
   };
 }
@@ -611,7 +614,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
       perGame: round_(g === 'G' ? m.model * (m.share || CONFIG.GOALIE_START_SHARE) : m.model),   // FP attendus par match de son équipe
       deserved: m.deserved === null ? null : round_(m.deserved), luck: m.luck === null ? null : round_(m.luck),
       signal: g === 'G' ? '' : signal_(m, p ? p.gp : 0),
-      toi: m.toi ? round_(m.toi) : null, pptoi: m.pptoi ? round_(m.pptoi) : null, role: m.role != null ? m.role : undefined, gsax: m.gsax ? round_(m.gsax) : null,
+      toi: m.toi ? round_(m.toi) : null, pptoi: m.pptoi ? round_(m.pptoi) : null, role: m.role != null ? m.role : undefined, avail: m.avail != null ? m.avail : undefined, gsax: m.gsax ? round_(m.gsax) : null,
       left: sch.left[team] || 0, next: sch.next[team] || 0, today: !!sch.today[team], live: !!(sch.live && sch.live[team]),
       liveLeft: sch.liveLeft && sch.liveLeft[team] != null ? sch.liveLeft[team] : null,
       id: p ? p.id : null,

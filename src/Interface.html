@@ -698,7 +698,7 @@ function predRow(p) {
   }
   // « Mon estimé » (ex. McDavid 175) est un total sur tous les matchs de son équipe : pas de rabais de 94 %
   const mine = D.ovr && D.ovr[p.name] && D.ovr[p.name].pts > 0;
-  const eg = games * (mine ? 1 : (D.config.injury || 0.94)), g = s[0] + r[0] * eg, a = s[1] + r[1] * eg;
+  const eg = games * (mine ? 1 : (p.avail || D.config.injury || 0.94)), g = s[0] + r[0] * eg, a = s[1] + r[1] * eg;
   return { p: p, g: false, gp: gp + eg, gp0: gp, b: g, b0: s[0], a: a, a0: s[1], pts: g + a, pts0: s[0] + s[1] };
 }
 function predAll() {
@@ -769,7 +769,7 @@ function vPred() {
     ${L.map((r, i) => `<tr><td class="muted">${i + 1}</td><td class="l">${nm(r)}${r.rk ? ' <span class="chip blue">recrue</span>' : ''}${r.p.owner === D.me ? ' <span class="chip good">toi</span>' : ''}</td>${cols.map(([kk]) => `<td>${cell(r, kk)}</td>`).join('')}</tr>`).join('')}</table></div>
     ${total > L.length ? `<button class="btn" id="pr-more" style="width:100%;margin-top:10px">Afficher plus (${total - L.length} autres)</button>` : ''}`;
   return `<div class="card"><h2>Prédictions 2026-27 · ${esc(cutLbl)}</h2>${controls}
-      <div class="small muted">Total = réel à date + projection maison (stats par match) × matchs attendus d’ici ${PRV.cut === 'end' ? 'la fin de la saison' : 'cette date'}. Matchs attendus = matchs de son équipe × 94 % ; un blessé compte à partir de sa date de retour. Gardiens : × sa part des départs.${PRV.split ? ' Entre parenthèses : déjà fait + projeté.' : ''}</div></div>
+      <div class="small muted">Total = réel à date + projection maison (stats par match) × matchs attendus d’ici ${PRV.cut === 'end' ? 'la fin de la saison' : 'cette date'}. Matchs attendus = matchs de son équipe × la part qu’il joue d’habitude (88 à 92 % selon ses saisons passées) ; un blessé compte à partir de sa date de retour. Gardiens : × sa part des départs.${PRV.split ? ' Entre parenthèses : déjà fait + projeté.' : ''}</div></div>
     ${cards}
     <div class="card"><h2>Tous les joueurs</h2><div class="controls"><input id="pr-q" placeholder="Chercher un joueur" value="${esc(PRV.q)}" style="flex:1;min-width:160px" autocomplete="off"></div>${tbl}</div>`;
 }
@@ -1167,14 +1167,14 @@ function sheetHtml(p) {
   const s = x.s || [0, 0, 0, 0, 0, 0, 0], r = x.r, gp = p.gp || 0;
   const pts = s[0] + s[1], fp = (p.fpg || 0) * gp;
   // reste de la saison : matchs de son équipe × part des matchs réellement joués (blessures, repos)
-  const eg = (x.tl || 0) * (S.injury || 0.94);
+  const eg = (x.tl || 0) * (p.avail || S.injury || 0.94);
   const live = `<h3>Cette saison · en direct</h3><div class="grid">${kp(s[0], 'Buts')}${kp(s[1], 'Passes')}${kp(pts, 'Points')}${kp(s[2], 'Pts en AN')}${kp(s[3], 'Pts en DN')}
     ${kp(s[4], 'Tirs')}${kp(s[5], 'Mises en échec')}${kp(s[6], 'Tirs bloqués')}${kp(f1(fp), 'FP')}${kp(f2(p.fpg), 'FP / match')}</div>` + formChart(p);
   let proj = '';
   if (r) {
     const endPts = pts + (r[0] + r[1]) * eg, endFp = fp + p.model * eg;
     proj = `<h3>Prévision · projection maison</h3><div class="grid">${kp(f2(p.model), 'FP / match (reste)')}${kp(f0(endPts), 'Points fin de saison')}
-      ${kp(f0(s[0] + r[0] * eg), 'Buts fin de saison')}${kp(f0(endFp), 'FP fin de saison')}${kp(f1(eg), 'Matchs attendus d’ici la fin', `${x.tl} matchs de son équipe × ${Math.round((S.injury || 0.94) * 100)} % joués`)}</div>
+      ${kp(f0(s[0] + r[0] * eg), 'Buts fin de saison')}${kp(f0(endFp), 'FP fin de saison')}${kp(f1(eg), 'Matchs attendus d’ici la fin', `${x.tl} matchs de son équipe × ${Math.round((p.avail || S.injury || 0.94) * 100)} % joués (selon ses saisons passées)`)}</div>
       ${projTable(p, x, s, r, gp, eg)}
       ${explainSkater(p, x, s, gp)}
       ${p.role != null && Math.abs(p.role - 1) >= 0.03 ? `<div class="note"><b>Rôle :</b> ${f1(p.toi)} min par match cette saison${x.ly && x.ly.toi ? ` contre ${f1(x.ly.toi)} l’an passé` : ''} — sa base d’avant-saison est ${p.role > 1 ? 'relevée' : 'baissée'} de ${Math.round(Math.abs(p.role - 1) * 100)} % (testé sur 3 saisons).</div>` : ''}
