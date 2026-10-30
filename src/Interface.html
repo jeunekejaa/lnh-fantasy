@@ -178,7 +178,7 @@ th.srt[data-dir]::after{content:attr(data-dir);margin-left:3px;color:var(--accen
     <div><h1 id="htitle">Semaine</h1><div class="sub" id="stamp">Chargement…</div></div>
     <button class="btn" id="refresh" title="Relire les stats LNH, ESPN et MoneyPuck" aria-label="Mettre à jour" style="display:flex;align-items:center;gap:8px"><svg viewBox="0 0 24 24" aria-hidden="true" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/></svg><span class="hide-s">Mettre à jour</span></button>
   </div>
-  <nav id="tabs" aria-label="Navigation"><div class="brand">LNH Fantasy</div><button data-g="ligue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM17 5h3a3 3 0 0 1-3 4M7 5H4a3 3 0 0 0 3 4"/></svg>Ligue</button><div class="subs" data-for="ligue"><button data-t="board">Classement</button><button data-t="tx">Transactions</button></div><button data-g="team"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 20v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 20v-1a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg>Équipes</button><button data-g="week"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>Semaine</button><button data-g="todo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>Que faire</button><button data-g="outils"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>Outils</button><div class="subs" data-for="outils"><button data-t="trade">Échange</button><button data-t="waivers">Ballotage</button><button data-t="search">Chercher</button><button data-t="pred">Prédictions</button><button data-t="about">Modèle</button></div></nav>
+  <nav id="tabs" aria-label="Navigation"><div class="brand">LNH Fantasy</div><button data-g="ligue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM17 5h3a3 3 0 0 1-3 4M7 5H4a3 3 0 0 0 3 4"/></svg>Ligue</button><div class="subs" data-for="ligue"><button data-t="board">Classement</button><button data-t="tx">Transactions</button></div><button data-g="team"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 20v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 20v-1a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg>Équipes</button><button data-g="week"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>Semaine</button><button data-g="todo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>Que faire</button><button data-g="outils"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>Outils</button><div class="subs" data-for="outils"><button data-t="trade">Échange</button><button data-t="waivers">Ballotage</button><button data-t="search">Chercher</button><button data-t="pred">Prédictions</button><button data-t="strat">Stratégie</button><button data-t="about">Modèle</button></div></nav>
 </header>
 <div id="prog"><div class="row"><span id="plabel">Mise à jour…</span><span id="ppct">0 %</span></div><div class="track"><div class="fill" id="pfill"></div></div></div>
 <div id="ps" role="dialog" aria-modal="true"><div class="sheet" id="psheet"></div></div>
@@ -187,9 +187,9 @@ th.srt[data-dir]::after{content:attr(data-dir);margin-left:3px;color:var(--accen
 
 <script>
 let D = null, TAB = 'week';
-const GROUPS = { ligue: ['board', 'tx'], team: ['team'], week: ['week'], todo: ['todo'], outils: ['trade', 'waivers', 'search', 'pred', 'about'] };
+const GROUPS = { ligue: ['board', 'tx'], team: ['team'], week: ['week'], todo: ['todo'], outils: ['trade', 'waivers', 'search', 'pred', 'strat', 'about'] };
 const GLABEL = { ligue: 'Ligue', team: 'Équipes', week: 'Semaine', todo: 'Que faire ?', outils: 'Outils' };
-const TLABEL = { board: 'Classement', tx: 'Transactions', trade: 'Échange', waivers: 'Ballotage', search: 'Chercher', pred: 'Prédictions', about: 'Modèle' };
+const TLABEL = { board: 'Classement', tx: 'Transactions', trade: 'Échange', waivers: 'Ballotage', search: 'Chercher', pred: 'Prédictions', strat: 'Stratégie', about: 'Modèle' };
 const LASTSUB = { ligue: 'board', outils: 'trade' };
 const groupOf = t => Object.keys(GROUPS).find(g => GROUPS[g].indexOf(t) >= 0) || 'week';
 function navState() {
@@ -314,9 +314,10 @@ function render() {
     + (staleDay() ? `<div class="warnbox">⚠ Ces données datent du <b>${esc(dShort(todayStr()))}</b> : « ce soir », les matchs restants et les partants sont ceux de cette journée-là. Appuie sur <b>Mettre à jour</b>.</div>` : '');
   navState();
   const g = groupOf(TAB), segs = GROUPS[g].length > 1 ? `<div class="seg mob" role="group" aria-label="${GLABEL[g]}">${GROUPS[g].map(t => `<button data-sub="${t}" class="${t === TAB ? 'on' : ''}">${TLABEL[t]}</button>`).join('')}</div>` : '';
-  $('#view').innerHTML = segs + warn + ({ board: vBoard, team: vTeam, week: vWeek, todo: () => withPov(vTodo), waivers: vWaivers, search: vSearch, pred: vPred, trend: vTrend, tx: vTx, log: vLog, trade: vTrade, about: vAbout }[TAB])();
+  $('#view').innerHTML = segs + warn + ({ board: vBoard, team: vTeam, week: vWeek, todo: () => withPov(vTodo), waivers: vWaivers, search: vSearch, pred: vPred, strat: vStrat, trend: vTrend, tx: vTx, log: vLog, trade: vTrade, about: vAbout }[TAB])();
   if (TAB === 'search') bindSearch();
   if (TAB === 'pred') bindPred();
+  if (TAB === 'strat') bindStrat();
   if (TAB === 'todo') bindWeek();
   if (TAB === 'todo') bindTodo();
   if (TAB === 'waivers') bindWaivers();
@@ -785,6 +786,136 @@ function bindPred() {
   document.querySelectorAll('[data-pt]').forEach(b => b.onclick = () => { const [c, k] = b.dataset.pt.split(':'); PRV.tab[c] = k; render(); });
   document.querySelectorAll('[data-ps]').forEach(th => th.onclick = () => { const k = th.dataset.ps; PRV.dir = PRV.sort === k ? -PRV.dir : (k === 'gaa' || k === 'gaaLo' ? 1 : -1); PRV.sort = k; render(); });
 }
+// ---------- Outils › Stratégie : séries du pool, course au ballotage, profils des gérants, journal des cotes ----------
+let ODDS = null, ODF = { kind: 'm_pts', name: '', line: '0.5', over: '', under: '', date: '' };
+function vStrat() {
+  if (ODDS === null) ODDS = (D.odds || []).slice();
+  return stratPlayoffs() + stratRace() + stratManagers() + stratOdds();
+}
+// 15 · Séries du pool
+function stratPlayoffs() {
+  const days = playoffDays(); if (!days.length) return `<div class="card"><h2>Séries du pool</h2><div class="empty">Calendrier des séries introuvable chez ESPN.</div></div>`;
+  const G = t => (D.teamGames[t] || []).filter(g => days.indexOf(g[0]) >= 0).length;
+  const teams = Object.keys(D.teamGames || {}).map(t => [t, G(t)]).sort((a, b) => b[1] - a[1]);
+  const mine = me().players.filter(p => !OUT[p.status] || p.ret).map(p => ({ p: p, g: G(p.nhl), v: (p.perGame ?? p.model ?? 0) * G(p.nhl) })).sort((a, b) => b.v - a.v);
+  const fa = D.waivers.filter(p => !OUT[p.status] && p.grp !== 'G' && (p.model || 0) >= 2).map(p => ({ p: p, g: G(p.nhl), v: (p.model || 0) * G(p.nhl) })).sort((a, b) => b.v - a.v).slice(0, 8);
+  const avg = teams.reduce((t, x) => t + x[1], 0) / teams.length;
+  const chip = n => `<span class="chip ${n >= avg + 1 ? 'good' : n <= avg - 1 ? 'bad' : ''}">${n} m.</span>`;
+  return `<div class="card"><h2>Séries du pool · ${esc(dShort(days[0]))} → ${esc(dShort(days[days.length - 1]))}</h2>
+    <div class="small muted" style="margin-bottom:8px">Les ${days.length} jours des séries (${Math.ceil(days.length / 7)} semaines). Une équipe LNH joue en moyenne ${f1(avg)} matchs pendant cette période.</div>
+    <div class="two"><div><div class="lbl" style="margin-bottom:6px">Équipes LNH qui jouent le plus</div><div style="display:flex;flex-wrap:wrap;gap:6px">${teams.slice(0, 10).map(([t, n]) => `<span class="chip good">${t} · ${n}</span>`).join('')}</div>
+      <div class="lbl" style="margin:10px 0 6px">Le moins</div><div style="display:flex;flex-wrap:wrap;gap:6px">${teams.slice(-6).map(([t, n]) => `<span class="chip bad">${t} · ${n}</span>`).join('')}</div></div>
+      <div><div class="lbl" style="margin-bottom:6px">Meilleurs joueurs libres pour les séries</div>${fa.map(x => `<div class="small" style="margin:3px 0">${pname(x.p, '')} <span class="pos">${esc(x.p.pos)} · ${esc(x.p.nhl)}</span> ${chip(x.g)} <span class="muted">≈ ${f0(x.v)} FP</span></div>`).join('') || '<div class="muted small">—</div>'}</div></div>
+    <div class="lbl" style="margin:12px 0 6px">Tes joueurs pendant les séries</div>
+    <div class="tbl"><table><tr><th class="l">Joueur</th><th>Matchs</th><th>FP attendus</th></tr>${mine.map(x => `<tr><td class="l">${pname(x.p, D.me)} <span class="pos">${esc(x.p.pos)} · ${esc(x.p.nhl)}</span></td><td>${chip(x.g)}</td><td>${f0(x.v)}</td></tr>`).join('')}</table></div>
+    <div class="legend"><span>Garde en tête : à la date limite des échanges et en fin de saison, un joueur d’une équipe à ${teams[0][1]} matchs vaut nettement plus qu’un à ${teams[teams.length - 1][1]}.</span></div></div>`;
+}
+// 14 · Course au ballotage : les joueurs libres que les autres ligues ESPN s'arrachent cette semaine
+function stratRace() {
+  const L = D.waivers.filter(p => p.ownChg != null && p.ownChg > 0.5 && !OUT[p.status]).sort((a, b) => b.ownChg - a.ownChg).slice(0, 12);
+  if (!L.length) return `<div class="card"><h2>Course au ballotage</h2><div class="empty">Pas de données de propriété ESPN pour l’instant.</div></div>`;
+  const rep = { F: 0, D: 0, G: 0 }; ['F', 'D', 'G'].forEach(g => { const v = D.waivers.filter(p => p.grp === g && !OUT[p.status]).map(p => p.perGame ?? p.model ?? 0).sort((a, b) => b - a); rep[g] = v[9] || 0; });
+  return `<div class="card"><h2>Course au ballotage</h2>
+    <div class="small muted" style="margin-bottom:8px">Joueurs libres chez toi qui montent le plus vite dans toutes les ligues ESPN (% possédé, variation sur 7 jours). Un gérant de ta ligue risque de les prendre bientôt.</div>
+    <div class="tbl"><table><tr><th class="l">Joueur</th><th>Possédé</th><th>7 jours</th><th>Maison</th><th class="l">Verdict</th></tr>
+    ${L.map(p => { const v = p.perGame ?? p.model ?? 0, good = v >= rep[p.grp];
+      return `<tr><td class="l">${pname(p, '')} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span> ${pChip(p)}</td><td>${f0(p.own)} %</td><td class="up">+${f1(p.ownChg)}</td><td><b>${f2(v)}</b></td>
+        <td class="l small">${good ? '<span class="chip good">le modèle aime aussi</span>' : '<span class="chip">emballement</span>'}</td></tr>`; }).join('')}</table></div>
+    <div class="legend"><span>« Le modèle aime aussi » = projection au moins égale au 10e meilleur joueur libre à sa position : prends-le avant les autres s’il améliore ton alignement. « Emballement » = la hausse vient d’une séquence que le modèle ne croit pas.</span></div></div>`;
+}
+// 13 · Profils des gérants (14 derniers jours de transactions)
+function stratManagers() {
+  const tx = D.tx || [], prof = {};
+  D.teams.forEach(t => { prof[t.team] = { adds: 0, dAdd: 0, nD: 0, lucky: 0, panic: 0, trades: 0 }; });
+  tx.forEach(t => {
+    if (t.trade) { t.items.forEach(i => { if (prof[i.to]) prof[i.to].trades += 0.5; }); return; }
+    const P = prof[t.team]; if (!P) return;
+    const add = t.items.filter(i => i.kind === 'ADD').map(i => findP(i.name)).filter(Boolean), drop = t.items.filter(i => i.kind === 'DROP').map(i => findP(i.name)).filter(Boolean);
+    P.adds += add.length;
+    add.forEach(p => { const tr = trend(p); if (tr && tr.cls === 'chanceux') P.lucky++; });
+    drop.forEach(p => { const tr = trend(p); if (tr && tr.cls === 'malchanceux') P.panic++; });
+    if (add.length && drop.length) { P.dAdd += add.reduce((s, p) => s + (p.model || 0), 0) / add.length - drop.reduce((s, p) => s + (p.model || 0), 0) / drop.length; P.nD++; }
+  });
+  const rows = Object.keys(prof).filter(k => k !== D.me).map(k => ({ k: k, ...prof[k] })).sort((a, b) => b.adds - a.adds);
+  const read = r => {
+    const L = [];
+    if (r.adds >= 8) L.push('très actif au ballotage'); else if (r.adds <= 1) L.push('ne bouge presque pas');
+    if (r.lucky >= 2) L.push('achète les séquences chanceuses');
+    if (r.panic >= 1) L.push('se débarrasse de joueurs malchanceux (à surveiller au ballotage)');
+    if (r.nD >= 2 && r.dAdd / r.nD < -0.15) L.push('ses ajouts valent moins que ses retraits');
+    if (r.trades >= 1) L.push('ouvert aux échanges');
+    return L.join(' · ') || '—';
+  };
+  return `<div class="card"><h2>Profils des gérants · 14 derniers jours</h2><div class="tbl"><table><tr><th class="l">Gérant</th><th>Ajouts</th><th>Échanges</th><th class="l">Ce que ça dit</th></tr>
+    ${rows.map(r => `<tr><td class="l">${esc(r.k)}${NO_TRADE.test(r.k) ? ' <span class="chip">pas d’échange</span>' : ''}</td><td>${r.adds}</td><td>${f0(r.trades)}</td><td class="l small">${read(r)}</td></tr>`).join('')}</table></div>
+    <div class="legend"><span>Basé sur les transactions ESPN des 14 derniers jours et les tendances du modèle (🔵 chanceux, 🟡 malchanceux). Un gérant qui largue ses malchanceux te les laisse à prendre ; un qui achète les chanceux paiera cher tes 🔵.</span></div></div>`;
+}
+// 5 · Journal des cotes : tu notes une ligne de paris, le modèle donne sa probabilité, et on compte qui avait raison
+const ODK = { m_pts: 'Match : au moins 1 point', m_g: 'Match : au moins 1 but', m_sog: 'Match : tirs (plus de…)', s_pts: 'Saison : points (plus de…)', s_g: 'Saison : buts (plus de…)' };
+function poisCdf(k, l) { let s = 0, t = Math.exp(-l); for (let i = 0; i <= k; i++) { s += t; t *= l / (i + 1); } return s; }
+function normCdf2(z) { return 0.5 * (1 + Math.tanh(0.7978845608 * (z + 0.044715 * z * z * z))); }
+function oddsModelP(p, kind, line) {
+  const r = p.x && p.x.r; if (!r) return null;
+  if (kind === 'm_pts') return 1 - Math.exp(-(r[0] + r[1]));
+  if (kind === 'm_g') return 1 - Math.exp(-r[0]);
+  if (kind === 'm_sog') return 1 - poisCdf(Math.floor(line), r[4]);
+  const keep = PRV.cut; PRV.cut = 'end'; const row = predRow(Object.assign({}, p)); PRV.cut = keep; if (!row) return null;
+  const tot = kind === 's_pts' ? row.pts : row.b, done = kind === 's_pts' ? row.pts0 : row.b0, rest = Math.max(0, tot - done);
+  const sd = Math.sqrt(rest * 1.5 + Math.pow(0.12 * rest, 2)) || 1;
+  return 1 - normCdf2((line + 0.5 - (done + rest)) / sd);
+}
+function oddsResult(o) {
+  if (o.kind.slice(0, 2) !== 'm_' || !o.date || o.date >= todayStr()) return null;
+  const p = findP(o.name); if (!p || !p.id) return null;
+  const g = GL[p.id]; if (g === undefined) { realWeek(p, { s: o.date, e: o.date }); return 'loading'; }
+  if (!Array.isArray(g)) return null;
+  const x = g.find(z => z.d === o.date); if (!x) return 'pas joué';
+  const v = o.kind === 'm_pts' ? x.g + x.a : o.kind === 'm_g' ? x.g : x.sog;
+  return v > o.line ? 'plus' : 'moins';
+}
+function stratOdds() {
+  const names = D.teams.flatMap(t => t.players).concat(D.waivers).filter(p => p.grp !== 'G').map(p => p.name);
+  let won = 0, n = 0, wait = false;
+  const rows = (ODDS || []).slice().reverse().map((o, ri) => {
+    const i = ODDS.length - 1 - ri, imp = o.over && o.under ? (1 / o.over) / (1 / o.over + 1 / o.under) : null;
+    const side = o.pm != null && imp != null ? (o.pm > imp ? 'plus' : 'moins') : null, edge = side ? (side === 'plus' ? o.pm * o.over - 1 : (1 - o.pm) * o.under - 1) : null;
+    const res = oddsResult(o); if (res === 'loading') wait = true;
+    let out = res && res !== 'loading' ? res : '';
+    if (side && (res === 'plus' || res === 'moins')) { n++; const win = res === side; won += win ? (side === 'plus' ? o.over - 1 : o.under - 1) : -1; out = `${res} · ${win ? '✅' : '❌'}`; }
+    return `<tr><td class="l">${esc(o.date || '')}</td><td class="l">${esc(o.name)}<div class="small muted">${esc(ODK[o.kind] || o.kind)} ${o.kind === 'm_pts' || o.kind === 'm_g' ? '' : esc(String(o.line))}</div></td>
+      <td>${o.pm != null ? Math.round(o.pm * 100) + ' %' : '–'}</td><td>${imp != null ? Math.round(imp * 100) + ' %' : '–'}</td><td class="${edge > 0.03 ? 'up' : ''}">${side ? side + ' ' + (edge >= 0 ? '+' : '') + Math.round(edge * 100) + ' %' : '–'}</td><td>${esc(out)}</td>
+      <td><button class="btn" data-odel="${i}" style="min-height:30px;padding:0 8px">✕</button></td></tr>`;
+  }).join('');
+  if (wait) setTimeout(() => { if (TAB === 'strat') render(); }, 900);
+  return `<div class="card"><h2>Journal des cotes</h2>
+    <div class="small muted" style="margin-bottom:8px">Note une ligne de paris quand tu en vois une. Le modèle donne sa probabilité au moment où tu l’entres ; après le match, le résultat s’inscrit tout seul. Avec le temps, on saura si le modèle bat le marché.</div>
+    <div class="controls">
+      <input id="od-name" list="od-names" placeholder="Joueur" value="${esc(ODF.name)}" style="flex:1 1 160px" autocomplete="off"><datalist id="od-names">${names.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+      <select id="od-kind">${Object.entries(ODK).map(([k, l]) => `<option value="${k}" ${k === ODF.kind ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <input id="od-line" inputmode="decimal" placeholder="Ligne" value="${esc(ODF.line)}" style="width:80px">
+      <input id="od-over" inputmode="decimal" placeholder="Cote plus" value="${esc(ODF.over)}" style="width:96px">
+      <input id="od-under" inputmode="decimal" placeholder="Cote moins" value="${esc(ODF.under)}" style="width:100px">
+      <input id="od-date" type="date" value="${esc(ODF.date || todayStr())}" style="width:150px">
+      <button class="btn primary" id="od-add">Ajouter</button></div>
+    ${n ? `<div class="verdict" style="margin:6px 0">En pariant à chaque fois le côté du modèle (1 unité) : <b class="${won >= 0 ? 'up' : 'down'}">${won >= 0 ? '+' : ''}${f1(won)} unités</b> sur ${n} paris réglés.</div>` : ''}
+    ${rows ? `<div class="tbl"><table class="nosort"><tr><th class="l">Date</th><th class="l">Pari</th><th>Modèle</th><th>Site</th><th>Côté du modèle</th><th>Résultat</th><th></th></tr>${rows}</table></div>` : '<div class="empty">Aucune ligne notée pour l’instant.</div>'}
+    <div class="legend"><span>Site = probabilité implicite sans la marge (les deux cotes ramenées à 100 %). Les paris de saison se règlent à la fin de la saison.</span></div></div>`;
+}
+function bindStrat() {
+  const v = id => ($('#' + id) || {}).value || '';
+  ['od-name', 'od-kind', 'od-line', 'od-over', 'od-under', 'od-date'].forEach(id => { const e = $('#' + id); if (e) e.onchange = () => { ODF = { name: v('od-name'), kind: v('od-kind'), line: v('od-line'), over: v('od-over'), under: v('od-under'), date: v('od-date') }; }; });
+  const add = $('#od-add'); if (add) add.onclick = () => {
+    const name = v('od-name').trim(), p = findP(name), kind = v('od-kind'), num = x => parseFloat(String(x).replace(',', '.'));
+    const line = kind === 'm_pts' || kind === 'm_g' ? 0.5 : num(v('od-line')), over = num(v('od-over')), under = num(v('od-under'));
+    if (!p || !(over > 1) || !(under > 1) || !(line >= 0)) { const b = $('#od-add'); b.textContent = 'Joueur ou cotes invalides'; setTimeout(() => { b.textContent = 'Ajouter'; }, 1800); return; }
+    const pm = oddsModelP(p, kind, line);
+    ODDS.push({ name: p.name, kind: kind, line: line, over: over, under: under, date: v('od-date') || todayStr(), pm: pm != null ? Math.round(pm * 1000) / 1000 : null, t: Date.now() });
+    ODF = { kind: kind, name: '', line: v('od-line'), over: '', under: '', date: v('od-date') };
+    saveOddsServer(); render();
+  };
+  document.querySelectorAll('[data-odel]').forEach(b => b.onclick = () => { ODDS.splice(+b.dataset.odel, 1); saveOddsServer(); render(); });
+}
+function saveOddsServer() { try { google.script.run.withSuccessHandler(t => { try { D.odds = JSON.parse(t); } catch (e) {} }).saveOdds(ODDS); } catch (e) { /* hors ligne */ } }
 function vSearch() {
   const all = [];
   D.teams.forEach(t => t.players.forEach(p => all.push(Object.assign({ owner: t.team }, p))));
@@ -1995,9 +2126,8 @@ function goalieDays(mine) {
 function playoffDays() {
   const E = D.espn; if (!E || !E.regCount) return [];
   const rounds = Math.ceil(Math.log2(Math.max(2, E.poTeams || D.playoffTeams || 8))), lastP = E.regCount + rounds * (E.poLen || 1), out = [];
-  if (E.periods && E.curScoringDay) {
-    Object.keys(E.periods).map(Number).filter(p => p > E.regCount && p <= lastP).forEach(p => (E.periods[p] || []).forEach(id => out.push(ymdAdd(todayStr(), id - E.curScoringDay))));
-  } else if (D.weeks && D.weeks.length && E.cur) {
+  // (les « periods » d'ESPN donnent des numéros de duel, pas des jours : on passe par les semaines, une période = une semaine de duel)
+  if (D.weeks && D.weeks.length && E.cur) {
     const W = weekList(), ci = curWeekIdx();
     for (let p = E.regCount + 1; p <= lastP; p++) { const w = W[ci + (p - E.cur)]; if (w && w.s) for (let d = w.s; d <= w.e; d = ymdAdd(d, 1)) out.push(d); }
   }
