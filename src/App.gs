@@ -665,7 +665,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
               share: CONFIG.GOALIE_START_SHARE, sims: APP.SIMS, luck: APP.LUCK,
               k: inSeason_() ? Object.assign({}, APP.K, inSeason_().K, { gx: inSeason_().kxg, g: inSeason_().gsrc === 'tirs' ? inSeason_().K.g : inSeason_().kg, gstart: inSeason_().gk ? inSeason_().gk.k : APP.K.gstart }) : APP.K,
               bt: inSeason_() },
-    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), rookies: rookies_(), moves: myMoves, journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS,
+    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), rookies: rookies_(), lsv: LSV, moves: myMoves, journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS,
     teams: teamsOut, waivers: waivers, schedule: sched.games, warn: WARN.slice(),
     sources: ['LNH (api-web.nhle.com)', 'ESPN Fantasy', 'GAF Aggregate Projections', 'MoneyPuck.com']
   };
@@ -694,7 +694,14 @@ function playerSheet_(g, p, m, mp, gafPrior, pjPrior, team) {
     const GK = ['w', 'ga', 'sv', 'so', 'otl'], LG = [0.5, 2.9, 25.5, 0.06, 0.1], n = p ? p.gp || 0 : 0, S = CONFIG.SCORING;
     const gr = gafPrior && gafPrior.sv ? GK.map(k => gafPrior[k] || 0) : null;
     if (gr) o.gr = gr.map(r3);
-    const pr = gr || LG, k = m.k || 100;
+    // Niveau de la ligue : les analystes supposent ~,8975 d'arrêts en moyenne ; la ligue est plus bas (tendance à la baisse
+    // chaque année, et ,891 jusqu'ici cette saison). Backtest 2022-23 à 2025-26 : moitié saison passée − ,0025, moitié saison
+    // en cours → erreur de ~,001 sur le niveau du reste de la saison. On décale la base de chaque gardien d'autant.
+    const pr = (gr || LG).slice(), k = m.k || 100, L = leagueSv_();
+    if (L && L.target) {
+      const sh = pr[1] + pr[2], sp = sh ? pr[2] / sh : 0.8975, sp2 = Math.min(0.94, Math.max(0.85, sp + (L.target - 0.8975)));
+      pr[2] = sh * sp2; pr[1] = sh * (1 - sp2);
+    }
     const r = GK.map((key, i) => (k * pr[i] + n * (o.s ? o.s[i] / Math.max(1, n) : 0) * (n ? 1 : 0)) / (k + n));
     // moins de TIRS (arrêts ET buts × 0,93) : le % d'arrêts de chaque gardien reste celui des analystes mélangé à sa saison
     const CAL = [0.95, 0.93, 0.93, 0.85, 1];          // victoires, buts accordés, arrêts, blanchissages, défaites en prol.
@@ -1338,6 +1345,24 @@ function myMoves_(teamsOut, waivers) {
   return list;
 }
 // Recrues de la saison (définition LNH : filtre isRookie des stats officielles), gardées 12 h — onglet Prédictions
+// % d'arrêts attendu de la ligue pour le reste de la saison (gardé 12 h)
+let LSV = null;
+function leagueSv_() {
+  if (LSV) return LSV;
+  const cache = CacheService.getScriptCache(), hit = cache.get('LSV');
+  if (hit) { try { LSV = JSON.parse(hit); return LSV; } catch (e) { /* on refait */ } }
+  try {
+    const cur = String(CONFIG.SEASON), prev = String(+cur.slice(0, 4) - 1) + String(+cur.slice(4) - 1);
+    const url = sid => `https://api.nhle.com/stats/rest/en/goalie/summary?limit=300&cayenneExp=${encodeURIComponent(`seasonId=${sid} and gameTypeId=${CONFIG.GAME_TYPE}`)}`;
+    const tot = j => { let sv = 0, sa = 0; ((j && j.data) || []).forEach(x => { sv += x.saves || 0; sa += x.shotsAgainst || 0; }); return { p: sa ? sv / sa : null, sa: sa }; };
+    const [c, pv] = fetchJsonAll_([url(cur), url(prev)]).map(tot);
+    if (!pv.p) return null;
+    const w = c.p ? c.sa / (c.sa + 10000) : 0, target = w * (c.p || 0) + (1 - w) * (pv.p - 0.0025);
+    LSV = { target: Math.round(target * 10000) / 10000, cur: c.p, prev: pv.p, w: Math.round(w * 100) / 100 };
+    cache.put('LSV', JSON.stringify(LSV), 43200);
+    return LSV;
+  } catch (e) { return null; }
+}
 function rookies_() {
   const cache = CacheService.getScriptCache(), hit = cache.get('ROOKIES');
   if (hit) { try { return JSON.parse(hit); } catch (e) { /* on refait */ } }
