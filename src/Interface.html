@@ -255,6 +255,11 @@ function load(force) {
   } else if (window.MOCK) ok(JSON.stringify(window.MOCK));
 }
 $('#refresh').onclick = () => load(true);
+// en revenant sur l'app (téléphone) : nouvelle version installée depuis l'ouverture de la page ?
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !(window.google && google.script && google.script.run)) return;
+  try { google.script.run.withSuccessHandler(t => { try { verCheck(JSON.parse(t)); } catch (e) {} }).codeVersion(); } catch (e) {}
+});
 $('#tabs').onclick = e => { const b = e.target.closest('button'); if (!b) return;
   setTab(b.dataset.t || LASTSUB[b.dataset.g] || GROUPS[b.dataset.g][0]); };
 
