@@ -1177,6 +1177,7 @@ function sheetHtml(p) {
       ${kp(f0(s[0] + r[0] * eg), 'Buts fin de saison')}${kp(f0(endFp), 'FP fin de saison')}${kp(f1(eg), 'Matchs attendus d’ici la fin', `${x.tl} matchs de son équipe × ${Math.round((S.injury || 0.94) * 100)} % joués`)}</div>
       ${projTable(p, x, s, r, gp, eg)}
       ${explainSkater(p, x, s, gp)}
+      ${p.role != null && Math.abs(p.role - 1) >= 0.03 ? `<div class="note"><b>Rôle :</b> ${f1(p.toi)} min par match cette saison${x.ly && x.ly.toi ? ` contre ${f1(x.ly.toi)} l’an passé` : ''} — sa base d’avant-saison est ${p.role > 1 ? 'relevée' : 'baissée'} de ${Math.round(Math.abs(p.role - 1) * 100)} % (testé sur 3 saisons).</div>` : ''}
       <div class="note">Maison = base d’avant-saison (analystes + moteur maison) mélangée à la saison en cours, stat par stat (k du backtest). Le poids du réel grandit avec les matchs joués.</div>`;
   }
   const a = x.adv;
