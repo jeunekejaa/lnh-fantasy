@@ -18,7 +18,9 @@ const APP = {
   DATA_SHEET: 'APP Data',
   MP_SHEET: 'MP Cache',
   SIMS: 2000,              // saisons simulées pour les chances de séries
-  ML_W: 0.3,               // part de la correction apprise (labo : ×0,25 à ×0,5 gagnent les 5 saisons avec analystes ; prudent)
+  ML_W: 0.4,               // part de la correction apprise, une par stat (labo 5 saisons avec analystes : ×0,4 → +0,0026 FP/match, 5/5)
+  GK_K: 80,                // gardiens : confiance dans la saison en cours (labo 5 saisons) ; null = valeur du backtest
+  L30B: 0.25,              // rôle récent : (TJ 30 jours ÷ TJ saison)^0,25 (labo 5 saisons avec analystes : +0,0010, 4/5)
   WEEK_SD: 24,             // écart-type d'un pointage hebdomadaire (mesuré sur les semaines 1 à 3)
   GAMES_LEFT_DEFAULT: 3,   // matchs par semaine quand le calendrier est inconnu
   INJURY_FACTOR: 0.94,     // part des matchs réellement joués (blessures, repos)
@@ -210,13 +212,24 @@ const DEPTH_PRIOR = {
 const grp_ = pos => { const p = String(pos || ''); return p === 'G' ? 'G' : (p.split(/[,\/ ]/).indexOf('D') >= 0 ? 'D' : 'F'); };
 const fp_ = s => { const S = CONFIG.SCORING; return S.G * s.g + S.A * s.a + S.PPP * s.ppp + S.SHP * s.shp + S.SOG * s.sog + S.HIT * s.hit + S.BLK * s.blk; };
 const blend_ = (prior, obs, n, k) => (k * prior + n * obs) / (k + n);
+// Idée 7 · part des matchs restants qu'il jouera (labo 10 saisons, joueurs de 15 min et plus) : base selon sa saison passée
+// (0,70 + 0,12 × part des matchs joués), ramenée vers sa part de cette saison avec k = 20 matchs. L'ancienne formule surestimait
+// de 6 % en moyenne ; celle-ci : erreur plus basse 10 saisons sur 10, biais ramené à +1,6 %.
+function availFor_(p, pj) {
+  const sg = typeof pjGames_ === 'function' ? pjGames_(String(CONFIG.SEASON)) : 82;
+  const h0 = pj && pj.ly && pj.ly.gp ? pj.ly.gp / 82 : pj && pj.gp ? pj.gp / sg : null;
+  const base = h0 != null ? Math.max(0.55, Math.min(0.95, 0.70 + 0.12 * Math.min(1, h0))) : 0.80;
+  const n = p ? +p.gp || 0 : 0, tg = p ? TEAM_GP[p.team] || 0 : 0, cur = tg ? Math.min(1, n / tg) : null;
+  const v = cur != null ? (20 * base + n * cur) / (20 + n) : base;
+  return Math.round(Math.max(0.5, Math.min(0.97, v)) * 1000) / 1000;
+}
 // Évalue les arbres de ML_MODEL (HistGradientBoosting exporté du labo) : base + somme des feuilles atteintes
-function mlCorr_(x) {
-  let s = ML_MODEL.b;
-  for (let t = 0; t < ML_MODEL.t.length; t++) {
-    const T = ML_MODEL.t[t]; let i = 0;
-    while (!T[5][i]) i = x[T[0][i]] <= T[1][i] ? T[2][i] : T[3][i];
-    s += T[4][i];
+function mlCorr_(x, T) {
+  let s = T.b;
+  for (let t = 0; t < T.t.length; t++) {
+    const R = T.t[t]; let i = 0;
+    while (!R[5][i]) i = x[R[0][i]] <= R[1][i] ? R[2][i] : R[3][i];
+    s += R[4][i];
   }
   return s;
 }
@@ -305,7 +318,7 @@ function modelSkater_(p, prior, mp, pos, pj, lg, gafP) {
     shp: blend_(pr.shp, rate('shp'), n, K.shp), sog: blend_(pr.sog, sogObs, n, K.sog),
     hit: blend_(pr.hit, rate('hit'), n, K.hit), blk: blend_(pr.blk, rate('blk'), n, K.blk)
   };
-  // Correction par apprentissage automatique (5 saisons AVEC analystes, chaque saison prédite par un modèle entraîné sans elle :
+  // Correction par apprentissage automatique, une par stat (5 saisons AVEC analystes, chaque saison prédite par un modèle entraîné sans elle :
   // +0,0016 à +0,0020 FP/match, 5 saisons gagnées sur 5). Arbres entraînés au labo sur 10 saisons (fichier MlModel.gs),
   // appliqués à ML_W (prudent) de leur correction ; la correction est répartie sur toutes les stats du joueur.
   if (typeof ML_MODEL !== 'undefined' && APP.ML_W && n >= 5 && p) {
@@ -314,12 +327,21 @@ function modelSkater_(p, prior, mp, pos, pj, lg, gafP) {
       const hf = KS.reduce((t, k) => t + SCL[k] * (proj[k] || 0), 0);
       const x = [hf].concat(KS.map(k => proj[k] || 0), KS.map(k => rate(k)), [n, (pj && pj.age) || 27, toiNow || 0, hasMp ? mp.ixg / mp.gp : 0, g === 'D' ? 1 : 0,
         (pj && pj.t3) || 0, hasMp && mp.pptoi ? mp.pptoi / mp.gp / 60 : 0, (pj && pj.pt) || 0, (pj && pj.g3) || 0, (pj && pj.pl) || 0]);
-      if (x.every(v => isFinite(v)) && hf > 0.3) {
-        const c = mlCorr_(x), f = Math.max(0.75, Math.min(1.25, (hf + APP.ML_W * c) / hf));
-        KS.forEach(k => { if (proj[k] != null) proj[k] *= f; });
-        mlF = Math.round(f * 1000) / 1000;
+      if (x.every(v => isFinite(v)) && hf > 0.3 && ML_MODEL.s) {
+        // une correction par stat (taux par match), ajoutée à ML_W ; le total ne bouge jamais de plus de ±25 %
+        const add = {}; KS.forEach(k => { add[k] = APP.ML_W * mlCorr_(x, ML_MODEL.s[k]); });
+        const nf = KS.reduce((t, k) => t + SCL[k] * Math.max(0, (proj[k] || 0) + add[k]), 0);
+        if (nf > 0.75 * hf && nf < 1.25 * hf) { KS.forEach(k => { if (proj[k] != null) proj[k] = Math.max(0, proj[k] + add[k]); }); mlF = Math.round(nf / hf * 1000) / 1000; }
       }
     } catch (e) { /* modèle absent ou invalide : on garde la projection */ }
+  }
+  // Idée 8 (5 saisons avec analystes : +0,0010 FP/match, 4 saisons sur 5) : rôle récent — temps de jeu des 30 derniers jours
+  // ÷ temps de jeu de la saison, puissance 0,25, sur toutes les stats (5 matchs et plus dans les 30 jours)
+  let rec = null;
+  const l3 = p && L30TOI ? L30TOI[p.id] || L30TOI[String(p.id)] : null;
+  if (APP.L30B && l3 && l3[1] >= 5 && toiNow > 0 && l3[0] > 0) {
+    rec = Math.max(0.7, Math.min(1.4, Math.pow(l3[0] / toiNow, APP.L30B)));
+    Object.keys(proj).forEach(k => { proj[k] *= rec; });
   }
   // compagnons de trio (attaquants) : nouveau trio meilleur ou pire que d'habitude → attaque ±10 % au plus
   const lq = g === 'F' && p && LINEQ && LINEQ[p.id] != null ? LINEQ[p.id] : 0;
@@ -334,10 +356,10 @@ function modelSkater_(p, prior, mp, pos, pj, lg, gafP) {
   const actual = n ? (p.fpg || 0) : null;
   return {
     model: fp_(proj), deserved: deserved, luck: n && hasMp ? actual - deserved : null,
-    toi: hasMp && mp.gp ? mp.toi / mp.gp / 60 : null, pptoi: hasMp && mp.gp ? mp.pptoi / mp.gp / 60 : null, role: roleF != null ? Math.round(roleF * 100) / 100 : null, ml: mlF,
+    toi: hasMp && mp.gp ? mp.toi / mp.gp / 60 : null, pptoi: hasMp && mp.gp ? mp.pptoi / mp.gp / 60 : null, role: roleF != null ? Math.round(roleF * 100) / 100 : null, ml: mlF, rec: rec != null ? Math.round(rec * 1000) / 1000 : null,
     // part des matchs restants qu'il jouera (labo 10 saisons, bons réguliers) : 0,815 + 0,1 × sa part de matchs joués les saisons passées
     // (un joueur durable ≈ 91-92 %, un joueur souvent blessé ≈ 88 % ; sans historique 88 %) — au lieu de 94 % pour tout le monde
-    avail: pj && pj.gp ? Math.round(Math.max(0.8, Math.min(0.92, 0.815 + 0.1 * Math.min(1, pj.gp / (typeof pjGames_ === 'function' ? pjGames_(String(CONFIG.SEASON)) : 82)))) * 1000) / 1000 : 0.88,
+    avail: availFor_(p, pj),
     ixg: hasMp && mp.gp ? mp.ixg / mp.gp : null, ppRole: ppRole, rates: proj, trend: cls, inj: inj || undefined, lq: lq || 0
   };
 }
@@ -384,7 +406,7 @@ function modelGoalie_(p, prior, mp, name, engFpg) {
     const GK = PJ_GK || { gafW: 0.5, gafB: APP.GOALIE_BIAS };
     base = (gafF != null && engFpg != null ? GK.gafW * (gafF + GK.gafB) + (1 - GK.gafW) * engFpg
           : gafF != null ? gafF + GK.gafB : engFpg) + B.gk.b;
-    k = B.gk.k;
+    k = APP.GK_K || B.gk.k;   // idée 4 : labo gardiens 5 saisons avec analystes → k 80 (+0,019 FP/match, 4 saisons sur 5) au lieu de 300
   } else { base = (gafF != null ? gafF : 3.6) + APP.GOALIE_BIAS; k = APP.K.gstart; }
   const perStart = blend_(base, n ? p.fpg || 0 : 0, n, k);
   const tg = p ? TEAM_GP[p.team] || 0 : 0;
@@ -641,7 +663,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
       perGame: round_(g === 'G' ? m.model * (m.share || CONFIG.GOALIE_START_SHARE) : m.model),   // FP attendus par match de son équipe
       deserved: m.deserved === null ? null : round_(m.deserved), luck: m.luck === null ? null : round_(m.luck),
       signal: g === 'G' ? '' : signal_(m, p ? p.gp : 0),
-      toi: m.toi ? round_(m.toi) : null, pptoi: m.pptoi ? round_(m.pptoi) : null, role: m.role != null ? m.role : undefined, ml: m.ml != null ? m.ml : undefined, avail: m.avail != null ? m.avail : undefined, gsax: m.gsax ? round_(m.gsax) : null,
+      toi: m.toi ? round_(m.toi) : null, pptoi: m.pptoi ? round_(m.pptoi) : null, role: m.role != null ? m.role : undefined, ml: m.ml != null ? m.ml : undefined, rec: m.rec != null ? m.rec : undefined, avail: m.avail != null ? m.avail : undefined, gsax: m.gsax ? round_(m.gsax) : null,
       left: sch.left[team] || 0, next: sch.next[team] || 0, today: !!sch.today[team], live: !!(sch.live && sch.live[team]),
       liveLeft: sch.liveLeft && sch.liveLeft[team] != null ? sch.liveLeft[team] : null,
       id: p ? p.id : null,
@@ -685,6 +707,8 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
   mark_('Gardiens partants (DailyFaceoff)');
   try { MPG = mpGames_(sch.weekGames); } catch (e) { WARN.push('MoneyPuck (gardiens partants, chances de victoire) : ' + e.message); }
   try { STARTERS = dfoStarters_(); } catch (e) { WARN.push('Gardiens partants : ' + e.message); }
+  mark_('Arénas (mises en échec, tirs bloqués)');
+  try { ARENA = arenaFactors_(); } catch (e) { WARN.push('Arénas : ' + e.message); }
   mark_('Trios du jour (DailyFaceoff)');
   try { DFOL = dfoForApp_(dfoLines_()); } catch (e) { WARN.push('Trios du jour : ' + e.message); }
   try { CAL = calResolve_(); } catch (e) { CAL = getCal_(); WARN.push('Calibration : ' + e.message); }
@@ -717,7 +741,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
               share: CONFIG.GOALIE_START_SHARE, sims: APP.SIMS, luck: APP.LUCK,
               k: inSeason_() ? Object.assign({}, APP.K, inSeason_().K, { gx: inSeason_().kxg, g: inSeason_().gsrc === 'tirs' || inSeason_().gsrc === 'mix' ? inSeason_().K.g : inSeason_().kg, gstart: inSeason_().gk ? inSeason_().gk.k : APP.K.gstart }) : APP.K,
               bt: inSeason_() },
-    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), rookies: rookies_(), lsv: LSV, odds: getOdds_(), moves: myMoves, journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS, lines: DFOL, cal: CAL,
+    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), rookies: rookies_(), lsv: LSV, odds: getOdds_(), moves: myMoves, journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS, lines: DFOL, cal: CAL, arena: ARENA,
     teams: teamsOut, waivers: waivers, schedule: sched.games, warn: WARN.slice(),
     sources: ['LNH (api-web.nhle.com)', 'ESPN Fantasy', 'GAF Aggregate Projections', 'MoneyPuck.com']
   };
@@ -1112,7 +1136,7 @@ function oppAdjust_() {
 // Présences sur la glace (feuilles de présences LNH, après chaque match) : qui est sur la 1re vague d'AN, avec qui il joue à 5 c. 5.
 // 6 derniers matchs de chaque équipe (3 récents vs 3 d'avant → promotions et changements de duo). Résumés gardés dans « APP Glace ».
 const ICE = { GAMES_PER_TEAM: 6, MAX_NEW: 40, SHEET: 'APP Glace' };
-let ICE_STORE = {}, LINEQ = {}, DFOL = null, CAL = [];
+let ICE_STORE = {}, LINEQ = {}, DFOL = null, CAL = [], L30TOI = {}, ARENA = null;
 // Compagnons de trio (retenu par le backtest par match 2025-26, coef 0,1) : qualité de ses 2 principaux coéquipiers à 5 c. 5
 // au DERNIER match (FP d'attaque par match de la saison) vs la moyenne de ses coéquipiers sur toute la saison → −1 à +1
 function lineQuality_(players) {
@@ -1193,6 +1217,12 @@ function iceRoles_() {
     });
   });
   Object.keys(out).forEach(pid => { out[pid].mates = out[pid].mates.map(m => names[m] || m); if (out[pid].matesPrev) out[pid].matesPrev = out[pid].matesPrev.map(m => names[m] || m); });
+  // Temps de jeu des 30 derniers jours (idée 8 : niveau qui évolue) : pid → [minutes par match, matchs]
+  const lim = ymd_(new Date(Date.now() - 30 * 86400000)), l30 = {};
+  games.forEach(g => { if (String(g.date) <= lim || !store[+g.id]) return;
+    const T = store[+g.id].teams || {};
+    Object.keys(T).forEach(t => Object.keys(T[t].p || {}).forEach(pid => { if (goalie[pid]) return; const o = l30[pid] || (l30[pid] = [0, 0]); o[0] += T[t].p[pid][0]; o[1]++; })); });
+  L30TOI = {}; Object.keys(l30).forEach(pid => { L30TOI[pid] = [l30[pid][0] / l30[pid][1] / 60, l30[pid][1]]; });
   return out;
 }
 // Un match : par équipe, temps d'AN de l'équipe et, par joueur, [temps de jeu, temps en AN, temps à 5 c. 5, 3 meilleurs coéquipiers à 5 c. 5, nom]
@@ -1426,6 +1456,42 @@ function espnOwnership_() {
   (JSON.parse(r.getContentText()).players || []).forEach(x => { const p = x.player || {}, o = p.ownership || {};
     if (p.fullName) out[norm_(p.fullName)] = { o: Math.round((o.percentOwned || 0) * 10) / 10, c: Math.round((o.percentChange || 0) * 100) / 100 }; });
   try { cache.put('OWN2', JSON.stringify(out), 3 * 3600); } catch (e) { /* rien */ }
+  return out;
+}
+// ---------------- Biais des marqueurs par aréna (idée 5) ----------------
+// Les mises en échec et tirs bloqués sont comptés par l'équipe locale : certains arénas en comptent beaucoup plus.
+// Labo, 13 saisons : facteur d'aréna stable (1re moitié → 2e moitié : corrélation 0,81 pour les mises en échec, 0,72 pour
+// les tirs bloqués), et il améliore la prédiction de chaque match 13 saisons sur 13. Modèle : stat d'une équipe dans un match
+// = moyenne × force de l'équipe × facteur de l'aréna (10 itérations), sur la saison passée + la saison en cours (comptée double).
+function arenaFactors_() {
+  const cache = CacheService.getScriptCache(), hit = cache.get('ARENA2');
+  if (hit) { try { return JSON.parse(hit); } catch (e) { /* on refait */ } }
+  const seasons = [String(CONFIG.SEASON), pjPrev_(String(CONFIG.SEASON), 1)];
+  const urls = seasons.map(s => `https://api.nhle.com/stats/rest/en/team/realtime?isAggregate=false&isGame=true&limit=-1&cayenneExp=` + encodeURIComponent(`seasonId=${s} and gameTypeId=2`));
+  const res = fetchJsonAll_(urls), rows = [];
+  res.forEach((j, si) => {
+    const L = (j && j.data) || [], byG = {};
+    L.forEach(x => { (byG[x.gameId] = byG[x.gameId] || []).push(x); });
+    Object.keys(byG).forEach(g => { const P = byG[g]; if (P.length !== 2) return;
+      P.forEach((x, i) => { const o = P[1 - i], me = o.opponentTeamAbbrev, arena = x.homeRoad === 'H' ? me : x.opponentTeamAbbrev;
+        rows.push({ t: me, a: arena, w: si === 0 ? 2 : 1, hit: +x.hits || 0, blk: +x.blockedShots || 0, sog: +x.shots || 0 }); }); });
+  });
+  if (rows.length < 200) return null;
+  const fit = k => {
+    const W = rows.reduce((t, r) => t + r.w, 0), mu = rows.reduce((t, r) => t + r.w * r[k], 0) / W;
+    let tm = {}, ar = {};
+    for (let it = 0; it < 10; it++) {
+      const a = {}, b = {};
+      rows.forEach(r => { const x = a[r.t] || (a[r.t] = [0, 0]); x[0] += r.w * r[k] / (mu * (ar[r.a] || 1)); x[1] += r.w; });
+      tm = {}; Object.keys(a).forEach(t => { tm[t] = a[t][0] / a[t][1]; });
+      rows.forEach(r => { const x = b[r.a] || (b[r.a] = [0, 0]); x[0] += r.w * r[k] / (mu * (tm[r.t] || 1)); x[1] += r.w; });
+      ar = {}; Object.keys(b).forEach(t => { ar[t] = b[t][0] / b[t][1]; });
+    }
+    return ar;
+  };
+  const H = fit('hit'), B = fit('blk'), G = fit('sog'), out = {};
+  Object.keys(H).forEach(t => { out[t] = [Math.round(H[t] * 1000) / 1000, Math.round((B[t] || 1) * 1000) / 1000, Math.round((1 + 0.5 * ((G[t] || 1) - 1)) * 1000) / 1000]; });
+  try { cache.put('ARENA2', JSON.stringify(out), 12 * 3600); } catch (e) { /* rien */ }
   return out;
 }
 // ---------------- Trios du jour (idée 3) : DailyFaceoff, page « line-combinations » de chaque équipe ----------------

@@ -950,12 +950,13 @@ function oddsResult(o) {
 }
 function stratOdds() {
   const names = D.teams.flatMap(t => t.players).concat(D.waivers).filter(p => p.grp !== 'G').map(p => p.name);
-  let won = 0, n = 0, wait = false;
+  let won = 0, n = 0, wait = false; const BR = [];
   const rows = (ODDS || []).slice().reverse().map((o, ri) => {
     const i = ODDS.length - 1 - ri, imp = o.over && o.under ? (1 / o.over) / (1 / o.over + 1 / o.under) : null;
     const side = o.pm != null && imp != null ? (o.pm > imp ? 'plus' : 'moins') : null, edge = side ? (side === 'plus' ? o.pm * o.over - 1 : (1 - o.pm) * o.under - 1) : null;
     const res = oddsResult(o); if (res === 'loading') wait = true;
     let out = res && res !== 'loading' ? res : '';
+    if (o.pm != null && imp != null && (res === 'plus' || res === 'moins')) { const y = res === 'plus' ? 1 : 0; BR.push([(o.pm - y) ** 2, (imp - y) ** 2, ((o.pm + imp) / 2 - y) ** 2]); }
     if (side && (res === 'plus' || res === 'moins')) { n++; const win = res === side; won += win ? (side === 'plus' ? o.over - 1 : o.under - 1) : -1; out = `${res} · ${win ? '✅' : '❌'}`; }
     return `<tr><td class="l">${esc(o.date || '')}</td><td class="l">${esc(o.name)}<div class="small muted">${esc(ODK[o.kind] || o.kind)} ${o.kind === 'm_pts' || o.kind === 'm_g' ? '' : esc(String(o.line))}</div></td>
       <td>${o.pm != null ? Math.round(o.pm * 100) + ' %' : '–'}</td><td>${imp != null ? Math.round(imp * 100) + ' %' : '–'}</td><td class="${edge > 0.03 ? 'up' : ''}">${side ? side + ' ' + (edge >= 0 ? '+' : '') + Math.round(edge * 100) + ' %' : '–'}</td><td>${esc(out)}</td>
@@ -973,6 +974,7 @@ function stratOdds() {
       <input id="od-date" type="date" value="${esc(ODF.date || todayStr())}" style="width:150px">
       <button class="btn primary" id="od-add">Ajouter</button></div>
     ${n ? `<div class="verdict" style="margin:6px 0">En pariant à chaque fois le côté du modèle (1 unité) : <b class="${won >= 0 ? 'up' : 'down'}">${won >= 0 ? '+' : ''}${f1(won)} unités</b> sur ${n} paris réglés.</div>` : ''}
+    ${BR.length ? (() => { const m = i => BR.reduce((t, x) => t + x[i], 0) / BR.length; return `<div class="small" style="margin:6px 0">Idée 10 · qui prédit le mieux ? Score de Brier (plus bas = mieux) sur ${BR.length} lignes réglées : modèle <b>${m(0).toFixed(3)}</b> · site <b>${m(1).toFixed(3)}</b> · moitié-moitié <b>${m(2).toFixed(3)}</b>${BR.length < 100 ? ' <span class="muted">(il en faut une centaine pour conclure)</span>' : ''}</div>`; })() : ''}
     ${rows ? `<div class="tbl"><table class="nosort"><tr><th class="l">Date</th><th class="l">Pari</th><th>Modèle</th><th>Site</th><th>Côté du modèle</th><th>Résultat</th><th></th></tr>${rows}</table></div>` : '<div class="empty">Aucune ligne notée pour l’instant.</div>'}
     <div class="legend"><span>Site = probabilité implicite sans la marge (les deux cotes ramenées à 100 %). Les paris de saison se règlent à la fin de la saison.</span></div></div>`;
 }
@@ -2063,9 +2065,29 @@ function offShare(p) {
   return p.grp === 'D' ? 0.6 : 0.85;
 }
 function oppMult(p, d) {
-  if (!D.opp || !D.opp.t || p.grp === 'G') return 1;
+  if (p.grp === 'G') return 1;
   const g = teamGames(p).find(x => x[0] === d); if (!g) return 1;
-  const m = D.opp.t[g[1]]; return m ? 1 + (m - 1) * offShare(p) : 1;
+  if (!D.opp || !D.opp.t) return arenaMult(p, g) * ctxMult(p, g);
+  const m = D.opp.t[g[1]]; return (m ? 1 + (m - 1) * offShare(p) : 1) * arenaMult(p, g) * ctxMult(p, g);
+}
+// Idée 6 · effets d'un match (LNH, 14 saisons, même sens chaque saison) : buts de l'équipe +4,4 % à domicile / −4,4 % à
+// l'extérieur, −5 % au 2e soir de deux matchs consécutifs, +4,4 % si l'adversaire est à son 2e soir ; tirs : ±2,2 %, −2,1 %, +2,9 %.
+let B2BC = null, B2BD = null;
+const B2B = (ab, d) => {
+  if (B2BD !== D) { B2BD = D; B2BC = {}; Object.keys(D.teamGames || {}).forEach(t => (D.teamGames[t] || []).forEach(x => { B2BC[t + x[0]] = 1; })); }
+  const y = new Date(Date.parse(d + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10); return !!B2BC[ab + y]; };
+function ctxMult(p, g) {
+  const r = p.x && p.x.r; if (!r || !(p.model > 0)) return 1;
+  const home = g[2] ? 1 : -1, me2 = B2B(p.nhl, g[0]), op2 = B2B(g[1], g[0]);
+  const fo = (1 + 0.044 * home) * (me2 ? 0.95 : 1) * (op2 ? 1.044 : 1), fs = (1 + 0.022 * home) * (me2 ? 0.979 : 1) * (op2 ? 1.029 : 1);
+  const off = 3 * (r[0] || 0) + 2 * (r[1] || 0) + 0.5 * (r[2] || 0) + 0.5 * (r[3] || 0), sog = 0.2 * (r[4] || 0);
+  return Math.max(0.85, Math.min(1.15, 1 + (off * (fo - 1) + sog * (fs - 1)) / p.model));
+}
+// Idée 5 · biais des marqueurs : mises en échec, tirs bloqués (et à moitié les tirs) selon l'aréna du match
+function arenaMult(p, g) {
+  const A = D.arena, r = p.x && p.x.r; if (!A || !r || !(p.model > 0)) return 1;
+  const f = A[g[2] ? p.nhl : g[1]]; if (!f) return 1;
+  return Math.max(0.85, Math.min(1.15, 1 + (0.2 * (r[5] || 0) * (f[0] - 1) + 0.4 * (r[6] || 0) * (f[1] - 1) + 0.2 * (r[4] || 0) * (f[2] - 1)) / p.model));
 }
 // match en cours ce soir : on compte la part du match qui reste (les points déjà faits sont dans le pointage)
 const liveFrac = (p, d) => d === todayStr() && p.live && !p._fa ? (p.liveLeft != null ? p.liveLeft : 0.5) : 0;
