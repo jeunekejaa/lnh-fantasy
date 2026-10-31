@@ -1572,7 +1572,7 @@ function calServerLog_(json, dry) {
   const cal = getCal_();
   if (!dry && cal.some(x => x.per === per && x.src === 'lundi')) return;
   const wk = (D0.weeks || []).find(w => D0.fday >= w.s && D0.fday <= w.e);
-  const frac = wk ? Math.max(0, Math.round((Date.parse(D0.fday) - Date.parse(wk.s)) / 86400000) / 7 * 100) / 100 : null;
+  const frac = wk ? Math.max(0, Math.round((Date.parse(D0.fday) - Date.parse(wk.s)) / 86400000 / 7 * 100) / 100) : null;
   if (!dry && (frac == null || frac > 0.15)) return;             // seulement le premier jour de la semaine
   const html = HtmlService.createHtmlOutputFromFile('Interface').getContent();
   const src = html.slice(html.lastIndexOf('<script>') + 8, html.lastIndexOf('</script>'));
