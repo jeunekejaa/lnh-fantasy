@@ -538,7 +538,7 @@ function vTodo() {
   const hzBtns = `<div class="seg" id="wkhz" role="group" aria-label="Horizon">${[['court', 'Cette semaine'], ['long', 'Long terme'], ['hail', '🎲 Hail Mary']]
       .map(([h, l]) => `<button class="${H === h ? 'on' : ''}" data-h="${h}">${l}</button>`).join('')}</div>`;
   const acq = povOn() ? {} : D.espn || {}, left = acqLeft(acq, daysWk);
-  const plan = streamPlan(m, daysWk, left == null ? 2 : Math.min(left, 3));
+  const plan = streamPlan(m, daysWk, left == null ? 2 : Math.min(left, 7));
   const slotRow = slotsByDay(m.players, daysWk);
   const shortCard = `<h2>Ajouts court terme : alignement jour par jour</h2>
     <div class="small" style="margin-bottom:8px"><b>Places vides cette semaine</b> (avec ton alignement actuel) : ${slotRow}</div>
@@ -1837,7 +1837,7 @@ function vWeek() {
   const pw = d ? Math.round(d.p * 100) : null;
   let planTxt = '';
   if (isMe) try { const acq = D.espn || {}, left = acqLeft(acq, horizonDays(D.weekEnd));
-    const pl = left === 0 ? null : streamPlan(m, horizonDays(D.weekEnd), left == null ? 2 : Math.min(left, 3));
+    const pl = left === 0 ? null : streamPlan(m, horizonDays(D.weekEnd), left == null ? 2 : Math.min(left, 7));
     if (pl && pl.steps.length) planTxt = `<button class="card hero" data-go="todo" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;color:var(--ink);font:inherit;cursor:pointer;padding:12px 14px">
       <svg viewBox="0 0 24 24" aria-hidden="true" style="width:20px;height:20px;flex:none;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>
       <span style="flex:1"><b>${pl.steps.length} ajout${pl.steps.length > 1 ? 's' : ''} possible${pl.steps.length > 1 ? 's' : ''} cette semaine : <span class="up">+${f1(pl.gain)} FP</span></b><span class="small muted" style="display:block">${pl.steps.map(x => esc(x.w.name.split(' ').slice(-1)[0]) + ' → ' + esc(x.p.name.split(' ').slice(-1)[0])).join(' · ')} · voir « Que faire ? »</span></span>
@@ -2132,6 +2132,47 @@ function acqLeft(acq) {
   if (!acq || acq.acqLimit == null || acq.acqUsed == null) return null;
   return Math.max(0, acq.acqLimit - acq.acqUsed);
 }
+// Idée 10 · Planificateur de semaine complet : recherche en faisceau, jour par jour, sur toute la semaine d'un coup.
+// Chaque jour, pour chaque plan gardé : ne rien faire, ou 1 à 2 transactions (un ajout qui joue ce soir-là contre un retrait,
+// y compris un joueur ajouté plus tôt dans la semaine dont les matchs sont finis = vraie rotation de « streaming »).
+// Respecte la limite d'acquisitions, le maximum de gardiens et les postes. Garde les 8 meilleurs plans à chaque jour.
+function weekPlan(m, days, n) {
+  const B = 8, key = r => r.map(p => p.name).sort().join('|');
+  // ne jamais sacrifier la valeur long terme : on ne retire qu'un joueur remplaçable (projection ≤ meilleur joueur libre
+  // de son groupe + 0,1) ou un joueur ajouté plus tôt dans ce plan
+  const repl = {}; faPool(days).forEach(p => { repl[p.grp] = Math.max(repl[p.grp] || 0, p.model || 0); });
+  const okDrop = (w, st) => st.added.indexOf(w) >= 0 || (w.model || 0) <= (repl[w.grp] || 0) + 0.1;
+  const startFp = planFp(m.players, days);
+  let states = [{ r: m.players.slice(), used: {}, added: [], moves: [], acq: 0, done: 0 }];
+  const expand = (st, d, rem) => {
+    if (st.acq >= n) return [];
+    const base = planFp(st.r, rem), pool = faPool([d], st.used).filter(p => playsOn(p, d)).slice(0, 14);
+    const drops = dropCandidates({ players: st.r }).concat(st.added.filter(p => st.r.indexOf(p) >= 0 && dropCandidates({ players: st.r }).indexOf(p) < 0));
+    const opts = [];
+    pool.forEach(p => drops.forEach(w => {
+      if (leavesHole(st.r, w, p) || !okDrop(w, st)) return;
+      const r = st.r.filter(q => q !== w).concat([p]), g = planFp(r, rem) - base;
+      if (g >= 1) opts.push({ p: p, w: w, g: g, r: r });
+    }));
+    return opts.sort((a, b) => b.g - a.g).slice(0, 4).map(o => ({ r: o.r, used: Object.assign({}, st.used, { [o.p.name]: 1, [o.w.name]: 1 }), added: st.added.concat([o.p]),
+      moves: st.moves.concat([{ p: o.p, w: o.w, gain: o.g, from: d }]), acq: st.acq + 1, done: st.done }));
+  };
+  days.forEach((d, i) => {
+    const rem = days.slice(i), after = days.slice(i + 1), cand = [];
+    states.forEach(st => { cand.push(st); expand(st, d, rem).forEach(s1 => { cand.push(s1); expand(s1, d, rem).slice(0, 2).forEach(s2 => cand.push(s2)); }); });
+    const best = {};
+    cand.forEach(st => { const s = Object.assign({}, st, { done: st.done + dayLineup(st.r, d).fp }); s.est = s.done + planFp(s.r, after);
+      const k = key(s.r) + '#' + s.acq; if (!best[k] || best[k].est < s.est) best[k] = s; });
+    states = Object.values(best).sort((a, b) => b.est - a.est).slice(0, B);
+  });
+  const top = states.sort((a, b) => b.done - a.done)[0];
+  if (!top || top.done - startFp < 1) return { steps: [], gain: 0 };
+  // jours où chaque ajout entre réellement dans l'alignement (jusqu'à ce qu'il soit retiré à son tour)
+  let r = m.players.slice(); const roster = {};
+  days.forEach(d => { top.moves.filter(x => x.from === d).forEach(x => { r = r.filter(q => q !== x.w).concat([x.p]); }); roster[d] = r.slice(); });
+  const steps = top.moves.map(x => Object.assign({}, x, { days: days.filter(d => d >= x.from && roster[d].indexOf(x.p) >= 0 && dayLineup(roster[d], d).starters.indexOf(x.p) >= 0) }));
+  return { steps: steps, gain: top.done - startFp, greedy: false };
+}
 function streamPlan(m, days, n) {
   let roster = m.players.slice(), gain = 0;
   const steps = [], used = {};
@@ -2149,8 +2190,10 @@ function streamPlan(m, days, n) {
     best.days = dd.filter(d => dayLineup(best.r, d).starters.indexOf(best.p) >= 0);
     steps.push(best); used[best.p.name] = 1; roster = best.r; gain += best.gain;
   }
-  return { steps: steps, gain: gain };
+  const wp = PLAN_FULL ? weekPlan(m, days, n) : null;
+  return wp && wp.gain > gain + 0.05 ? wp : { steps: steps, gain: gain };
 }
+let PLAN_FULL = true;
 // ---------- Chances de victoire d'un match (force des équipes LNH : buts pour / contre, ramenés vers la moyenne) ----------
 let TSC = null, TSCD = null;
 function tStr(ab) {
