@@ -60,6 +60,10 @@ function doGet(e) {
       try { runBacktest(); } finally { L.releaseLock(); }
       return ContentService.createTextOutput(getBacktestData() || '{}').setMimeType(ContentService.MimeType.JSON);
     }
+    if (what === 'lunditest') {                      // essai sans rien enregistrer : le calcul du lundi sur les données actuelles
+      const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(APP.DATA_SHEET), js = sh.getRange(1, 1, sh.getLastRow(), 1).getValues().map(r => r[0]).join('');
+      return ContentService.createTextOutput(JSON.stringify(calServerLog_(js, true) || [])).setMimeType(ContentService.MimeType.JSON);
+    }
     if (what === 'ver') return ContentService.createTextOutput(codeStatus_()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'update') return ContentService.createTextOutput(checkCodeFromApp()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'refresh') return ContentService.createTextOutput(refreshLocked_(false)).setMimeType(ContentService.MimeType.JSON);
@@ -753,6 +757,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
   for (let i = 0; i < json.length; i += 40000) chunks.push([json.slice(i, i + 40000)]);
   sh.clearContents();
   sh.getRange(1, 1, chunks.length, 1).setValues(chunks);
+  try { calServerLog_(json); } catch (e) { console.log('Prédiction du lundi : ' + e.message); }
 }
 // Fiche de joueur (onglets Équipes / Chercher / Ballotage) : stats de la saison, projection stat par stat, stats avancées
 function playerSheet_(g, p, m, mp, gafPrior, pjPrior, team) {
@@ -1554,6 +1559,39 @@ function saveCal(list) {           // appelée par l'app : ajoute les entrées a
   const keep = cur.slice(-400);
   PropertiesService.getDocumentProperties().setProperty('CAL2', JSON.stringify(keep));
   return JSON.stringify(keep);
+}
+// Prédiction du lundi (demande d'Ulysse) : à la première actualisation de chaque semaine de duels (normalement le lundi,
+// avant les matchs), le serveur calcule les chances des 6 duels avec EXACTEMENT le code de l'app (Interface.html, évalué
+// ici avec des bouchons à la place du navigateur) et les note dans le journal de calibration. Dimanche soir, le résultat ESPN
+// s'ajoute tout seul (calResolve_) : on peut juger la prédiction du lundi contre le pointage final.
+function calServerLog_(json, dry) {
+  const fd = ymd_(fantasyNow_()), props = PropertiesService.getDocumentProperties();
+  if (!dry && (new Date(fd + 'T12:00:00Z').getUTCDay() !== 1 || props.getProperty('CAL_LUNDI') === fd)) return;   // lundi seulement, une fois
+  const D0 = JSON.parse(json), per = D0.espn && D0.espn.cur;
+  if (!per || !D0.teams || !D0.teams.length) return;
+  const cal = getCal_();
+  if (!dry && cal.some(x => x.per === per && x.src === 'lundi')) return;
+  const wk = (D0.weeks || []).find(w => D0.fday >= w.s && D0.fday <= w.e);
+  const frac = wk ? Math.max(0, Math.round((Date.parse(D0.fday) - Date.parse(wk.s)) / 86400000) / 7 * 100) / 100 : null;
+  if (!dry && (frac == null || frac > 0.15)) return;             // seulement le premier jour de la semaine
+  const html = HtmlService.createHtmlOutputFromFile('Interface').getContent();
+  const src = html.slice(html.lastIndexOf('<script>') + 8, html.lastIndexOf('</script>'));
+  const stub = () => { const f = function () { return P; }; const P = new Proxy(f, { get: (t, k) => k === Symbol.toPrimitive ? () => '' : k === 'then' ? undefined : P, set: () => true, apply: () => P, construct: () => P }); return P; };
+  const S = stub(), noop = () => 0;
+  const mk = new Function('document', 'window', 'google', 'localStorage', 'navigator', 'location', 'setTimeout', 'setInterval', 'clearInterval', 'clearTimeout', 'MutationObserver', 'requestAnimationFrame', 'alert',
+    src + '\n;return { setD: x => { D = x; try { applyOvr(); } catch (e) {} }, odds: t => duelOdds(t) };');
+  const api = mk(S, S, S, S, S, S, noop, noop, noop, noop, function () { return S; }, noop, noop);
+  api.setD(D0);
+  const r1 = x => Math.round(x * 10) / 10, add = [];
+  D0.teams.forEach(t => { const o = api.odds(t); if (!o) return;
+    add.push({ per: per, team: t.team, espn: (D0.names || {})[t.team] || t.team, opp: o.oppName, p: Math.round(o.p * 1000) / 1000, me: r1(o.me), op: r1(o.opp),
+               lo: r1(o.lo), hi: r1(o.hi), olo: r1(o.olo), ohi: r1(o.ohi), frac: frac, at: D0.fday, src: 'lundi' }); });
+  if (dry) return add;
+  if (!add.length) return;
+  // la prédiction du lundi remplace une entrée notée plus tard dans la semaine pour le même duel
+  const keep = cal.filter(x => !(x.per === per && add.some(a => a.team === x.team)));
+  props.setProperty('CAL2', JSON.stringify(keep.concat(add).slice(-400)));
+  props.setProperty('CAL_LUNDI', fd);
 }
 function calResolve_() {           // résultats ESPN des duels terminés
   const cal = getCal_(); if (!cal.length || !CONFIG.ESPN_LEAGUE_ID) return cal;

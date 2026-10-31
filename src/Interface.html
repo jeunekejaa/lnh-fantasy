@@ -860,11 +860,21 @@ function stratCal() {
     return `<tr><td class="l">${Math.round(a * 100)} à ${Math.min(100, Math.round(b * 100))} %</td><td>${g.length}</td><td>${g.length ? pct(g.reduce((t, x) => t + x.p, 0) / g.length) : '–'}</td><td><b>${g.length ? pct(g.reduce((t, x) => t + x.win, 0) / g.length) : '–'}</b></td></tr>`; }).join('');
   const brier = A => A.length ? A.reduce((t, x) => t + (x.p - x.win) ** 2, 0) / A.length : null;
   const b = brier(L);
+  // Prédiction du lundi vs résultat du dimanche : un duel par ligne (vu du côté de l'équipe la plus probable)
+  const mon = (D.cal || []).filter(x => x.src === 'lundi'), pers = [...new Set(mon.map(x => x.per))].sort((a, b) => b - a).slice(0, 2);
+  const monCard = pers.map(per => {
+    const seen = {}, rows = mon.filter(x => x.per === per && x.p >= 0.5 && !(seen[x.opp] || seen[x.team])).map(x => { seen[x.team] = 1; return x; });
+    const done = rows.filter(x => x.win != null), ok = done.filter(x => x.win === 1).length, inR = done.filter(x => x.pf >= x.lo && x.pf <= x.hi).length + done.filter(x => x.pa >= x.olo && x.pa <= x.ohi).length;
+    return `<div class="lbl" style="margin:12px 0 6px">Semaine ${per} · prédiction du lundi ${done.length ? `vs résultat final — favoris gagnants : <b>${ok}/${done.length}</b> · pointages dans la fourchette à 80 % : <b>${inR}/${done.length * 2}</b>` : '(résultats dimanche soir)'}</div>
+      <div class="tbl"><table><tr><th class="l">Favori du lundi</th><th>Chances</th><th>Projeté lundi</th><th>Final</th><th></th></tr>${rows.map(x => `<tr${x.team === D.me || x.opp === D.me ? ' style="background:rgba(80,200,255,.06)"' : ''}><td class="l">${esc(x.team)}<div class="msub small muted">vs ${esc(x.opp)}</div></td><td>${pct(x.p)}</td>
+        <td>${f1(x.me)} – ${f1(x.op)}<div class="small muted">${f0(x.lo)}-${f0(x.hi)} · ${f0(x.olo)}-${f0(x.ohi)}</div></td><td>${x.win != null ? `<b>${f1(x.pf)} – ${f1(x.pa)}</b>` : '–'}</td><td>${x.win == null ? '' : x.win === 1 ? '✅' : x.win === 0 ? '❌' : '='}</td></tr>`).join('')}</table></div>`;
+  }).join('');
   return `<div class="card"><h2>Calibration des chances de victoire</h2>
     <div class="small" style="margin-bottom:8px">Quand l’app dit 70 %, gagne-t-on vraiment 7 fois sur 10 ? L’app note ses chances pour les 6 duels chaque semaine, ESPN donne le résultat.
       ${L.length ? ` <b>${L.length}</b> duels terminés notés${b != null ? ` · score de Brier <b>${b.toFixed(3)}</b> (0,25 = pile ou face, plus bas = mieux)` : ''}.` : ' Les premiers résultats arrivent à la fin de cette semaine.'}</div>
     ${L.length ? `<div class="tbl"><table><tr><th class="l">L’app disait</th><th>Duels</th><th>Moyenne prévue</th><th>Gagnés en vrai</th></tr>${tab(L)}</table></div>
       ${early.length && early.length < L.length ? `<div class="small muted" style="margin-top:6px">Notés en début de semaine seulement : ${early.length} duels, Brier ${brier(early).toFixed(3)}.</div>` : ''}` : ''}
+    ${monCard || '<div class="small muted" style="margin-top:8px">Prédiction du lundi : la première sera notée automatiquement lundi matin (avant les matchs), puis comparée au résultat final dimanche soir.</div>'}
     <div class="legend"><span>Vérification déjà faite sur les 4 premières semaines : l’écart-type d’un pointage hebdo prévu par le modèle (≈ 22 FP) est le même que celui mesuré dans ta ligue (22 FP). Les fourchettes sont donc bien réglées.</span><span>Une entrée notée en milieu de semaine (colonne « part jouée ») est plus facile à prédire : on les distingue.</span></div></div>`;
 }
 // 15 · Séries du pool
