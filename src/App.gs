@@ -733,7 +733,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
     .sort((a, b) => b.perGame - a.perGame).slice(0, 900);
 
   // Propriété ESPN (toutes les ligues) des joueurs libres : % possédé et variation sur 7 jours — « course au ballotage »
-  try { const OW = espnOwnership_(); waivers.forEach(p => { const o = OW[norm_(p.name)]; if (o) { p.own = o.o; p.ownChg = o.c; } }); }
+  try { const OW = espnOwnership_(); waivers.forEach(p => { const o = OW[norm_(p.name)]; if (o) { p.own = o.o; p.ownChg = o.c; if (o.w) p.wv = o.w; } }); }
   catch (e) { WARN.push('Propriété ESPN : ' + e.message); }
   let myMoves = [];
   try { myMoves = myMoves_(teamsOut, waivers); } catch (e) { WARN.push('Bilan de tes moves : ' + e.message); }
@@ -1451,7 +1451,7 @@ function leagueSv_() {
   } catch (e) { return null; }
 }
 function espnOwnership_() {
-  const cache = CacheService.getScriptCache(), hit = cache.get('OWN2');
+  const cache = CacheService.getScriptCache(), hit = cache.get('OWN3');
   if (hit) { try { return JSON.parse(hit); } catch (e) { /* on refait */ } }
   const filt = JSON.stringify({ players: { filterStatus: { value: ['FREEAGENT', 'WAIVERS'] }, limit: 400, sortPercOwned: { sortPriority: 1, sortAsc: false } } });
   const r = UrlFetchApp.fetch(`https://${ESPN_HOSTS[0]}/apis/v3/games/fhl/seasons/${CONFIG.ESPN_SEASON}/segments/0/leagues/${CONFIG.ESPN_LEAGUE_ID}?view=kona_player_info`,
@@ -1459,8 +1459,10 @@ function espnOwnership_() {
   if (r.getResponseCode() !== 200) throw new Error('code ' + r.getResponseCode());
   const out = {};
   (JSON.parse(r.getContentText()).players || []).forEach(x => { const p = x.player || {}, o = p.ownership || {};
-    if (p.fullName) out[norm_(p.fullName)] = { o: Math.round((o.percentOwned || 0) * 10) / 10, c: Math.round((o.percentChange || 0) * 100) / 100 }; });
-  try { cache.put('OWN2', JSON.stringify(out), 3 * 3600); } catch (e) { /* rien */ }
+    if (p.fullName) out[norm_(p.fullName)] = { o: Math.round((o.percentOwned || 0) * 10) / 10, c: Math.round((o.percentChange || 0) * 100) / 100,
+      // au ballotage (retiré récemment) : réclamation traitée seulement à cette date (ex. le lendemain 8 h), pas d'ajout immédiat
+      w: x.status === 'WAIVERS' && x.waiverProcessDate ? ymd_(new Date(x.waiverProcessDate)) : null }; });
+  try { cache.put('OWN3', JSON.stringify(out), 3 * 3600); } catch (e) { /* rien */ }
   return out;
 }
 // ---------------- Biais des marqueurs par aréna (idée 5) ----------------

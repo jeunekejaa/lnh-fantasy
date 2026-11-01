@@ -2064,6 +2064,7 @@ function horizonDays(endISO) { const out = [], t = todayStr(); if (!t || !endISO
 const dLabel = d => { const x = new Date(d + 'T12:00:00'); return JOURS[x.getDay()] + ' ' + x.getDate(); };
 // disponibilité : absent = 0 ; incertain = 60 % les 2 premiers jours, 90 % ensuite
 function avail(p, d) {
+  if (p.wv && d < p.wv) return 0;   // au ballotage : la réclamation ne passe qu'à cette date (lendemain 8 h)
   if (OUT[p.status]) return p.ret && d >= p.ret ? 0.85 : 0;   // revient à sa date de retour estimée (prudence : 85 %)
   if (p.status === 'DAY_TO_DAY') return d <= ymdAdd(todayStr(), 1) ? 0.6 : 0.9;
   return 1;
@@ -2128,7 +2129,8 @@ function dropCandidates(m, forced) {
 const isPanne = p => { const t = trend(p); return !!(t && t.cls === 'panne'); };
 function faPool(days, exclude) {
   // pas de joueurs 🔴 en panne : le backtest montre qu'ils font en moyenne un peu moins que leur projection
-  return D.waivers.filter(p => p.grp !== 'G' && !AVOID[p.name] && !OUT[p.status] && p.gp >= 3 && !isPanne(p) && !(exclude && exclude[p.name]) && days.some(d => playsOn(p, d)))
+  // un joueur au ballotage (p.wv = date de traitement de la réclamation) n'est disponible qu'à partir de cette date
+  return D.waivers.filter(p => p.grp !== 'G' && !AVOID[p.name] && !OUT[p.status] && p.gp >= 3 && !isPanne(p) && !(exclude && exclude[p.name]) && days.some(d => playsOn(p, d) && (!p.wv || d >= p.wv)))
     .sort((a, b) => (b.model || 0) - (a.model || 0)).slice(0, 150);
 }
 // un retrait qui créerait une place vide toute la saison (ex. retirer un défenseur pour prendre un attaquant quand tu en as juste 6) : interdit
@@ -2178,7 +2180,7 @@ function weekPlan(m, days, n) {
   let states = [{ r: m.players.slice(), used: {}, added: [], moves: [], acq: 0, done: 0 }];
   const expand = (st, d, rem) => {
     if (st.acq >= n) return [];
-    const base = planFp(st.r, rem), pool = faPool([d], st.used).filter(p => playsOn(p, d)).slice(0, 14);
+    const base = planFp(st.r, rem), pool = faPool([d], st.used).filter(p => playsOn(p, d) && (!p.wv || d >= p.wv)).slice(0, 14);
     const drops = dropCandidates({ players: st.r }).concat(st.added.filter(p => st.r.indexOf(p) >= 0 && dropCandidates({ players: st.r }).indexOf(p) < 0));
     const opts = [];
     pool.forEach(p => drops.forEach(w => {
