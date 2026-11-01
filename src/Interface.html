@@ -1787,9 +1787,9 @@ function duelSide(t) {
     t.players.filter(p => !seen.has(p)).forEach(p => rows.push({ p: p, gp: 0, fp: 0, bench: 0, d: 0, exp: 0, drop: false, add: true }));
   } else rows = t.players.map(p => { const w = wkOf(p), exp = (p.model || 0) * w.gp; return { p: p, gp: w.gp, fp: w.fp, bench: 0, d: w.fp - exp, exp: exp }; });
   rows.sort((a, b) => (a.drop - b.drop) || b.fp - a.fp || (b.p.model || 0) - (a.p.model || 0));
-  const out = t.players.filter(p => !OUT[p.status]), left = out.filter(p => p.grp !== 'G').reduce((s, p) => s + (p.left || 0), 0);
+  const out = t.players.filter(p => !OUT[p.status]), left = out.filter(p => p.grp !== 'G').reduce((s, p) => s + (p.left || 0), 0), gLeft = out.filter(p => p.grp === 'G').reduce((s, p) => s + (p.left || 0), 0);
   const cls = k => t.players.filter(p => { const x = trend(p); return x && x.cls === k; });
-  return { rows: rows, left: left, cls: cls, espn: !!R };
+  return { rows: rows, left: left, gLeft: gLeft, cls: cls, espn: !!R };
 }
 // Nom avec le prénom masquable (téléphone : nom de famille seulement)
 function pnameShort(p, owner) {
@@ -1867,7 +1867,7 @@ function vWeek() {
       ${d ? `<div style="margin-top:14px;height:10px;border-radius:6px;background:var(--opp);overflow:hidden;display:flex"><div style="width:${pw}%;background:${isMe ? 'var(--accent)' : '#AEB7C6'}"></div></div>
       <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:13px;gap:8px;flex-wrap:wrap"><div><b class="big" style="font-size:18px;color:${colA}">${pw} %</b> <span class="muted">de chances de gagner</span></div></div>` : ''}
       <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:14px">
-        <div class="tile"><div class="lbl" style="font-size:10px">Matchs restants</div><div class="big" style="font-size:22px;white-space:nowrap"><span style="color:${colA}">${A.left}</span> <span class="muted" style="font-size:15px">vs</span> <span style="color:var(--opp)">${B.left}</span></div></div>
+        <div class="tile"><div class="lbl" style="font-size:10px">Matchs restants · patineurs</div><div class="big" style="font-size:22px;white-space:nowrap"><span style="color:${colA}">${A.left}</span> <span class="muted" style="font-size:15px">vs</span> <span style="color:var(--opp)">${B.left}</span></div>${A.gLeft || B.gLeft ? `<div class="small muted" style="margin-top:2px">+ gardiens : ${A.gLeft} vs ${B.gLeft}</div>` : ''}</div>
         <div class="tile"><div class="lbl" style="font-size:10px">Écart</div><div class="big" style="font-size:22px;color:${lead >= 0 ? 'var(--good)' : 'var(--bad)'}">${sgn(lead, 1)}</div></div>
         <div class="tile"><div class="lbl" style="font-size:10px">Ce soir</div><div class="big" style="font-size:22px">${tonight.length} <span class="muted" style="font-size:14px;font-family:inherit">joueur${tonight.length > 1 ? 's' : ''}</span></div></div>
       </div></div>${planTxt}`;
