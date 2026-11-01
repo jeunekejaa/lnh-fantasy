@@ -2063,8 +2063,22 @@ function playsOn(p, d) {
 function horizonDays(endISO) { const out = [], t = todayStr(); if (!t || !endISO) return out; for (let d = t; d <= endISO; d = ymdAdd(d, 1)) out.push(d); return out; }
 const dLabel = d => { const x = new Date(d + 'T12:00:00'); return JOURS[x.getDay()] + ' ' + x.getDate(); };
 // disponibilité : absent = 0 ; incertain = 60 % les 2 premiers jours, 90 % ensuite
+// Verrou des alignements de ta ligue : dès que le premier match du jour commence, plus aucun changement pour la journée
+// (un ajout ou un joueur activé de la liste des blessés ne compte qu'à partir de demain).
+let LOCKD = null, LOCKV = false, WKRN = null;
+function lockedToday() {
+  if (LOCKD === D) return LOCKV; LOCKD = D; const t = todayStr();
+  LOCKV = D.teams.some(tm => tm.players.some(p => p.live || (playsOn(p, t) === false && (D.teamGames[p.nhl] || []).some(g => g[0] === t) && !p.today)));
+  WKRN = null;
+  if (D.wkr && D.wkr.teams && D.wkr.cur != null) { WKRN = {}; Object.keys(D.wkr.teams).forEach(tm => Object.values(D.wkr.teams[tm]).forEach(x => { if ((x[5] || []).indexOf(D.wkr.cur) >= 0) WKRN[norm(x[0])] = 1; })); }
+  return LOCKV;
+}
 function avail(p, d) {
   if (p.wv && d < p.wv) return 0;   // au ballotage : la réclamation ne passe qu'à cette date (lendemain 8 h)
+  if (d === todayStr() && lockedToday()) {
+    if (p._fa || (D.waivers && D.waivers.indexOf(p) >= 0)) return 0;          // ajout après le verrou : compte demain
+    if (WKRN && !WKRN[norm(p.name)]) return 0;                               // pas dans l'alignement ESPN du jour (ex. encore sur la liste des blessés)
+  }
   if (OUT[p.status]) return p.ret && d >= p.ret ? 0.85 : 0;   // revient à sa date de retour estimée (prudence : 85 %)
   if (p.status === 'DAY_TO_DAY') return d <= ymdAdd(todayStr(), 1) ? 0.6 : 0.9;
   return 1;
