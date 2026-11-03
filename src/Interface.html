@@ -1046,7 +1046,7 @@ const NO_TRADE = /dark patterns/i, PROTECT = { 'Jimmy Snuggerud': 1 }, AVOID = {
 const AVAIL = { court: { INJURY_RESERVE: 0, OUT: 0, SUSPENSION: 0, DAY_TO_DAY: 0.7 },
                 long: { INJURY_RESERVE: 0.6, OUT: 0.6, SUSPENSION: 0.5, DAY_TO_DAY: 0.95 } };
 const H_LABEL = { court: 'Court terme · 2 prochaines semaines', long: 'Long terme · reste de la saison' };
-let TR = { other: null, give: {}, get: {}, h: 'long' }, MOCKT = { key: '', list: null };
+let TR = { mine: null, other: null, give: {}, get: {}, h: 'long' }, MOCKT = { key: '', list: null };
 // Valeur d'un joueur par match d'alignement, selon l'horizon (court : calendrier des 2 semaines × blessures)
 // part de l'horizon où un blessé sera revenu (date de retour estimée ESPN) ; sans date : règle générale (AVAIL)
 function retShare(p, h) {
@@ -1145,29 +1145,37 @@ const tradeWhy = t => {
   return w;
 };
 const sum2 = (l, f) => l.reduce((s, p) => s + f(p), 0);
+// Équipe A (par défaut : toi) et équipe B : on peut simuler un échange hypothétique entre deux équipes de la ligue
+const trA = () => D.teams.find(t => t.team === TR.mine) || me();
 function vTrade() {
-  const others = D.teams.filter(t => t.team !== D.me);
+  if (!TR.mine || !D.teams.find(t => t.team === TR.mine)) TR.mine = D.me;
+  const others = D.teams.filter(t => t.team !== TR.mine);
   if (!TR.other || !others.find(t => t.team === TR.other)) TR.other = (others.find(t => !NO_TRADE.test(t.team)) || others[0]).team;
-  const m = me(), o = D.teams.find(t => t.team === TR.other);
+  const m = trA(), o = D.teams.find(t => t.team === TR.other), isMe = m.team === D.me;
+  const opt = (L, cur) => L.map(t => `<option value="${esc(t.team)}" ${t.team === cur ? 'selected' : ''}>${t.team === D.me ? 'Toi (' + esc(t.team) + ')' : esc(t.team)}</option>`).join('');
   const list = (t, sel, key) => t.players.slice().sort((a, b) => b.model - a.model).map(p => `<label class="pick"><input type="checkbox" data-k="${key}" data-n="${esc(p.name)}" ${sel[p.name] ? 'checked' : ''}>
      <span class="n">${pname(p, t.team)} <span class="pos">${esc(p.pos)} · ${esc(p.nhl)}</span> ${stChip(p.status, p)} ${pChip(p)}</span><span class="small">${f2(p.model)}</span></label>`).join('');
   return `<div class="card"><h2>Simulateur d’échange</h2><div class="controls">
-      <select id="tother">${others.map(t => `<option ${t.team === TR.other ? 'selected' : ''}>${esc(t.team)}</option>`).join('')}</select>
+      <label class="small muted" style="display:flex;align-items:center;gap:6px;flex:1 1 200px">Équipe A <select id="tmine" style="flex:1">${opt(D.teams, m.team)}</select></label>
+      <span class="muted small">⇄</span>
+      <label class="small muted" style="display:flex;align-items:center;gap:6px;flex:1 1 200px">Équipe B <select id="tother" style="flex:1">${opt(others, TR.other)}</select></label>
       <button class="btn primary" id="tgo">Calculer</button><button class="btn" id="treset">Effacer</button></div>
-    <div class="two"><div><div class="muted small" style="margin-bottom:4px">Tu donnes</div>${list(m, TR.give, 'give')}</div>
-      <div><div class="muted small" style="margin-bottom:4px">Tu reçois de ${esc(o.team)}</div>${list(o, TR.get, 'get')}</div></div>
+    ${isMe ? '' : `<div class="small" style="margin:-4px 0 10px;color:var(--opp)">Échange hypothétique entre deux autres équipes : <b>${esc(m.team)}</b> ⇄ <b>${esc(o.team)}</b>.</div>`}
+    <div class="two"><div><div class="muted small" style="margin-bottom:4px">${isMe ? 'Tu donnes' : esc(m.team) + ' donne'}</div>${list(m, TR.give, 'give')}</div>
+      <div><div class="muted small" style="margin-bottom:4px">${isMe ? 'Tu reçois' : esc(m.team) + ' reçoit'} de ${esc(o.team)}</div>${list(o, TR.get, 'get')}</div></div>
     <button class="btn primary" id="tgo2" style="width:100%;min-height:46px;margin-top:14px">Calculer</button></div>
     <div class="card" id="tres"><div class="muted">Coche des joueurs des deux côtés, puis « Calculer ».</div></div>`;
 }
 function bindTrade() {
   $('#tother').onchange = e => { TR = Object.assign(TR, { other: e.target.value, give: {}, get: {} }); render(); };
+  $('#tmine').onchange = e => { TR = Object.assign(TR, { mine: e.target.value, give: {}, get: {} }); if (TR.other === TR.mine) TR.other = null; render(); };
   $('#treset').onclick = () => { TR.give = {}; TR.get = {}; render(); };
   document.querySelectorAll('.pick input').forEach(i => i.onchange = () => { TR[i.dataset.k][i.dataset.n] = i.checked; });
   $('#tgo').onclick = calcTrade;
   $('#tgo2').onclick = () => { calcTrade(); const r = $('#tres'); if (r) r.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
 }
 function calcTrade() {
-  const m = me(), o = D.teams.find(t => t.team === TR.other);
+  const m = trA(), o = D.teams.find(t => t.team === TR.other), isMe = m.team === D.me, A = isMe ? 'toi' : esc(m.team);
   const give = m.players.filter(p => TR.give[p.name]), get = o.players.filter(p => TR.get[p.name]);
   if (!give.length && !get.length) return;
   const mNew = swapRoster(m.players, give, get, 'long'), oNew = swapRoster(o.players, get, give, 'long');
@@ -1184,14 +1192,14 @@ function calcTrade() {
     const spots = give.length - get.length;
     const ratio = get.length ? tvSum(give) / Math.max(0.05, tvSum(get)) : null;
     const box = (h, x) => `<div style="${TR.h === h ? '' : 'opacity:.7'}"><div class="muted small">${H_LABEL[h]}${TR.h === h ? ' · <b>choisi</b>' : ''}</div>
-      <div class="delta ${x.m >= 0 ? 'up' : 'down'}">${sgn(h === 'court' ? x.m * 2 : x.m)} ${h === 'court' ? 'FP sur 2 sem.' : 'FP/sem.'}</div>
+      ${isMe ? '' : `<div class="small" style="margin-top:4px">${esc(m.team)}</div>`}<div class="delta ${x.m >= 0 ? 'up' : 'down'}">${sgn(h === 'court' ? x.m * 2 : x.m)} ${h === 'court' ? 'FP sur 2 sem.' : 'FP/sem.'}</div>
       <div class="small">${esc(o.team)} : ${sgn(h === 'court' ? x.o * 2 : x.o)}</div></div>`;
     $('#tres').innerHTML = `<h2>Résultat</h2><div class="two">${box('court', dc)}${box('long', dl)}</div>
-      ${po.length ? `<div class="small" style="margin-top:10px"><b>Pendant tes semaines de séries</b> (${dShort(po[0])} → ${dShort(po[po.length - 1])}) : tes FP attendus ${f1(poB)} → <b class="${poA >= poB ? 'up' : 'down'}">${f1(poA)}</b> (${sgn(poA - poB)}) · matchs : tu donnes ${give.reduce((t, p) => t + po.filter(d => playsOn(p, d)).length, 0)}, tu reçois ${get.reduce((t, p) => t + po.filter(d => playsOn(p, d)).length, 0)}</div>` : ''}
-      <div class="small" style="margin-top:10px">Séries : toi ${pct(s0.po[im])} → <b>${pct(s1.po[im])}</b> (victoires ${f1(s0.wins[im])} → ${f1(s1.wins[im])}) · ${esc(o.team)} ${pct(s0.po[io])} → <b>${pct(s1.po[io])}</b></div>
-      <div class="legend"><span>Projection maison échangée : tu donnes ${f2(sum(give))}, tu reçois ${f2(sum(get))} (FP/match)</span>
-      ${ratio != null ? `<span>Acceptabilité : à ses yeux (analystes + stats réelles, au-dessus d’un joueur libre), il reçoit ${Math.round(ratio * 100)} % de ce qu’il donne${ratio < 0.97 ? ' — il risque de refuser' : ''}</span>` : ''}
-      ${spots < 0 ? `<span>Tu reçois plus de joueurs que tu en donnes : ton joueur le moins utile est libéré dans le calcul.</span>` : spots > 0 ? `<span>Tu libères ${spots} place(s) : la force n’inclut pas le joueur que tu ajouteras.</span>` : ''}
+      ${po.length ? `<div class="small" style="margin-top:10px"><b>Pendant les semaines de séries</b> (${dShort(po[0])} → ${dShort(po[po.length - 1])}) : FP attendus de ${A} ${f1(poB)} → <b class="${poA >= poB ? 'up' : 'down'}">${f1(poA)}</b> (${sgn(poA - poB)}) · matchs : ${A} donne ${give.reduce((t, p) => t + po.filter(d => playsOn(p, d)).length, 0)}, reçoit ${get.reduce((t, p) => t + po.filter(d => playsOn(p, d)).length, 0)}</div>` : ''}
+      <div class="small" style="margin-top:10px">Séries : ${A} ${pct(s0.po[im])} → <b>${pct(s1.po[im])}</b> (victoires ${f1(s0.wins[im])} → ${f1(s1.wins[im])}) · ${esc(o.team)} ${pct(s0.po[io])} → <b>${pct(s1.po[io])}</b></div>
+      <div class="legend"><span>Projection maison échangée : ${A} donne ${f2(sum(give))}, reçoit ${f2(sum(get))} (FP/match)</span>
+      ${ratio != null ? `<span>Acceptabilité : aux yeux de ${esc(o.team)} (analystes + stats réelles, au-dessus d’un joueur libre), il reçoit ${Math.round(ratio * 100)} % de ce qu’il donne${ratio < 0.97 ? ' — il risque de refuser' : ''}</span>` : ''}
+      ${spots < 0 ? `<span>${isMe ? 'Tu reçois' : esc(m.team) + ' reçoit'} plus de joueurs que ${isMe ? 'tu en donnes' : 'donnés'} : le joueur le moins utile est libéré dans le calcul.</span>` : spots > 0 ? `<span>${isMe ? 'Tu libères' : esc(m.team) + ' libère'} ${spots} place(s) : la force n’inclut pas le joueur ajouté ensuite.</span>` : ''}
       <span>Force = ton meilleur alignement chaque semaine ; un échange qui n’améliore que ton banc ne change rien.</span></div>`;
   }, 30);
 }
@@ -1758,7 +1766,7 @@ function bindTodo() {
   const rs = $('#tsreset'); if (rs) rs.onclick = () => { TS = { give: {}, res: null, key: '' }; render(); };
   document.querySelectorAll('[data-mock]').forEach(b => b.onclick = () => {
     const t = TS.res[+b.dataset.mock];
-    TR.h = 'long'; TR.other = t.o.team; TR.give = {}; TR.get = {};
+    TR.h = 'long'; TR.mine = D.me; TR.other = t.o.team; TR.give = {}; TR.get = {};
     t.give.forEach(p => { TR.give[p.name] = true; }); t.get.forEach(p => { TR.get[p.name] = true; });
     TAB = 'trade'; render(); calcTrade(); const r = $('#tres'); if (r) r.scrollIntoView({ behavior: 'smooth' });
   });
@@ -2050,7 +2058,7 @@ function bindTrend() {
   $('#tfwho').onchange = e => { TF.who = e.target.value; render(); };
   $('#tfpos').onchange = e => { TF.pos = e.target.value; render(); };
   $('#tfdepth').onchange = e => { TF.depth = e.target.checked; render(); };
-  document.querySelectorAll('[data-radar]').forEach(b => b.onclick = () => { TR.other = b.dataset.radar; TR.give = {}; TR.get = {}; setTab('trade'); });
+  document.querySelectorAll('[data-radar]').forEach(b => b.onclick = () => { TR.mine = D.me; TR.other = b.dataset.radar; TR.give = {}; TR.get = {}; setTab('trade'); });
 }
 
 // ---------- Alignement jour par jour (streamers, gardiens, séries) ----------
