@@ -713,6 +713,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
   try { STARTERS = dfoStarters_(); } catch (e) { WARN.push('Gardiens partants : ' + e.message); }
   mark_('Arénas (mises en échec, tirs bloqués)');
   try { ARENA = arenaFactors_(); } catch (e) { WARN.push('Arénas : ' + e.message); }
+  try { PEN = penFactors_(); } catch (e) { WARN.push('Discipline des équipes : ' + e.message); }
   mark_('Trios du jour (DailyFaceoff)');
   try { DFOL = dfoForApp_(dfoLines_()); } catch (e) { WARN.push('Trios du jour : ' + e.message); }
   try { CAL = calResolve_(); } catch (e) { CAL = getCal_(); WARN.push('Calibration : ' + e.message); }
@@ -745,7 +746,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
               share: CONFIG.GOALIE_START_SHARE, sims: APP.SIMS, luck: APP.LUCK,
               k: inSeason_() ? Object.assign({}, APP.K, inSeason_().K, { gx: inSeason_().kxg, g: inSeason_().gsrc === 'tirs' || inSeason_().gsrc === 'mix' ? inSeason_().K.g : inSeason_().kg, gstart: inSeason_().gk ? inSeason_().gk.k : APP.K.gstart }) : APP.K,
               bt: inSeason_() },
-    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), rookies: rookies_(), lsv: LSV, odds: getOdds_(), moves: myMoves, journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS, lines: DFOL, cal: CAL, arena: ARENA,
+    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), rookies: rookies_(), lsv: LSV, odds: getOdds_(), moves: myMoves, journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS, lines: DFOL, cal: CAL, arena: ARENA, pen: PEN,
     teams: teamsOut, waivers: waivers, schedule: sched.games, warn: WARN.slice(),
     sources: ['LNH (api-web.nhle.com)', 'ESPN Fantasy', 'GAF Aggregate Projections', 'MoneyPuck.com']
   };
@@ -1141,7 +1142,7 @@ function oppAdjust_() {
 // Présences sur la glace (feuilles de présences LNH, après chaque match) : qui est sur la 1re vague d'AN, avec qui il joue à 5 c. 5.
 // 6 derniers matchs de chaque équipe (3 récents vs 3 d'avant → promotions et changements de duo). Résumés gardés dans « APP Glace ».
 const ICE = { GAMES_PER_TEAM: 6, MAX_NEW: 40, SHEET: 'APP Glace' };
-let ICE_STORE = {}, LINEQ = {}, DFOL = null, CAL = [], L30TOI = {}, ARENA = null;
+let ICE_STORE = {}, LINEQ = {}, DFOL = null, CAL = [], L30TOI = {}, ARENA = null, PEN = null;
 // Compagnons de trio (retenu par le backtest par match 2025-26, coef 0,1) : qualité de ses 2 principaux coéquipiers à 5 c. 5
 // au DERNIER match (FP d'attaque par match de la saison) vs la moyenne de ses coéquipiers sur toute la saison → −1 à +1
 function lineQuality_(players) {
@@ -1499,6 +1500,23 @@ function arenaFactors_() {
   const H = fit('hit'), B = fit('blk'), G = fit('sog'), out = {};
   Object.keys(H).forEach(t => { out[t] = [Math.round(H[t] * 1000) / 1000, Math.round((B[t] || 1) * 1000) / 1000, Math.round((1 + 0.5 * ((G[t] || 1) - 1)) * 1000) / 1000]; });
   try { cache.put('ARENA2', JSON.stringify(out), 12 * 3600); } catch (e) { /* rien */ }
+  return out;
+}
+// ---------------- Discipline de l'adversaire (essai du 3 nov., idée 3) ----------------
+// Labo, 14 saisons : contre une équipe qui prend 10 % de pénalités de plus que la moyenne, une équipe obtient nettement plus
+// d'avantages numériques (14 saisons sur 14) ; prédire les buts en AN avec ce facteur^0,5 fait mieux 10 saisons sur 14.
+// Facteur = pénalités prises par match (saison en cours, ramenée vers la moyenne avec 20 matchs) ÷ moyenne de la ligue.
+function penFactors_() {
+  const cache = CacheService.getScriptCache(), hit = cache.get('PEN1');
+  if (hit) { try { return JSON.parse(hit); } catch (e) { /* on refait */ } }
+  const url = 'https://api.nhle.com/stats/rest/en/team/penalties?isAggregate=false&isGame=false&limit=-1&cayenneExp=' + encodeURIComponent(`seasonId=${CONFIG.SEASON} and gameTypeId=2`);
+  const j = fetchJsonAll_([url])[0], L = (j && j.data) || [];
+  const names = {}; Object.keys(DFO_SLUG).forEach(ab => { names[DFO_SLUG[ab]] = ab; });
+  const rows = L.filter(x => x.gamesPlayed > 0).map(x => ({ ab: names[String(x.teamFullName || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/ +/g, '-')], gp: x.gamesPlayed, pen: x.penalties || 0 }));
+  if (rows.length < 20) return null;
+  const lg = rows.reduce((t, r) => t + r.pen, 0) / rows.reduce((t, r) => t + r.gp, 0), out = {};
+  rows.forEach(r => { if (r.ab) out[r.ab] = Math.round((r.pen + 20 * lg) / (r.gp + 20) / lg * 1000) / 1000; });
+  try { cache.put('PEN1', JSON.stringify(out), 12 * 3600); } catch (e) { /* rien */ }
   return out;
 }
 // ---------------- Trios du jour (idée 3) : DailyFaceoff, page « line-combinations » de chaque équipe ----------------

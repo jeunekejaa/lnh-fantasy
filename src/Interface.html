@@ -2106,7 +2106,9 @@ function ctxMult(p, g) {
   const home = g[2] ? 1 : -1, me2 = B2B(p.nhl, g[0]), op2 = B2B(g[1], g[0]);
   const fo = (1 + 0.044 * home) * (me2 ? 0.95 : 1) * (op2 ? 1.044 : 1), fs = (1 + 0.022 * home) * (me2 ? 0.979 : 1) * (op2 ? 1.029 : 1);
   const off = 3 * (r[0] || 0) + 2 * (r[1] || 0) + 0.5 * (r[2] || 0) + 0.5 * (r[3] || 0), sog = 0.2 * (r[4] || 0);
-  return Math.max(0.85, Math.min(1.15, 1 + (off * (fo - 1) + sog * (fs - 1)) / p.model));
+  // discipline de l'adversaire (labo 14 saisons) : ses pénalités par match ÷ moyenne, puissance 0,5, sur la part AN de ses points
+  const pf = D.pen && D.pen[g[1]] ? Math.pow(D.pen[g[1]], 0.5) : 1, pp = 2.9 * (r[2] || 0) * (pf - 1);
+  return Math.max(0.85, Math.min(1.15, 1 + (off * (fo - 1) + sog * (fs - 1) + pp) / p.model));
 }
 // Idée 5 · biais des marqueurs : mises en échec, tirs bloqués (et à moitié les tirs) selon l'aréna du match
 function arenaMult(p, g) {
