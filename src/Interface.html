@@ -1839,6 +1839,8 @@ function weekMatchups(per) {
     if (per === cur) { const d = duelOdds(a); pa = d ? d.p : 0.5; ea = d ? d.me : g.liveA; eb = d ? d.opp : g.liveB; }
     else { ea = (a.powerBy && a.powerBy[per]) || a.power || 0; eb = (b.powerBy && b.powerBy[per]) || b.power || 0; pa = normCdf((ea - eb) / (D.config.sd * Math.SQRT2)); }
     const meIn = a.team === D.me || b.team === D.me;
+    // ton duel : toi toujours en haut (et à gauche de la barre)
+    if (b.team === D.me) return { a: b, b: a, liveA: g.liveB, liveB: g.liveA, pa: 1 - pa, ea: eb, eb: ea, meIn: true };
     return { a: a, b: b, liveA: g.liveA, liveB: g.liveB, pa: pa, ea: ea, eb: eb, meIn: meIn };
   }).filter(Boolean).sort((x, y) => (y.meIn - x.meIn));
 }
@@ -1855,11 +1857,11 @@ function weekStrip(per) {
     </div>
     <div class="duels" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scroll-snap-type:x mandatory">${list.map(x => {
       const on = live && (x.a.team === sel || x.b.team === sel), pa = Math.round(x.pa * 100);
-      const side = (t, sc, e, col) => `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><span style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${t.team === D.me ? 'var(--accent)' : 'var(--ink)'}">${short(t.team)}</span><b class="big" style="font-size:18px;color:${col}">${live ? f1(sc) : f1(e)}</b></div>`;
+      const side = (t, sc, e, col) => `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><span style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${t.team === D.me ? 'var(--accent)' : x.meIn ? 'var(--opp)' : 'var(--ink)'}">${short(t.team)}</span><b class="big" style="font-size:18px;color:${col}">${live ? f1(sc) : f1(e)}</b></div>`;
       return `<button data-duel="${esc(x.a.team)}" ${live ? '' : 'disabled'} style="flex:0 0 200px;scroll-snap-align:start;text-align:left;font:inherit;color:var(--ink);background:${on ? 'var(--me)' : 'var(--card2)'};border:1px solid ${on ? '#1E4A63' : 'var(--line)'};border-radius:12px;padding:10px;cursor:${live ? 'pointer' : 'default'}">
-        ${side(x.a, x.liveA, x.ea, pa >= 50 ? 'var(--good)' : 'var(--ink)')}${side(x.b, x.liveB, x.eb, pa < 50 ? 'var(--good)' : 'var(--ink)')}
-        <div style="height:6px;border-radius:4px;background:#3A4458;overflow:hidden;margin-top:8px"><div style="height:6px;width:${pa}%;background:var(--accent)"></div></div>
-        <div class="small muted" style="display:flex;justify-content:space-between;margin-top:4px"><span>${pa} %</span><span>${100 - pa} %</span></div></button>`; }).join('')}</div></div>`;
+        ${(() => { const sa = live ? x.liveA : x.ea, sb = live ? x.liveB : x.eb; /* vert = celui qui mène au pointage */ return side(x.a, x.liveA, x.ea, sa > sb ? 'var(--good)' : 'var(--ink)') + side(x.b, x.liveB, x.eb, sb > sa ? 'var(--good)' : 'var(--ink)'); })()}
+        <div style="display:flex;height:6px;border-radius:4px;overflow:hidden;margin-top:8px;gap:2px"><div style="width:${pa}%;background:${x.meIn ? 'var(--accent)' : '#8A96AE'}"></div><div style="flex:1;background:${x.meIn ? 'var(--opp)' : '#4A5468'}"></div></div>
+        <div class="small" style="display:flex;justify-content:space-between;margin-top:4px"><span style="color:${x.meIn ? 'var(--accent)' : 'var(--muted)'};font-weight:${pa >= 50 ? 700 : 400}">${pa} %</span><span style="color:${x.meIn ? 'var(--opp)' : 'var(--muted)'};font-weight:${pa < 50 ? 700 : 400}">${100 - pa} %</span></div></button>`; }).join('')}</div></div>`;
 }
 function vWeek() {
   const cur = D.currentPeriod;
