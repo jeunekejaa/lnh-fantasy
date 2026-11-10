@@ -1566,9 +1566,12 @@ function hhFetch_() {
 function hhStore_(write) {         // feuille cachée : une ligne par photo → [date, json en morceaux…]
   const sh = hiddenSheet_(SpreadsheetApp.getActiveSpreadsheet(), 'HH Photos');
   if (write) { const ch = [write.d]; const js = JSON.stringify(write.p); for (let i = 0; i < js.length; i += 40000) ch.push(js.slice(i, i + 40000));
-    sh.getRange(sh.getLastRow() + 1, 1, 1, ch.length).setValues([ch]); return; }
+    const rg = sh.getRange(sh.getLastRow() + 1, 1, 1, ch.length); rg.setNumberFormat('@'); rg.setValues([ch]); return; }
   if (!sh.getLastRow()) return [];
-  return sh.getRange(1, 1, sh.getLastRow(), Math.max(2, sh.getLastColumn())).getValues().map(r => { try { return { d: String(r[0]).slice(0, 10), p: JSON.parse(r.slice(1).join('')) }; } catch (e) { return null; } }).filter(Boolean);
+  const byD = {};     // Sheets peut convertir la date en objet Date ; une seule photo par date
+  sh.getRange(1, 1, sh.getLastRow(), Math.max(2, sh.getLastColumn())).getValues().forEach(r => { try { const d = r[0] instanceof Date ? Utilities.formatDate(r[0], 'America/Toronto', 'yyyy-MM-dd') : String(r[0]).slice(0, 10);
+    if (/^\d{4}-\d\d-\d\d$/.test(d) && !byD[d]) byD[d] = { d: d, p: JSON.parse(r.slice(1).join('')) }; } catch (e) { /* ligne illisible */ } });
+  return Object.keys(byD).sort().map(d => byD[d]);
 }
 function hhLog_(json) {            // appelée à la fin de chaque actualisation
   const props = PropertiesService.getDocumentProperties(), D0 = JSON.parse(json), today = D0.fday;
