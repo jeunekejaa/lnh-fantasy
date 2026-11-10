@@ -792,7 +792,7 @@ function bindPred() {
 let ODDS = null, ODF = { kind: 'm_pts', name: '', line: '0.5', over: '', under: '', date: '' };
 function vStrat() {
   if (ODDS === null) ODDS = (D.odds || []).slice();
-  return stratLines() + stratTiming() + stratPlayoffs() + stratRace() + stratManagers() + stratCal() + stratOdds();
+  return stratLines() + stratTiming() + stratPlayoffs() + stratRace() + stratManagers() + stratCal() + stratHH() + stratOdds();
 }
 // Idée 3 · Trios du jour (DailyFaceoff) : promotions et rétrogradations récentes de tes joueurs et des meilleurs joueurs libres
 const LNAME = { f1: '1er trio', f2: '2e trio', f3: '3e trio', f4: '4e trio', d1: '1re paire', d2: '2e paire', d3: '3e paire', pp1: 'AN1', pp2: 'AN2' };
@@ -840,6 +840,23 @@ function stratTiming() {
     <div class="lbl" style="margin:12px 0 6px">Acheter bas : joueurs adverses sous-évalués</div>
     ${buy.length ? `<div class="tbl"><table>${head}${buy.slice(0, 8).map(x => row(x[0], x[1])).join('')}</table></div>` : '<div class="muted small">Aucun joueur adverse 20 % sous sa vraie valeur.</div>'}
     <div class="legend"><span>Labo, 10 saisons (23 500 cas) : un joueur 20 % ou plus au-dessus du modèle produit ensuite 0,6 à 0,8 FP/match de moins que ce qu’il montre ; le modèle, lui, reste juste dans chaque groupe. Les gérants jugent sur « Vu ».</span><span>Jamais d’échange avec « ${esc((D.teams.find(t => NO_TRADE.test(t.team)) || {}).team || '—')} » · Snuggerud jamais proposé.</span></div></div>`;
+}
+// Essai · analystes à jour (HashtagHockey, projections « reste de la saison ») : une photo par semaine, jugée contre le réel
+function stratHH() {
+  const H = D.hh; if (!H) return `<div class="card"><h2>Analystes à jour (essai)</h2><div class="empty">Première photo HashtagHockey à la prochaine actualisation.</div></div>`;
+  const ev = (H.ev || []).filter(e => e.hh != null);
+  const row = x => `<tr><td class="l">${esc(x.n)} <span class="pos">${x.g}</span>${x.t && x.t !== D.me ? `<div class="msub small muted">${esc(x.t)}</div>` : x.t ? '' : '<div class="msub small muted">libre</div>'}</td><td>${x.f != null ? f2(x.f) : '–'}</td><td><b>${f2(x.m)}</b></td><td>${f2(x.hh)}</td><td class="${x.hh > x.m ? 'up' : 'down'}">${x.hh > x.m ? '+' : '−'}${f2(Math.abs(x.hh - x.m))}</td></tr>`;
+  const head = '<tr><th class="l">Joueur</th><th>Vu</th><th>Notre modèle</th><th>HashtagHockey</th><th>Écart</th></tr>';
+  return `<div class="card"><h2>Analystes à jour (essai)</h2>
+    <div class="small" style="margin-bottom:8px">HashtagHockey publie des projections « reste de la saison » mises à jour pendant la saison. L’app en garde une photo par semaine (${H.snaps} jusqu’ici, dernière : ${esc(dShort(H.at))}, ${H.n} joueurs) et les jugera contre ce que les joueurs produisent ensuite. <b>Rien n’entre dans le modèle avant ce verdict.</b></div>
+    ${ev.length ? `<div class="tbl"><table><tr><th class="l">Photo du</th><th>Joueurs</th><th>Erreur HashtagHockey</th><th>Erreur de notre modèle</th><th>Moitié-moitié</th><th>GAF (avant-saison)</th></tr>${ev.map(e => { const b = Math.min(e.hh, e.mod, e.mix);
+        const c = v => `<td${v === b ? ' class="up"' : ''}>${v === b ? '<b>' : ''}${v.toFixed(3)}${v === b ? '</b>' : ''}</td>`;
+        return `<tr><td class="l">${esc(dShort(e.d))}</td><td>${e.n}</td>${c(e.hh)}${c(e.mod)}${c(e.mix)}<td>${e.gaf != null ? e.gaf.toFixed(3) : '–'}</td></tr>`; }).join('')}</table></div>
+      <div class="small muted" style="margin:6px 0 10px">Erreur moyenne en FP/match sur les matchs joués depuis la photo (patineurs, 4 matchs et plus). Plus bas = mieux ; il faut plusieurs semaines pour conclure.</div>`
+      : '<div class="small muted" style="margin-bottom:10px">Premier verdict dans environ 2 semaines (il faut au moins 4 matchs joués après une photo).</div>'}
+    ${(H.mine || []).length ? `<div class="lbl" style="margin-bottom:6px">Tes joueurs : où HashtagHockey n’est pas d’accord avec nous</div><div class="tbl"><table>${head}${H.mine.slice(0, 8).map(row).join('')}</table></div>` : ''}
+    ${(H.dis || []).length ? `<div class="lbl" style="margin:12px 0 6px">Plus gros désaccords dans la ligue</div><div class="tbl"><table>${head}${H.dis.slice(0, 10).map(row).join('')}</table></div>` : ''}
+    <div class="legend"><span>Source : hashtaghockey.com (projections par match, converties avec le barème de ta ligue).</span></div></div>`;
 }
 // Idée 9 · Calibration des chances de victoire : l'app note ses chances au début de chaque semaine, ESPN donne le résultat
 function logCal() {

@@ -64,6 +64,11 @@ function doGet(e) {
       const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(APP.DATA_SHEET), js = sh.getRange(1, 1, sh.getLastRow(), 1).getValues().map(r => r[0]).join('');
       return ContentService.createTextOutput(JSON.stringify(calServerLog_(js, true) || [])).setMimeType(ContentService.MimeType.JSON);
     }
+    if (what === 'hhtest') {                         // lance la photo HashtagHockey sur les données actuelles et renvoie le résumé
+      const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(APP.DATA_SHEET), js = sh.getRange(1, 1, sh.getLastRow(), 1).getValues().map(r => r[0]).join('');
+      let err = null; try { hhLog_(js); } catch (e) { err = e.message; }
+      return ContentService.createTextOutput(JSON.stringify({ err: err, hh: getHH_() })).setMimeType(ContentService.MimeType.JSON);
+    }
     if (what === 'ver') return ContentService.createTextOutput(codeStatus_()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'update') return ContentService.createTextOutput(checkCodeFromApp()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'refresh') return ContentService.createTextOutput(refreshLocked_(false)).setMimeType(ContentService.MimeType.JSON);
@@ -746,7 +751,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
               share: CONFIG.GOALIE_START_SHARE, sims: APP.SIMS, luck: APP.LUCK,
               k: inSeason_() ? Object.assign({}, APP.K, inSeason_().K, { gx: inSeason_().kxg, g: inSeason_().gsrc === 'tirs' || inSeason_().gsrc === 'mix' ? inSeason_().K.g : inSeason_().kg, gstart: inSeason_().gk ? inSeason_().gk.k : APP.K.gstart }) : APP.K,
               bt: inSeason_() },
-    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), rookies: rookies_(), lsv: LSV, odds: getOdds_(), moves: myMoves, journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS, lines: DFOL, cal: CAL, arena: ARENA, pen: PEN,
+    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), rookies: rookies_(), lsv: LSV, odds: getOdds_(), moves: myMoves, journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS, lines: DFOL, cal: CAL, hh: getHH_(), arena: ARENA, pen: PEN,
     teams: teamsOut, waivers: waivers, schedule: sched.games, warn: WARN.slice(),
     sources: ['LNH (api-web.nhle.com)', 'ESPN Fantasy', 'GAF Aggregate Projections', 'MoneyPuck.com']
   };
@@ -759,6 +764,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
   sh.clearContents();
   sh.getRange(1, 1, chunks.length, 1).setValues(chunks);
   try { calServerLog_(json); } catch (e) { console.log('Prédiction du lundi : ' + e.message); }
+  try { hhLog_(json); } catch (e) { console.log('HashtagHockey : ' + e.message); }
 }
 // Fiche de joueur (onglets Équipes / Chercher / Ballotage) : stats de la saison, projection stat par stat, stats avancées
 function playerSheet_(g, p, m, mp, gafPrior, pjPrior, team) {
@@ -1519,6 +1525,78 @@ function penFactors_() {
   try { cache.put('PEN1', JSON.stringify(out), 12 * 3600); } catch (e) { /* rien */ }
   return out;
 }
+// ---------------- Projections « reste de la saison » de HashtagHockey (essai, 10 nov.) ----------------
+// Une source d'analystes mise à jour EN COURS de saison (GAF date d'avant la saison). Pas d'historique pour valider au labo :
+// on enregistre donc une photo par semaine (leur projection, la nôtre, GAF, MJ et FP réels du moment), puis on compare
+// chaque photo à ce que les joueurs ont réellement produit DEPUIS. Rien n'entre dans le modèle tant que ce n'est pas jugé.
+const HH_URL = 'https://hashtaghockey.com/fantasy-hockey-projections';
+function hhParse_(html) {          // → { clé (nom normalisé|F,D,G) : [FP/match selon ton barème, MJ projetés] }
+  const out = {}, rows = html.split('ContentPlaceHolder1_GridView1_Label2_').slice(1);
+  rows.forEach(r => {
+    const i = (r.match(/^(\d+)"/) || [])[1], nm = (r.match(/^\d+"[^>]*>([^<]+)</) || [])[1];
+    const m = r.match(/<td>([A-Z,\/ ]{1,9})<\/td><td>([A-Z]{2,3})<\/td><td>(\d+)<\/td>/);
+    if (i == null || !nm || !m) return;
+    const v = k => { const x = r.match(new RegExp('GridView1_L' + k + '_' + i + '"[^>]*>([^<]*)<')); return x && x[1] !== '' ? +x[1] || 0 : 0; };
+    const pos = m[1].trim(), grp = pos === 'G' ? 'G' : pos === 'D' ? 'D' : 'F';
+    const fp = grp === 'G' ? 3 * v('HWIN') - v('GOALS_AGAINST') + 0.2 * v('SAVES') + 3 * v('SHUTOUT')
+      : 3 * v('GOALS') + 2 * v('ASSISTS') + 0.5 * v('PP_POINTS') + 0.5 * v('SH_POINTS') + 0.2 * v('SHOTS_ON_GOAL') + 0.2 * v('HITS') + 0.4 * v('BLOCKS');
+    if (fp > 0) out[norm_(nm.replace(/&#39;/g, "'").replace(/&amp;/g, '&')) + '|' + grp] = [Math.round(fp * 1000) / 1000, +m[3]];
+  });
+  return out;
+}
+function hhFetch_() {
+  const UA = { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36' };
+  const h = UrlFetchApp.fetch(HH_URL, { muteHttpExceptions: true, headers: UA }).getContentText();
+  const dec = s => s.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&'), form = {};
+  let m; const reH = /<input type="hidden" name="(__[A-Z]+)" id="[^"]*" value="([^"]*)"/g;
+  while ((m = reH.exec(h))) form[m[1]] = dec(m[2]);
+  const reS = /<select name="([^"]+)"([\s\S]*?)<\/select>/g;
+  while ((m = reS.exec(h))) { const v = m[2].match(/<option selected="selected" value="([^"]*)"/); if (v && m[2].slice(0, 200).indexOf('disabled="disabled"') < 0) form[dec(m[1])] = dec(v[1]); }
+  const reC = /<input id="[^"]*" type="checkbox" name="([^"]+)"( checked="checked")?/g;
+  while ((m = reC.exec(h))) if (m[2]) form[dec(m[1])] = 'on';
+  const P = 'ctl00$ContentPlaceHolder1$';
+  ['CBBLOCKS', 'CBSAVES', 'CBSH_POINTS'].forEach(k => { form[P + k] = 'on'; });
+  form[P + 'DDSHOW'] = '900'; form.__EVENTTARGET = P + 'DDSHOW'; form.__EVENTARGUMENT = ''; form.__LASTFOCUS = '';
+  if (!form.__VIEWSTATE) throw new Error('page HashtagHockey illisible');
+  const r = UrlFetchApp.fetch(HH_URL, { method: 'post', payload: form, muteHttpExceptions: true, headers: UA });
+  const out = hhParse_(r.getContentText());
+  if (Object.keys(out).length < 300) throw new Error('HashtagHockey : ' + Object.keys(out).length + ' joueurs seulement');
+  return out;
+}
+function hhStore_(write) {         // feuille cachée : une ligne par photo → [date, json en morceaux…]
+  const sh = hiddenSheet_(SpreadsheetApp.getActiveSpreadsheet(), 'HH Photos');
+  if (write) { const ch = [write.d]; const js = JSON.stringify(write.p); for (let i = 0; i < js.length; i += 40000) ch.push(js.slice(i, i + 40000));
+    sh.getRange(sh.getLastRow() + 1, 1, 1, ch.length).setValues([ch]); return; }
+  if (!sh.getLastRow()) return [];
+  return sh.getRange(1, 1, sh.getLastRow(), Math.max(2, sh.getLastColumn())).getValues().map(r => { try { return { d: String(r[0]).slice(0, 10), p: JSON.parse(r.slice(1).join('')) }; } catch (e) { return null; } }).filter(Boolean);
+}
+function hhLog_(json) {            // appelée à la fin de chaque actualisation
+  const props = PropertiesService.getDocumentProperties(), D0 = JSON.parse(json), today = D0.fday;
+  const players = []; (D0.teams || []).forEach(t => t.players.forEach(p => players.push([p, t.team]))); (D0.waivers || []).forEach(p => players.push([p, null]));
+  const key = p => norm_(p.name) + '|' + (p.grp === 'G' ? 'G' : p.grp === 'D' ? 'D' : 'F');
+  const snaps = hhStore_(), last = snaps.length ? snaps[snaps.length - 1].d : null;
+  let cur = null;
+  if (!last || (Date.parse(today) - Date.parse(last)) / 86400000 >= 7) {       // une photo par semaine
+    const hh = hhFetch_(), p = {};
+    players.forEach(([q]) => { const h = hh[key(q)]; if (!h || !(q.model > 0)) return;
+      p[key(q)] = [h[0], Math.round(q.model * 1000) / 1000, q.gaf != null ? q.gaf : null, q.gp || 0, q.fpg != null ? Math.round(q.fpg * (q.gp || 0) * 10) / 10 : null]; });
+    hhStore_({ d: today, p: p }); snaps.push({ d: today, p: p }); cur = p;
+  } else cur = snaps[snaps.length - 1].p;
+  // jugement : pour chaque photo assez vieille, erreur sur les FP/match réels DEPUIS la photo (4 matchs et plus)
+  const now = {}; players.forEach(([q]) => { if (q.fpg != null && q.gp) now[key(q)] = [q.gp, q.fpg * q.gp, q.grp]; });
+  const ev = snaps.map(s => { const e = { hh: 0, mod: 0, gaf: 0, mix: 0 }; let n = 0, ng = 0;
+    Object.keys(s.p).forEach(k => { const a = s.p[k], b = now[k]; if (!b || a[4] == null || k.slice(-1) === 'G') return; const g = b[0] - a[3]; if (g < 4) return;
+      const act = (b[1] - a[4]) / g; n++; e.hh += Math.abs(a[0] - act); e.mod += Math.abs(a[1] - act); e.mix += Math.abs((a[0] + a[1]) / 2 - act);
+      if (a[2] != null) { ng++; e.gaf += Math.abs(a[2] - act); } });
+    return n >= 50 ? { d: s.d, n: n, hh: e.hh / n, mod: e.mod / n, mix: e.mix / n, gaf: ng ? e.gaf / ng : null } : { d: s.d, n: n }; });
+  // plus gros désaccords actuels (joueurs détenus et bons joueurs libres)
+  const dis = []; players.forEach(([q, team]) => { const a = cur[key(q)]; if (!a || q.grp === 'G' || (q.gp || 0) < 5) return;
+    dis.push({ n: q.name, t: team, g: q.grp, hh: a[0], m: Math.round(q.model * 100) / 100, f: q.fpg != null ? Math.round(q.fpg * 100) / 100 : null }); });
+  dis.sort((x, y) => Math.abs(y.hh - y.m) - Math.abs(x.hh - x.m));
+  const mine = dis.filter(x => x.t === D0.me);
+  props.setProperty('HHSUM', JSON.stringify({ at: snaps[snaps.length - 1].d, n: Object.keys(cur).length, snaps: snaps.length, ev: ev.slice(-8), dis: dis.slice(0, 16), mine: mine }));
+}
+function getHH_() { try { return JSON.parse(PropertiesService.getDocumentProperties().getProperty('HHSUM') || 'null'); } catch (e) { return null; } }
 // ---------------- Trios du jour (idée 3) : DailyFaceoff, page « line-combinations » de chaque équipe ----------------
 // Pas de validation historique possible (DailyFaceoff ne garde pas l'historique) : information seulement, aucun effet sur le modèle.
 // Rafraîchi au plus toutes les 3 h ; garde les changements (promotions / rétrogradations) des 7 derniers jours.
