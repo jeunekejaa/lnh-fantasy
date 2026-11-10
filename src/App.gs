@@ -1590,7 +1590,7 @@ function hhLog_(json) {            // appelée à la fin de chaque actualisation
       if (a[2] != null) { ng++; e.gaf += Math.abs(a[2] - act); } });
     return n >= 50 ? { d: s.d, n: n, hh: e.hh / n, mod: e.mod / n, mix: e.mix / n, gaf: ng ? e.gaf / ng : null } : { d: s.d, n: n }; });
   // plus gros désaccords actuels (joueurs détenus et bons joueurs libres)
-  const dis = []; players.forEach(([q, team]) => { const a = cur[key(q)]; if (!a || q.grp === 'G' || (q.gp || 0) < 5) return;
+  const dis = []; players.forEach(([q, team]) => { const a = cur[key(q)]; if (!a || q.grp === 'G' || (q.gp || 0) < 8 || (!team && Math.max(q.model, a[0]) < 2.3)) return;
     dis.push({ n: q.name, t: team, g: q.grp, hh: a[0], m: Math.round(q.model * 100) / 100, f: q.fpg != null ? Math.round(q.fpg * 100) / 100 : null }); });
   dis.sort((x, y) => Math.abs(y.hh - y.m) - Math.abs(x.hh - x.m));
   const mine = dis.filter(x => x.t === D0.me);
