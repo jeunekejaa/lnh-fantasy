@@ -1888,10 +1888,11 @@ function recapStats(R, tid) {
   days.forEach(d => d.t[tid].forEach(([n, slot, fp]) => { seen.add(n); if (fp == null || slot === 8) return;
     if (slot === 7) { bench[n] = (bench[n] || 0) + fp; return; }
     const x = P[n] || (P[n] = { n: n, g: slot === 5, gs: 0, fp: 0 }); x.gs++; x.fp += fp; }));
-  const o = { gsSk: 0, gsG: 0, fpSk: 0, fpG: 0, perfSk: 0, perfG: 0, addsFP: 0, bench: 0, list: [], adds: [], drops: [], benchL: [] };
+  const o = { gsSk: 0, gsG: 0, fpSk: 0, fpG: 0, perfSk: 0, perfG: 0, addsFP: 0, bench: 0, list: [], adds: [], drops: [], benchL: [], expSk: 0, gsSkM: 0, perfAll: 0, fpNoM: 0 };
   Object.values(P).forEach(x => { const p = findP(x.n), isAdd = days.length > 1 && !first.has(x.n);
     x.exp = p && p.model > 0 ? p.model * x.gs : null; x.d = x.exp != null ? x.fp - x.exp : null; x.add = isAdd;
-    if (x.g) { o.gsG += x.gs; o.fpG += x.fp; if (x.d != null) o.perfG += x.d; } else { o.gsSk += x.gs; o.fpSk += x.fp; if (x.d != null && !isAdd) o.perfSk += x.d; }
+    if (x.g) { o.gsG += x.gs; o.fpG += x.fp; if (x.d != null) o.perfG += x.d; } else { o.gsSk += x.gs; o.fpSk += x.fp; if (x.d != null && !isAdd) o.perfSk += x.d;
+      if (x.exp != null) { o.expSk += x.exp; o.gsSkM += x.gs; o.perfAll += x.d; } else o.fpNoM += x.fp; }
     if (isAdd) { o.addsFP += x.fp; o.adds.push(x); }
     o.list.push(x); });
   seen.forEach(n => { if (days.length > 1 && !first.has(n) && !P[n]) o.adds.push({ n: n, gs: 0, fp: 0 }); });
@@ -1907,6 +1908,7 @@ function recapPanel(R, g, live) {
   const lead = g.pa - g.pb, win = live ? null : g.w === 'HOME' ? 'a' : g.w === 'AWAY' ? 'b' : null;
   const W = lead >= 0 ? na : nb, L = lead >= 0 ? nb : na, gap = Math.abs(lead);
   const avgFP = (A.fpSk + B.fpSk) / Math.max(1, A.gsSk + B.gsSk);
+  const sg = v => (v >= 0 ? '+' : '−') + f1(Math.abs(v));
   // facteurs (A − B) : volume de matchs, production des patineurs vs projection, gardiens vs projection, ajouts
   const F = [
     { k: 'vol', v: (A.gsSk - B.gsSk) * avgFP, t: (x, w) => `${w} a aligné <b>${Math.abs(A.gsSk - B.gsSk)} matchs de patineurs de plus</b> (${A.gsSk} contre ${B.gsSk})` },
@@ -1914,13 +1916,35 @@ function recapPanel(R, g, live) {
     { k: 'g', v: A.perfG - B.perfG, t: (x, w) => `<b>ses gardiens</b> ont fait ${f1(Math.abs(x))} FP de mieux par rapport aux projections` },
     { k: 'add', v: A.addsFP - B.addsFP, t: (x, w) => `<b>ses ajouts</b> de la semaine ont rapporté ${f1(Math.abs(x))} FP de plus` }];
   const sgnW = lead >= 0 ? 1 : -1, key = F.map(f => Object.assign({}, f, { s: f.v * sgnW })).filter(f => f.s > 1).sort((a, b) => b.s - a.s);
-  let verdict = `<b style="color:${lead >= 0 ? ca : cb}">${esc(W)}</b> ${live ? 'mène' : 'a gagné'} ${f1(Math.max(g.pa, g.pb))} à ${f1(Math.min(g.pa, g.pb))} (écart ${f1(gap)}).`;
+  const meW = W === D.me, meL = L === D.me;
+  let verdict = `<b style="color:${lead >= 0 ? ca : cb}">${meW ? 'Tu' : esc(W)}</b> ${meW ? (live ? 'mènes' : 'as gagné') : (live ? 'mène' : 'a gagné')} ${f1(Math.max(g.pa, g.pb))} à ${f1(Math.min(g.pa, g.pb))}${meL ? ' contre toi' : ''} (écart ${f1(gap)}).`;
   if (calA) { const predDiff = calA.me - calA.op, fav = calA.p >= 0.5 ? na : nb, favP = Math.round(Math.max(calA.p, 1 - calA.p) * 100);
     const pW = lead >= 0 ? calA.me : calA.op, pL = lead >= 0 ? calA.op : calA.me;
-    verdict += ` Lundi, l’app prévoyait ${f1(pW)} à ${f1(pL)} pour ${esc(W)} : <b>${esc(fav)} favori à ${favP} %</b>${!live ? (fav === W ? ' — prédiction confirmée.' : ' — <b>c’est une surprise.</b>') : '.'}`; }
-  verdict += key.length ? ` Ce qui a fait la différence : ${key.slice(0, 2).map(f => f.t(f.v, W)).join(', et ')}.` : ' Aucun facteur ne se détache : surtout de petites différences un peu partout.';
+    verdict += ` Lundi, l’app prévoyait ${f1(pW)} à ${f1(pL)} ${meW ? 'pour toi' : 'pour ' + esc(W)} : <b>${fav === D.me ? 'tu étais favori' : esc(fav) + ' favori'} à ${favP} %</b>${!live ? (fav === W ? ' — prédiction confirmée.' : ' — <b>c’est une surprise.</b>') : '.'}`; }
+  // Décomposition EXACTE de l'écart (A − B) : qualité des joueurs alignés, nombre de matchs, au-dessus/en dessous des attentes,
+  // gardiens, joueurs sans projection. Somme des 5 = écart au pointage (au total des jours chargés).
+  const avgA = A.gsSkM ? A.expSk / A.gsSkM : 0, avgB = B.gsSkM ? B.expSk / B.gsSkM : 0;
+  const sW0 = lead >= 0, Wx = sW0 ? A : B, Lx = sW0 ? B : A, avW = sW0 ? avgA : avgB, avL = sW0 ? avgB : avgA, tu = W === D.me;
+  const T = tu ? { a: 'tu alignes de meilleurs joueurs', b: 'tu as aligné plus de matchs', c: 'tes patineurs font mieux que prévu', d: 'tes gardiens rapportent plus', e: 'des joueurs sans projection t’ont aidé',
+                   na: 'tes joueurs alignés valent moins', nb: 'tu as aligné moins de matchs', nc: 'tes patineurs font moins bien que prévu', nd: 'tes gardiens rapportent moins', ne: 'des joueurs sans projection t’ont nui', moi: 'pour toi', contre: 'contre toi' }
+               : { a: 'il aligne de meilleurs joueurs', b: 'il a aligné plus de matchs', c: 'ses patineurs font mieux que prévu', d: 'ses gardiens rapportent plus', e: 'des joueurs sans projection l’ont aidé',
+                   na: 'ses joueurs alignés valent moins', nb: 'il a aligné moins de matchs', nc: 'ses patineurs font moins bien que prévu', nd: 'ses gardiens rapportent moins', ne: 'des joueurs sans projection lui ont nui', moi: 'pour lui', contre: 'contre lui' };
+  const parts = [
+    { k: 'qual', v: A.gsSkM * (avgA - avgB), pos: T.a, neg: T.na, d: `valeur moyenne d’un match aligné : ${f2(avW)} contre ${f2(avL)} FP` },
+    { k: 'vol', v: (A.gsSkM - B.gsSkM) * avgB, pos: T.b, neg: T.nb, d: `${Wx.gsSk} matchs de patineurs contre ${Lx.gsSk}` },
+    { k: 'perf', v: A.perfAll - B.perfAll, pos: T.c, neg: T.nc, d: `au-dessus ou en dessous des attentes : ${sg(Wx.perfAll)} contre ${sg(Lx.perfAll)}` },
+    { k: 'g', v: A.fpG - B.fpG, pos: T.d, neg: T.nd, d: `FP des gardiens : ${f1(Wx.fpG)} contre ${f1(Lx.fpG)} (${Wx.gsG} départs contre ${Lx.gsG})` },
+    { k: 'oth', v: A.fpNoM - B.fpNoM, pos: T.e, neg: T.ne, d: 'joueurs sans projection maison' }];
+  const sW = lead >= 0 ? 1 : -1, forW = parts.filter(p => p.v * sW > 1).sort((x, y) => y.v * sW - x.v * sW), agW = parts.filter(p => p.v * sW < -1).sort((x, y) => x.v * sW - y.v * sW);
+  const nm = x => `<b>${f1(Math.abs(x.v))} FP</b>`;
+  const why = tu ? (live ? 'tu mènes' : 'tu as gagné') : (live ? 'il mène' : 'il a gagné');
+  if (agW.length && forW.length) verdict += ` <b>Pourquoi ${why} malgré tout :</b> ${agW.slice(0, 2).map(p => `${p.neg} (${nm(p)} ${T.contre})`).join(' et ')}, mais ${forW.slice(0, 3).map(p => `${p.pos} (${nm(p)} ${T.moi})`).join(', ')}.`;
+  else if (forW.length) verdict += ` <b>Ce qui fait la différence :</b> ${forW.slice(0, 3).map(p => `${p.pos} (${nm(p)})`).join(', ')}.`;
+  else verdict += ' Aucun facteur ne se détache : surtout de petites différences un peu partout.';
+  const decomp = `<div class="lbl" style="margin:12px 0 6px">D’où vient l’écart de ${f1(gap)} FP${live ? ' (jusqu’ici)' : ''}</div>
+    <div class="tbl"><table class="nosort"><tr><th class="l">Source</th><th>${tu ? 'Pour toi' : 'Pour ' + esc(dn(W))}</th></tr>${parts.map(p => `<tr><td class="l">${{ qual: 'Qualité des joueurs alignés', vol: 'Nombre de matchs alignés', perf: 'Au-dessus / en dessous des attentes', g: 'Gardiens', oth: 'Autres' }[p.k]}<div class="msub small muted">${p.d}</div></td><td class="${p.v * sW >= 0 ? 'up' : 'down'}"><b>${sg(p.v * sW)}</b></td></tr>`).join('')}
+    <tr class="tot"><td class="l">Total</td><td><b>${sg(parts.reduce((t, p) => t + p.v, 0) * sW)}</b></td></tr></table></div>`;
   const row = (lab, a, b, fmt, hint) => `<tr><td class="l">${lab}${hint ? `<div class="msub small muted">${hint}</div>` : ''}</td><td style="color:${ca}">${fmt(a)}</td><td style="color:${cb}">${fmt(b)}</td></tr>`;
-  const sg = v => (v >= 0 ? '+' : '−') + f1(Math.abs(v));
   const tbl = `<div class="tbl"><table class="nosort"><tr><th class="l">Facteur</th><th style="color:${ca}">${esc(dn(na))}</th><th style="color:${cb}">${esc(dn(nb))}</th></tr>
     ${calA ? row('Prédiction du lundi', calA.me, calA.op, f1, 'pointage prévu avant les matchs') : ''}
     ${row(live ? 'Pointage actuel' : 'Pointage final', g.pa, g.pb, v => `<b>${f1(v)}</b>`)}
@@ -1943,6 +1967,7 @@ function recapPanel(R, g, live) {
     if (o) rest = `<div class="small" style="margin-top:10px">Pour la suite : l’app projette <b style="color:${ca}">${f1(o.me)}</b> à <b style="color:${cb}">${f1(o.opp)}</b> en fin de semaine, soit <b>${Math.round(o.p * 100)} %</b> pour ${esc(na)}.</div>`; }
   return `<div class="card"><h2>${live ? 'Qu’est-ce qui se passe ?' : 'Qu’est-ce qui s’est passé ?'}</h2>
     <div style="margin-bottom:10px;line-height:1.5">${verdict}</div>${rest}
+    ${decomp}
     <div style="margin-top:10px">${tbl}</div>
     <div class="fo2" style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">${perfL(A, ca)}${perfL(B, cb)}</div>
     <div class="legend"><span>Source : ESPN, jour par jour. « Attendu » = projection maison actuelle × matchs joués dans l’alignement (approximation : la projection du lundi n’est pas gardée joueur par joueur).</span>${calA ? '' : '<span>Pas de prédiction du lundi pour cette semaine (enregistrées depuis la semaine 6).</span>'}</div></div>`;
