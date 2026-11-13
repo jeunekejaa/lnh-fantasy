@@ -1600,6 +1600,41 @@ function hhLog_(json) {            // appelée à la fin de chaque actualisation
   props.setProperty('HHSUM', JSON.stringify({ at: snaps[snaps.length - 1].d, n: Object.keys(cur).length, snaps: snaps.length, ev: ev.slice(-8), dis: dis.slice(0, 16), mine: mine }));
 }
 function getHH_() { try { return JSON.parse(PropertiesService.getDocumentProperties().getProperty('HHSUM') || 'null'); } catch (e) { return null; } }
+// ---------------- « Qu'est-ce qui s'est passé ? » : le détail jour par jour d'une semaine de duels (ESPN) ----------------
+// Pour chaque jour de la semaine : l'alignement de chaque équipe (case : 3 att., 4 déf., 5 gardien, 6 UTIL, 7 banc, 8 blessés)
+// et les FP réels de chaque joueur ce jour-là (null = pas de match). Les jours terminés sont gardés dans une feuille cachée.
+function getWeekRecap(per) {
+  per = +per;
+  const base = `https://${ESPN_HOSTS[0]}/apis/v3/games/fhl/seasons/${CONFIG.ESPN_SEASON}/segments/0/leagues/${CONFIG.ESPN_LEAGUE_ID}`;
+  const j = JSON.parse(UrlFetchApp.fetch(base + '?view=mMatchupScore&view=mTeam', { muteHttpExceptions: true }).getContentText());
+  const curSP = j.scoringPeriodId, teams = {};
+  (j.teams || []).forEach(t => { teams[t.id] = t.name || ((t.location || '') + ' ' + (t.nickname || '')).trim(); });
+  const games = [], sps = {};
+  (j.schedule || []).filter(m => m.matchupPeriodId === per && m.home && m.away).forEach(m => {
+    games.push({ a: m.home.teamId, b: m.away.teamId, pa: m.home.totalPoints || 0, pb: m.away.totalPoints || 0, w: m.winner || 'UNDECIDED' });
+    [m.home, m.away].forEach(x => Object.keys(x.pointsByScoringPeriod || {}).forEach(k => { if (+k <= curSP) sps[+k] = 1; })); });
+  const list = Object.keys(sps).map(Number).sort((a, b) => a - b);
+  const sh = hiddenSheet_(SpreadsheetApp.getActiveSpreadsheet(), 'Recap jours'), have = {};
+  if (sh.getLastRow()) sh.getRange(1, 1, sh.getLastRow(), 2).getValues().forEach(r => { if (r[0]) have[+r[0]] = r[1]; });
+  const need = list.filter(sp => sp >= curSP || !have[sp]);
+  for (let i = 0; i < need.length; i += 4) {
+    const part = need.slice(i, i + 4);
+    UrlFetchApp.fetchAll(part.map(sp => ({ url: base + '?view=mRoster&scoringPeriodId=' + sp, muteHttpExceptions: true }))).forEach((r, k) => {
+      if (r.getResponseCode() !== 200) return;
+      const sp = part[k], out = {};
+      (JSON.parse(r.getContentText()).teams || []).forEach(t => {
+        out[t.id] = ((t.roster || {}).entries || []).map(e => { const p = e.playerPoolEntry.player;
+          const st = (p.stats || []).find(x => x.scoringPeriodId === sp && x.statSourceId === 0 && x.statSplitTypeId === 5);
+          return [p.fullName, e.lineupSlotId, st ? Math.round(st.appliedTotal * 10) / 10 : null]; }); });
+      const js = JSON.stringify(out);
+      if (sp < curSP && !have[sp]) sh.appendRow([sp, js]);
+      have[sp] = js;
+    });
+  }
+  const today = ymd_(fantasyNow_());
+  const days = list.filter(sp => have[sp]).map(sp => ({ sp: sp, d: ymd_(new Date(Date.parse(today + 'T12:00:00Z') - (curSP - sp) * 86400000)), t: JSON.parse(have[sp]) }));
+  return JSON.stringify({ per: per, cur: (j.status || {}).currentMatchupPeriod, teams: teams, games: games, days: days, at: new Date().toISOString() });
+}
 // ---------------- Trios du jour (idée 3) : DailyFaceoff, page « line-combinations » de chaque équipe ----------------
 // Pas de validation historique possible (DailyFaceoff ne garde pas l'historique) : information seulement, aucun effet sur le modèle.
 // Rafraîchi au plus toutes les 3 h ; garde les changements (promotions / rétrogradations) des 7 derniers jours.

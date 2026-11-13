@@ -330,6 +330,9 @@ function render() {
   document.querySelectorAll('[data-sub],[data-go]').forEach(b => b.onclick = () => setTab(b.dataset.sub || b.dataset.go));
   document.querySelectorAll('[data-wk]').forEach(b => b.onclick = () => { WKV.per = (WKV.per || D.currentPeriod) + (+b.dataset.wk); render(); });
   document.querySelectorAll('[data-duel]').forEach(b => b.onclick = () => { WKV.sel = b.dataset.duel; render(); });
+  document.querySelectorAll('[data-duelpast]').forEach(b => b.onclick = () => { WKV.selPast = b.dataset.duelpast; render(); });
+  document.querySelectorAll('[data-recapnow]').forEach(b => b.onclick = () => { WKV.recapNow = true; render(); });
+  document.querySelectorAll('[data-recap-reload]').forEach(b => b.onclick = () => { delete RECAP[+b.dataset.recapReload]; render(); });
   enableSorting();
   espnNames($('#view'));
   mobileFit($('#view'));
@@ -1831,7 +1834,7 @@ function duelTable(t, side, first) {
       <td class="${x.d >= 1 ? 'up' : x.d <= -1 ? 'down' : 'muted'}" title="attendu ${f1(x.exp)}">${x.gp ? sgn(x.d, 1) : ''}</td><td class="hs">${x.drop || x.p.grp === 'G' ? '' : x.p.left || 0}</td></tr>`).join('')}
     <tr class="tot"><td class="l">Total</td><td class="hs">${side.rows.reduce((s, x) => s + x.gp, 0)}</td><td><b>${f1(tot)}</b></td><td class="${side.rows.reduce((s, x) => s + x.d, 0) >= 0 ? 'up' : 'down'}">${sgn(side.rows.reduce((s, x) => s + (x.gp ? x.d : 0), 0), 1)}</td><td class="hs">${side.left}</td></tr></table>`;
 }
-let WKV = { per: null, sel: null };
+let WKV = { per: null, sel: null, selPast: null, recapNow: false };
 // Tous les duels d'une semaine (en cours : pointage + chances ; à venir : projection selon la force des équipes)
 function weekMatchups(per) {
   const cur = D.currentPeriod, T = name => D.teams.find(t => t.team === name);
@@ -1853,7 +1856,7 @@ function weekStrip(per) {
   const sel = WKV.sel || D.me;
   return `<div class="card" style="padding:12px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px">
-      <button class="btn" data-wk="-1" aria-label="Semaine précédente" ${per <= cur ? 'disabled style="opacity:.35"' : ''}>‹</button>
+      <button class="btn" data-wk="-1" aria-label="Semaine précédente" ${per <= 1 ? 'disabled style="opacity:.35"' : ''}>‹</button>
       <div style="text-align:center"><div class="lbl">Semaine ${per}${per === cur ? ' · en cours' : ' · à venir'}</div><div class="small muted">${live ? 'pointage actuel · chances de gagner' : 'projection selon la force des équipes'}</div></div>
       <button class="btn" data-wk="1" aria-label="Semaine suivante" ${per >= last ? 'disabled style="opacity:.35"' : ''}>›</button>
     </div>
@@ -1865,9 +1868,115 @@ function weekStrip(per) {
         <div style="display:flex;height:6px;border-radius:4px;overflow:hidden;margin-top:8px;gap:2px"><div style="width:${pa}%;background:${x.meIn ? 'var(--accent)' : '#8A96AE'}"></div><div style="flex:1;background:${x.meIn ? 'var(--opp)' : '#4A5468'}"></div></div>
         <div class="small" style="display:flex;justify-content:space-between;margin-top:4px"><span style="color:${x.meIn ? 'var(--accent)' : 'var(--muted)'};font-weight:${pa >= 50 ? 700 : 400}">${pa} %</span><span style="color:${x.meIn ? 'var(--opp)' : 'var(--muted)'};font-weight:${pa < 50 ? 700 : 400}">${100 - pa} %</span></div></button>`; }).join('')}</div></div>`;
 }
+// ---------------- « Qu'est-ce qui s'est passé ? » / « Qu'est-ce qui se passe ? » ----------------
+// Données ESPN jour par jour (getWeekRecap) : alignement de chaque équipe + FP réels de chaque joueur.
+// Compare à la prédiction du lundi, à la projection maison × matchs joués, et isole ajouts, gardiens et banc.
+let RECAP = {};
+function loadRecap(per, force) {
+  const R = RECAP[per];
+  if (R && R.loading) return;
+  if (R && R.data && !force && (per < D.currentPeriod || Date.now() - R.t < 10 * 60000)) return;
+  RECAP[per] = { loading: true };
+  google.script.run.withSuccessHandler(r => { try { RECAP[per] = { data: JSON.parse(r), t: Date.now() }; } catch (e) { RECAP[per] = { err: 'réponse illisible' }; } render(); })
+    .withFailureHandler(e => { RECAP[per] = { err: (e && e.message) || String(e) }; render(); }).getWeekRecap(per);
+}
+const appTeam = espn => { const k = Object.keys(D.names || {}).find(t => D.names[t] === espn); return k || espn; };
+function findP(name) { for (const t of D.teams) { const p = t.players.find(q => q.name === name); if (p) return p; } return (D.waivers || []).find(q => q.name === name) || null; }
+function recapStats(R, tid) {
+  const days = R.days.filter(d => d.t[tid]), first = new Set((days[0] ? days[0].t[tid] : []).map(e => e[0])), last = new Set((days.length ? days[days.length - 1].t[tid] : []).map(e => e[0]));
+  const P = {}, bench = {}, seen = new Set();
+  days.forEach(d => d.t[tid].forEach(([n, slot, fp]) => { seen.add(n); if (fp == null || slot === 8) return;
+    if (slot === 7) { bench[n] = (bench[n] || 0) + fp; return; }
+    const x = P[n] || (P[n] = { n: n, g: slot === 5, gs: 0, fp: 0 }); x.gs++; x.fp += fp; }));
+  const o = { gsSk: 0, gsG: 0, fpSk: 0, fpG: 0, perfSk: 0, perfG: 0, addsFP: 0, bench: 0, list: [], adds: [], drops: [], benchL: [] };
+  Object.values(P).forEach(x => { const p = findP(x.n), isAdd = days.length > 1 && !first.has(x.n);
+    x.exp = p && p.model > 0 ? p.model * x.gs : null; x.d = x.exp != null ? x.fp - x.exp : null; x.add = isAdd;
+    if (x.g) { o.gsG += x.gs; o.fpG += x.fp; if (x.d != null) o.perfG += x.d; } else { o.gsSk += x.gs; o.fpSk += x.fp; if (x.d != null && !isAdd) o.perfSk += x.d; }
+    if (isAdd) { o.addsFP += x.fp; o.adds.push(x); }
+    o.list.push(x); });
+  seen.forEach(n => { if (days.length > 1 && !first.has(n) && !P[n]) o.adds.push({ n: n, gs: 0, fp: 0 }); });
+  first.forEach(n => { if (days.length > 1 && !last.has(n)) o.drops.push(n); });
+  Object.keys(bench).forEach(n => { o.bench += bench[n]; if (bench[n] > 0) o.benchL.push({ n: n, fp: bench[n] }); });
+  o.benchL.sort((a, b) => b.fp - a.fp);
+  return o;
+}
+function recapPanel(R, g, live) {
+  const ta = R.teams[g.a], tb = R.teams[g.b], A = recapStats(R, g.a), B = recapStats(R, g.b), na = appTeam(ta), nb = appTeam(tb);
+  const meA = na === D.me, meB = nb === D.me, ca = meA ? 'var(--accent)' : meB ? 'var(--opp)' : 'var(--ink)', cb = meB ? 'var(--accent)' : meA ? 'var(--opp)' : 'var(--ink)';
+  const calA = (D.cal || []).find(x => x.per === R.per && x.src === 'lundi' && (x.espn === ta || x.team === na));
+  const lead = g.pa - g.pb, win = live ? null : g.w === 'HOME' ? 'a' : g.w === 'AWAY' ? 'b' : null;
+  const W = lead >= 0 ? na : nb, L = lead >= 0 ? nb : na, gap = Math.abs(lead);
+  const avgFP = (A.fpSk + B.fpSk) / Math.max(1, A.gsSk + B.gsSk);
+  // facteurs (A − B) : volume de matchs, production des patineurs vs projection, gardiens vs projection, ajouts
+  const F = [
+    { k: 'vol', v: (A.gsSk - B.gsSk) * avgFP, t: (x, w) => `${w} a aligné <b>${Math.abs(A.gsSk - B.gsSk)} matchs de patineurs de plus</b> (${A.gsSk} contre ${B.gsSk})` },
+    { k: 'perf', v: A.perfSk - B.perfSk, t: (x, w) => `ses patineurs ont produit <b>${f1(Math.abs(x))} FP de plus</b> que l’autre équipe par rapport à leurs projections` },
+    { k: 'g', v: A.perfG - B.perfG, t: (x, w) => `<b>ses gardiens</b> ont fait ${f1(Math.abs(x))} FP de mieux par rapport aux projections` },
+    { k: 'add', v: A.addsFP - B.addsFP, t: (x, w) => `<b>ses ajouts</b> de la semaine ont rapporté ${f1(Math.abs(x))} FP de plus` }];
+  const sgnW = lead >= 0 ? 1 : -1, key = F.map(f => Object.assign({}, f, { s: f.v * sgnW })).filter(f => f.s > 1).sort((a, b) => b.s - a.s);
+  let verdict = `<b style="color:${lead >= 0 ? ca : cb}">${esc(W)}</b> ${live ? 'mène' : 'a gagné'} ${f1(Math.max(g.pa, g.pb))} à ${f1(Math.min(g.pa, g.pb))} (écart ${f1(gap)}).`;
+  if (calA) { const predDiff = calA.me - calA.op, fav = calA.p >= 0.5 ? na : nb, favP = Math.round(Math.max(calA.p, 1 - calA.p) * 100);
+    const pW = lead >= 0 ? calA.me : calA.op, pL = lead >= 0 ? calA.op : calA.me;
+    verdict += ` Lundi, l’app prévoyait ${f1(pW)} à ${f1(pL)} pour ${esc(W)} : <b>${esc(fav)} favori à ${favP} %</b>${!live ? (fav === W ? ' — prédiction confirmée.' : ' — <b>c’est une surprise.</b>') : '.'}`; }
+  verdict += key.length ? ` Ce qui a fait la différence : ${key.slice(0, 2).map(f => f.t(f.v, W)).join(', et ')}.` : ' Aucun facteur ne se détache : surtout de petites différences un peu partout.';
+  const row = (lab, a, b, fmt, hint) => `<tr><td class="l">${lab}${hint ? `<div class="msub small muted">${hint}</div>` : ''}</td><td style="color:${ca}">${fmt(a)}</td><td style="color:${cb}">${fmt(b)}</td></tr>`;
+  const sg = v => (v >= 0 ? '+' : '−') + f1(Math.abs(v));
+  const tbl = `<div class="tbl"><table class="nosort"><tr><th class="l">Facteur</th><th style="color:${ca}">${esc(dn(na))}</th><th style="color:${cb}">${esc(dn(nb))}</th></tr>
+    ${calA ? row('Prédiction du lundi', calA.me, calA.op, f1, 'pointage prévu avant les matchs') : ''}
+    ${row(live ? 'Pointage actuel' : 'Pointage final', g.pa, g.pb, v => `<b>${f1(v)}</b>`)}
+    ${calA ? row('Écart à la prédiction', g.pa - calA.me, g.pb - calA.op, sg, live ? 'semaine pas finie : normal d’être sous la prédiction' : '') : ''}
+    ${row('Matchs de patineurs alignés', A.gsSk, B.gsSk, v => v, 'plus de matchs = plus de points')}
+    ${row('Patineurs vs leur projection', A.perfSk, B.perfSk, sg, 'FP réels − projection × matchs (joueurs du lundi)')}
+    ${row('Gardiens : départs', A.gsG, B.gsG, v => v)}
+    ${row('Gardiens vs leur projection', A.perfG, B.perfG, sg)}
+    ${row('Ajouts de la semaine', A.addsFP, B.addsFP, v => f1(v) + ' FP', 'points des joueurs ajoutés, quand alignés')}
+    ${row('Points restés sur le banc', A.bench, B.bench, v => f1(v), 'FP faits par des joueurs non alignés')}</table></div>`;
+  const perfL = (S, c) => { const L2 = S.list.filter(x => x.d != null && x.gs > 0), up = L2.slice().sort((a, b) => b.d - a.d).filter(x => x.d > 1).slice(0, 3), dn2 = L2.slice().sort((a, b) => a.d - b.d).filter(x => x.d < -1).slice(0, 3);
+    const li = x => `<div class="small" style="margin:3px 0">${esc(x.n.split(' ').slice(-1)[0])}${x.g ? ' <span class="pos">G</span>' : ''} <span class="muted">${f1(x.fp)} FP en ${x.gs} m. (attendu ${f1(x.exp)})</span> <b class="${x.d >= 0 ? 'up' : 'down'}">${sg(x.d)}</b>${x.add ? ' <span class="chip">ajout</span>' : ''}</div>`;
+    return `<div><div class="lbl" style="color:${c};margin-bottom:4px">Au-dessus des attentes</div>${up.map(li).join('') || '<div class="small muted">personne</div>'}
+      <div class="lbl" style="color:${c};margin:8px 0 4px">En dessous</div>${dn2.map(li).join('') || '<div class="small muted">personne</div>'}
+      ${S.adds.length ? `<div class="lbl" style="color:${c};margin:8px 0 4px">Ajouts (${S.adds.length})</div>${S.adds.map(x => `<div class="small" style="margin:3px 0">${esc(x.n)} <span class="muted">${f1(x.fp)} FP en ${x.gs} m. alignés</span></div>`).join('')}` : ''}
+      ${S.drops.length ? `<div class="small muted" style="margin-top:4px">Retirés : ${S.drops.map(n => esc(n.split(' ').slice(-1)[0])).join(', ')}</div>` : ''}
+      ${S.benchL.length ? `<div class="lbl" style="color:${c};margin:8px 0 4px">Sur le banc</div>${S.benchL.slice(0, 3).map(x => `<div class="small" style="margin:3px 0">${esc(x.n.split(' ').slice(-1)[0])} <span class="muted">${f1(x.fp)} FP non comptés</span></div>`).join('')}` : ''}</div>`; };
+  let rest = '';
+  if (live) { const t = D.teams.find(x => x.team === na), o = t && duelOdds(t);
+    if (o) rest = `<div class="small" style="margin-top:10px">Pour la suite : l’app projette <b style="color:${ca}">${f1(o.me)}</b> à <b style="color:${cb}">${f1(o.opp)}</b> en fin de semaine, soit <b>${Math.round(o.p * 100)} %</b> pour ${esc(na)}.</div>`; }
+  return `<div class="card"><h2>${live ? 'Qu’est-ce qui se passe ?' : 'Qu’est-ce qui s’est passé ?'}</h2>
+    <div style="margin-bottom:10px;line-height:1.5">${verdict}</div>${rest}
+    <div style="margin-top:10px">${tbl}</div>
+    <div class="fo2" style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">${perfL(A, ca)}${perfL(B, cb)}</div>
+    <div class="legend"><span>Source : ESPN, jour par jour. « Attendu » = projection maison actuelle × matchs joués dans l’alignement (approximation : la projection du lundi n’est pas gardée joueur par joueur).</span>${calA ? '' : '<span>Pas de prédiction du lundi pour cette semaine (enregistrées depuis la semaine 6).</span>'}</div></div>`;
+}
+function recapBlock(per, live, selApp) {
+  const R = RECAP[per];
+  if (!R || R.loading) { loadRecap(per); return `<div class="card"><h2>${live ? 'Qu’est-ce qui se passe ?' : 'Qu’est-ce qui s’est passé ?'}</h2><div class="empty">Analyse de la semaine en cours de chargement (ESPN, jour par jour)…</div></div>`; }
+  if (R.err) return `<div class="card"><h2>Qu’est-ce qui s’est passé ?</h2><div class="empty">Impossible de charger la semaine : ${esc(R.err)} <button class="btn" data-recap-reload="${per}">Réessayer</button></div></div>`;
+  const data = R.data, sel = selApp || D.me;
+  const g = data.games.find(x => appTeam(data.teams[x.a]) === sel || appTeam(data.teams[x.b]) === sel) || data.games[0];
+  if (!g) return '<div class="card"><div class="empty">Aucun duel cette semaine.</div></div>';
+  // l'équipe choisie (toi par défaut) toujours en premier
+  const gg = appTeam(data.teams[g.b]) === sel ? { a: g.b, b: g.a, pa: g.pb, pb: g.pa, w: g.w === 'HOME' ? 'AWAY' : g.w === 'AWAY' ? 'HOME' : g.w } : g;
+  return recapPanel(data, gg, live);
+}
+function pastWeek(per) {
+  const R = RECAP[per], cur = D.currentPeriod;
+  const nav = `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px">
+      <button class="btn" data-wk="-1" aria-label="Semaine précédente" ${per <= 1 ? 'disabled style="opacity:.35"' : ''}>‹</button>
+      <div style="text-align:center"><div class="lbl">Semaine ${per} · terminée</div><div class="small muted">pointages finaux · touche un duel pour l’analyse</div></div>
+      <button class="btn" data-wk="1" aria-label="Semaine suivante">›</button></div>`;
+  let cards = '';
+  if (R && R.data) { const sel = WKV.selPast || D.me;
+    const list = R.data.games.map(g => { let a = g.a, b = g.b, pa = g.pa, pb = g.pb; if (appTeam(R.data.teams[b]) === D.me) { [a, b, pa, pb] = [b, a, pb, pa]; }
+      return { a: appTeam(R.data.teams[a]), b: appTeam(R.data.teams[b]), pa: pa, pb: pb }; }).sort((x, y) => (y.a === D.me) - (x.a === D.me));
+    cards = `<div class="duels" style="display:flex;flex-wrap:wrap;gap:8px;padding-bottom:4px">${list.map(x => { const on = x.a === sel || x.b === sel, mi = x.a === D.me;
+      const side = (n, s, w) => `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline"><span style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${n === D.me ? 'var(--accent)' : mi ? 'var(--opp)' : 'var(--ink)'}">${esc(dn(n).length > 18 ? dn(n).slice(0, 17) + '…' : dn(n))}</span><b class="big" style="font-size:18px;color:${w ? 'var(--good)' : 'var(--ink)'}">${f1(s)}</b></div>`;
+      return `<button data-duelpast="${esc(x.a)}" style="flex:0 0 200px;text-align:left;font:inherit;color:var(--ink);background:${on ? 'var(--me)' : 'var(--card2)'};border:1px solid ${on ? '#1E4A63' : 'var(--line)'};border-radius:12px;padding:10px;cursor:pointer">${side(x.a, x.pa, x.pa > x.pb)}${side(x.b, x.pb, x.pb > x.pa)}</button>`; }).join('')}</div>`; }
+  return `<div class="card" style="padding:12px">${nav}${cards}</div>` + recapBlock(per, false, WKV.selPast);
+}
 function vWeek() {
   const cur = D.currentPeriod;
-  if (WKV.per == null || WKV.per < cur) WKV.per = cur;
+  if (WKV.per == null) WKV.per = cur;
+  if (WKV.per < cur) return pastWeek(Math.max(1, WKV.per));
   const strip = weekStrip(WKV.per);
   if (WKV.per !== cur) return strip + `<div class="muted small" style="padding:0 4px">Les semaines à venir montrent seulement la projection (force par semaine, ±${D.config.sd} FP de hasard). Le détail du duel apparaît quand la semaine commence.</div>`;
   const m = (WKV.sel && D.teams.find(t => t.team === WKV.sel)) || me(), isMe = m.team === D.me;
@@ -1902,7 +2011,8 @@ function vWeek() {
       </div></div>${planTxt}`;
   const over = `<div class="card"><h2>Face-à-face</h2><div class="fo2">${duelTable(m, A, true)}${duelTable(o, B, false)}</div>
       <div class="legend"><span>${A.espn ? 'Selon ESPN, jour par jour : un joueur ne compte que les jours où il était dans l’alignement (pas au banc). Les joueurs retirés gardent les points qu’ils ont donnés ; un ajout compte à partir de son arrivée.' : 'FP réels cette semaine (stats LNH : tous ses matchs, même sur le banc).'} MJ = matchs joués dans l’alignement. ± = réel − projection maison × MJ (survole pour l’attendu). Rst = matchs restants. 🟢🔵🟡🔴 = tendance de la saison.</span></div></div>`;
-  return strip + head + over + (isMe ? goalieDays(mine) + roleCard(m) : '');
+  const now = WKV.recapNow ? recapBlock(cur, true, m.team) : `<button class="card" data-recapnow="1" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;color:var(--ink);font:inherit;cursor:pointer;padding:12px 14px"><span style="font-size:18px">🔎</span><span style="flex:1"><b>Qu’est-ce qui se passe ?</b><span class="small muted" style="display:block">Pourquoi ce duel va comme ça : prédiction du lundi, ajouts, joueurs au-dessus ou en dessous des attentes, banc.</span></span><span class="muted">›</span></button>`;
+  return strip + head + now + over + (isMe ? goalieDays(mine) + roleCard(m) : '');
 }
 // ---------- Rôles sur la glace (feuilles de présences, 3 derniers matchs vs 3 d'avant) — info seulement, pas dans la projection ----------
 function roleOf(p) { return D.roles && p && p.id != null ? D.roles[p.id] || D.roles[String(p.id)] : null; }
