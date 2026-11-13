@@ -1552,8 +1552,10 @@ function cellVal(td, col) {
   return m ? parseFloat(m[0].replace(',', '.')) : t.toLowerCase();
 }
 function sortTable(tbl, col, dir) {
-  const rows = Array.from(tbl.querySelectorAll('tr')).slice(1);
-  if (rows.some(r => r.querySelector('td[colspan]'))) return;
+  const all = Array.from(tbl.querySelectorAll('tr')).slice(1);
+  if (all.some(r => r.querySelector('td[colspan]'))) return;
+  // les lignes de total (class « tot ») restent toujours en bas
+  const rows = all.filter(r => !r.classList.contains('tot')), pinned = all.filter(r => r.classList.contains('tot'));
   rows.sort((a, b) => {
     const x = cellVal(a.children[col], col), y = cellVal(b.children[col], col);
     if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
@@ -1561,7 +1563,7 @@ function sortTable(tbl, col, dir) {
     return dir === 'asc' ? c : -c;
   });
   const parent = rows[0] ? rows[0].parentNode : null;
-  rows.forEach(r => parent.appendChild(r));
+  rows.forEach(r => parent.appendChild(r)); pinned.forEach(r => r.parentNode.appendChild(r));
   tbl.querySelectorAll('th').forEach((th, i) => { if (i === col) th.dataset.dir = dir === 'asc' ? '▲' : '▼'; else delete th.dataset.dir; });
 }
 function enableSorting() {
