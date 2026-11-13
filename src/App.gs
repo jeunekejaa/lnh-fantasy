@@ -69,6 +69,7 @@ function doGet(e) {
       let err = null; try { hhLog_(js); } catch (e) { err = e.message; }
       return ContentService.createTextOutput(JSON.stringify({ err: err, hh: getHH_() })).setMimeType(ContentService.MimeType.JSON);
     }
+    if (what === 'recap') return ContentService.createTextOutput(getWeekRecap(+(e.parameter.p || 6))).setMimeType(ContentService.MimeType.JSON);
     if (what === 'ver') return ContentService.createTextOutput(codeStatus_()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'update') return ContentService.createTextOutput(checkCodeFromApp()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'refresh') return ContentService.createTextOutput(refreshLocked_(false)).setMimeType(ContentService.MimeType.JSON);
