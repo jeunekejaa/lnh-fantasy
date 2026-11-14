@@ -245,7 +245,7 @@ function mlCorr_(x, T) {
 }
 
 // Réglages appris par le backtest 2025-26 (🧪), sinon valeurs de base de APP.K
-let MPG = null, TSTR = null, WKROS = null, CUR_TEAMS = null, WEEKST = null, STARTERS = null, TX_SEEN = {}, OPP_ADJ = null, BT_P = undefined, PJ_GK = undefined, TX_CACHE = [], GK_RECENT = {}, JOURNAL = null, ROLES = null;
+let MPG = null, TSTR = null, WKROS = null, CUR_TEAMS = null, WEEKST = null, STARTERS = null, TX_SEEN = {}, OPP_ADJ = null, BT_P = undefined, PJ_GK = undefined, TX_CACHE = [], GK_RECENT = {}, GK_ARR = {}, JOURNAL = null, ROLES = null;
 function inSeason_() {
   if (BT_P === undefined) { BT_P = null; try { if (typeof btParams_ === 'function') BT_P = btParams_(); } catch (e) { /* rien */ } }
   return BT_P;
@@ -428,6 +428,13 @@ function modelGoalie_(p, prior, mp, name, engFpg) {
     const season = typeof pjGames_ === 'function' ? pjGames_(String(CONFIG.SEASON)) : 82;
     const sp = Math.min(0.85, prior.gp / season), w = n / 5;
     share = w * share + (1 - w) * sp;
+  }
+  // Arrivé en cours de saison (échange, rappel, retour) : « matchs joués ÷ matchs de toute la saison » le prend pour un auxiliaire.
+  // On compte plutôt ses départs depuis son 1er match avec son équipe actuelle, ramenés vers son rôle prévu avec 3 matchs.
+  const ar = p && GK_ARR[p.id];
+  if (typeof fixed !== 'number' && ar && ar[1] >= 3) {
+    const season = typeof pjGames_ === 'function' ? pjGames_(String(CONFIG.SEASON)) : 82, role = prior && prior.gp > 0 ? Math.min(0.85, prior.gp / season) : CONFIG.GOALIE_START_SHARE;
+    share = Math.min(0.9, (ar[0] + 3 * role) / (ar[1] + 3));
   }
   // part des 10 derniers matchs de son équipe, mélangée à la part de la saison (seulement si le backtest l'a retenue)
   const wR = B && B.gkRecent, rec = p && GK_RECENT[p.id];
@@ -624,7 +631,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
   try { sch = weekSchedule_(); } catch (e) { WARN.push('Calendrier : ' + e.message); }
 
   mark_('Gardiens récents + moteur');
-  try { const Bq = inSeason_(); if (Bq && Bq.gkRecent) GK_RECENT = goalieRecentShares_(players, sch.games || {}); } catch (e) { WARN.push('Gardiens récents : ' + e.message); }
+  try { const g2 = goalieRecentShares_(players, sch.games || {}); GK_RECENT = g2.rec || {}; GK_ARR = g2.arr || {}; } catch (e) { WARN.push('Gardiens récents : ' + e.message); }
   // Projection maison d'avant-saison (moteur réglé sur 4 saisons), combinée à GAF
   let pjPri = {}, gafW = 0.5;
   try { if (typeof pjCurrentPriors_ === 'function') { pjPri = pjCurrentPriors_(); gafW = pjParams_().gafW; if (gafW == null) gafW = 0.5;
@@ -860,20 +867,25 @@ function espnLeagueInfo_() {
 }
 // Part des départs de chaque gardien sur les 10 derniers matchs de son équipe (matchs un par un, gardés 6 h)
 function goalieRecentShares_(players, teamGames) {
-  const cache = CacheService.getScriptCache(), hit = cache.get('GK_RECENT');
+  // rec : part des départs sur les 10 derniers matchs de son équipe
+  // arr : depuis son arrivée dans son équipe actuelle (échange, rappel) → [départs, matchs de l'équipe depuis son 1er match avec elle]
+  const cache = CacheService.getScriptCache(), hit = cache.get('GK_RECENT2');
   if (hit) return JSON.parse(hit);
-  const gs = players.filter(p => p.pos === 'G' && p.gp >= 2), today = ymd_(new Date()), out = {};
+  const gs = players.filter(p => p.pos === 'G' && p.gp >= 2), today = ymd_(new Date()), rec = {}, arr = {};
   const exp = id => encodeURIComponent(`seasonId=${CONFIG.SEASON} and gameTypeId=${CONFIG.GAME_TYPE} and playerId=${id}`);
   const res = UrlFetchApp.fetchAll(gs.map(p => ({ url: `https://api.nhle.com/stats/rest/en/goalie/summary?isAggregate=false&isGame=true&start=0&limit=100&cayenneExp=${exp(p.id)}`, muteHttpExceptions: true })));
   res.forEach((r, i) => {
     if (r.getResponseCode() !== 200) return;
     const p = gs[i], rows = JSON.parse(r.getContentText()).data || [];
-    const last10 = ((teamGames[p.team] || []).map(g => g[0]).filter(d => d < today)).slice(-10);
-    if (last10.length < 5) return;
-    const started = rows.filter(g => (g.gamesStarted || 0) > 0 && last10.indexOf(String(g.gameDate || '').slice(0, 10)) >= 0).length;
-    out[p.id] = Math.round(started / last10.length * 100) / 100;
+    const played = (teamGames[p.team] || []).map(g => g[0]).filter(d => d < today);
+    const last10 = played.slice(-10);
+    if (last10.length >= 5) rec[p.id] = Math.round(rows.filter(g => (g.gamesStarted || 0) > 0 && last10.indexOf(String(g.gameDate || '').slice(0, 10)) >= 0).length / last10.length * 100) / 100;
+    const mine = rows.filter(g => g.teamAbbrev === p.team).map(g => String(g.gameDate || '').slice(0, 10)).sort();
+    if (mine.length) { const since = played.filter(d => d >= mine[0]).length, st = rows.filter(g => g.teamAbbrev === p.team && (g.gamesStarted || 0) > 0).length;
+      if (since < played.length) arr[p.id] = [st, since]; }
   });
-  try { cache.put('GK_RECENT', JSON.stringify(out), 21600); } catch (e) { /* rien */ }
+  const out = { rec: rec, arr: arr };
+  try { cache.put('GK_RECENT2', JSON.stringify(out), 21600); } catch (e) { /* rien */ }
   return out;
 }
 // Journal de bord : ton alignement ESPN jour par jour (actifs, banc, points de chaque joueur), 28 derniers jours, gardé jusqu'au lendemain
