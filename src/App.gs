@@ -1166,11 +1166,14 @@ let ICE_STORE = {}, LINEQ = {}, DFOL = null, CAL = [], L30TOI = {}, ARENA = null
 // au DERNIER match (FP d'attaque par match de la saison) vs la moyenne de ses coéquipiers sur toute la saison → −1 à +1
 function lineQuality_(players) {
   const off = {};
-  players.forEach(p => { if (p.pos !== 'G' && p.gp >= 5) off[p.id] = (3 * (+p.g || 0) + 2 * (+p.a || 0) + 0.5 * (+p.ppp || 0) + 0.5 * (+p.shp || 0) + 0.2 * (+p.sog || 0)) / p.gp; });
+  // attaquants seulement, avec leurs compagnons attaquants (comme le test du labo : pente +0,10 = ce réglage)
+  const fwd = {}; players.forEach(p => { if (p.pos !== 'G' && p.pos !== 'D') fwd[p.id] = true; });
+  players.forEach(p => { if (fwd[p.id] && p.gp >= 5) off[p.id] = (3 * (+p.g || 0) + 2 * (+p.a || 0) + 0.5 * (+p.ppp || 0) + 0.5 * (+p.shp || 0) + 0.2 * (+p.sog || 0)) / p.gp; });
   const hist = {};
   Object.keys(ICE_STORE).map(Number).sort((a, b) => a - b).forEach(id => {
     const T = (ICE_STORE[id] || {}).teams || {};
     Object.keys(T).forEach(t => Object.keys(T[t].p || {}).forEach(pid => {
+      if (!fwd[pid]) return;
       const ms = (T[t].p[pid][3] || []).map(m => m[0]).filter(m => off[m] != null).slice(0, 2);
       if (ms.length === 2) (hist[pid] = hist[pid] || []).push((off[ms[0]] + off[ms[1]]) / 2);
     }));
@@ -1211,7 +1214,8 @@ function iceRoles_() {
   // par équipe : 3 derniers matchs vs 3 d'avant
   const out = {}, names = {}, goalie = {};
   // matchs déjà gardés avant le correctif : on écarte les gardiens (positions du cache LNH de la saison)
-  try { const cm = readCache_(ss); Object.keys(cm).forEach(id => { if (cm[id].pos === 'G') goalie[id] = true; }); } catch (e) {}
+  const isD = {};
+  try { const cm = readCache_(ss); Object.keys(cm).forEach(id => { if (cm[id].pos === 'G') goalie[id] = true; if (cm[id].pos === 'D') isD[id] = true; }); } catch (e) {}
   Object.keys(byTeam).forEach(t => {
     const ids = byTeam[t].sort((a, b) => b - a).slice(0, ICE.GAMES_PER_TEAM).filter(id => store[id]);
     if (ids.length < 3) return;
@@ -1234,7 +1238,8 @@ function iceRoles_() {
     const now = agg(ids.slice(0, 3)), prev = agg(ids.slice(3, 6));
     Object.keys(now.pl).forEach(pid => {
       const a = now.pl[pid], b = prev.pl[pid];
-      const mates = o => Object.keys(o.m).sort((x, y) => o.m[y] - o.m[x]).slice(0, 2);
+      // défenseur : son partenaire de paire (le défenseur avec qui il passe le plus de temps) ; attaquant : ses 2 compagnons de trio (attaquants)
+      const mates = o => Object.keys(o.m).filter(m => !!isD[m] === !!isD[pid]).sort((x, y) => o.m[y] - o.m[x]).slice(0, isD[pid] ? 1 : 2);
       out[pid] = { pp: a.rank, ppPrev: b ? b.rank : null, ppm: Math.round(a.pp / Math.max(1, a.gp)), toi: Math.round(a.toi / Math.max(1, a.gp)),
                    share: now.teamPP ? Math.round(a.pp / now.teamPP * 100) / 100 : 0,
                    sharePrev: b && prev.teamPP ? Math.round(b.pp / prev.teamPP * 100) / 100 : (prev.n ? 0 : null),

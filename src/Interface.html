@@ -2055,7 +2055,7 @@ function roleLines(p) {
   if (p.lq && Math.abs(p.lq) >= 0.1) L.push(`<b>Trio au dernier match :</b> ${p.lq > 0 ? 'meilleur' : 'moins bon'} que ses compagnons habituels (${p.lq > 0 ? '+' : ''}${Math.round(p.lq * 100)} %) → attaque ${p.lq > 0 ? '+' : ''}${Math.round(p.lq * 10)} % dans sa projection (retenu par le backtest).`);
   if (p.inj) L.push(`<b>🚨 Joue peut-être blessé :</b> ${n1(r.toi / 60)} min/match sur ses 3 derniers matchs, 20 % et plus sous son temps habituel. Le modèle baisse sa projection (réglage retenu par le backtest).`);
   L.push(`<b>Avantage numérique (3 derniers matchs) :</b> ${U[c.now]}${c.now ? ` — ${Math.round(r.ppm / 6) / 10} min/match, ${Math.round(r.share * 100)} % du temps d’AN de son équipe` : ''}${c.up ? ' <span class="chip good">promu</span>' : c.down ? ' <span class="chip bad">rétrogradé</span>' : ''}.`);
-  if (r.mates && r.mates.length) L.push(`<b>À 5 c. 5 avec :</b> ${r.mates.map(esc).join(' et ')}${c.newMates.length ? ` <span class="chip blue">nouveau</span> <span class="muted">(avant : ${(r.matesPrev || []).map(esc).join(', ')})</span>` : ''}.`);
+  if (r.mates && r.mates.length) L.push(`<b>${p.grp === 'D' ? 'Partenaire de paire' : 'À 5 c. 5 avec'} :</b> ${r.mates.map(esc).join(' et ')}${c.newMates.length ? ` <span class="chip blue">nouveau</span> <span class="muted">(avant : ${(r.matesPrev || []).map(esc).join(', ')})</span>` : ''}.`);
   return L;
 }
 function roleCard(m) {
