@@ -540,7 +540,8 @@ function vTodo() {
   }).filter(x => x && x.d > 0.1).sort((a, b) => b.d - a.d).slice(0, 10);
   // trou d'alignement : moins de joueurs en santé que de places à une position
   const L0 = D.config.lineup, healthy = k => m.players.filter(p => p.grp === k && !OUT[p.status]).length;
-  const holes = [['G', 'gardien', L0.G]]   // F/D : une place jamais remplie ne coûte rien en soi (les soirs pleins sont rares) — le plan compte soir par soir.filter(([k, , n]) => healthy(k) < n)
+  // F/D : une place jamais remplie ne coûte rien en soi (les soirs pleins sont rares) — le plan compte soir par soir
+  const holes = [['G', 'gardien', L0.G]].filter(([k, , n]) => healthy(k) < n)
     .map(([k, l, n]) => `<div class="warnbox" style="margin:0 0 12px">⚠ Il te manque <b>${n - healthy(k)} ${l}${n - healthy(k) > 1 ? 's' : ''}</b> : ${healthy(k)} en santé pour ${n} places. Une place vide ne rapporte rien chaque match — n’importe quel ${l} libre la remplit (voir « Long terme »).</div>`).join('');
   const BEST = H === 'best', LTW = BEST ? PLAN_LTW : 0;
   const MODES = [['best', 'Meilleurs moves', 'Le meilleur équilibre : des points cette semaine sans t’affaiblir pour la suite. Un point de projection gagné ou perdu à long terme compte comme ' + PLAN_LTW + ' FP.'],
