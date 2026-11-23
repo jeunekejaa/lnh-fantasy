@@ -527,19 +527,22 @@ function vTodo() {
   if (forced) lworst[forced.grp] = forced;
   // on essaie de retirer le plus faible de CHAQUE position (pas seulement la même) : un défenseur peut remplacer un attaquant
   // quand il te manque un défenseur (place vide toute la saison)
-  const lsugg = D.waivers.filter(p => p.gp >= 3 && p.grp !== 'G' && !AVOID[p.name] && !isPanne(p)).map(p => {
+  // mesuré jour par jour sur les 4 prochaines semaines (ton vrai alignement chaque soir), puis ramené à une semaine
+  const H = WK.h || 'best', f28 = futDays(todayStr(), 28), ltL = H === 'long' ? ltValue(allMine, f28) : null, gpw = D.config.gpw || 3.5;
+  const lsugg = H !== 'long' ? [] : faPool(f28).slice(0, 70).map(p => {
     let best = null;
-    (forced ? [forced] : [lworst.F, lworst.D]).filter(Boolean).forEach(w => {
-      const d = powerH(allMine.filter(q => q !== w).concat([p]), 'long') - p0;
+    (forced ? [forced] : [lcands.F[0], lcands.F[1], lcands.D[0], lcands.D[1]]).filter(Boolean).forEach(w => {
+      if (leavesHole(allMine, w, p)) return;
+      const d = (ltL(p) - ltL(w)) * gpw;
       if (!best || d > best.d) best = { p, w, d, season: d * weeksLeft };
     });
     return best;
   }).filter(x => x && x.d > 0.1).sort((a, b) => b.d - a.d).slice(0, 10);
   // trou d'alignement : moins de joueurs en santé que de places à une position
   const L0 = D.config.lineup, healthy = k => m.players.filter(p => p.grp === k && !OUT[p.status]).length;
-  const holes = [['D', 'défenseur', L0.D], ['F', 'attaquant', L0.F], ['G', 'gardien', L0.G]].filter(([k, , n]) => healthy(k) < n)
+  const holes = [['G', 'gardien', L0.G]]   // F/D : une place jamais remplie ne coûte rien en soi (les soirs pleins sont rares) — le plan compte soir par soir.filter(([k, , n]) => healthy(k) < n)
     .map(([k, l, n]) => `<div class="warnbox" style="margin:0 0 12px">⚠ Il te manque <b>${n - healthy(k)} ${l}${n - healthy(k) > 1 ? 's' : ''}</b> : ${healthy(k)} en santé pour ${n} places. Une place vide ne rapporte rien chaque match — n’importe quel ${l} libre la remplit (voir « Long terme »).</div>`).join('');
-  const H = WK.h || 'best', BEST = H === 'best', LTW = BEST ? PLAN_LTW : 0;
+  const BEST = H === 'best', LTW = BEST ? PLAN_LTW : 0;
   const MODES = [['best', 'Meilleurs moves', 'Le meilleur équilibre : des points cette semaine sans t’affaiblir pour la suite. Un point de projection gagné ou perdu à long terme compte comme ' + PLAN_LTW + ' FP.'],
     ['court', 'Gagner cette semaine', 'Le maximum de points d’ici dimanche, même si tu finis la semaine avec des joueurs un peu moins bons.'],
     ['hail', '🎲 Hail Mary', 'Tu es loin derrière : on maximise tes chances de gagner le duel, quitte à miser sur des joueurs explosifs et à sacrifier la suite.'],
@@ -547,8 +550,7 @@ function vTodo() {
   const hzBtns = `<div class="seg seg4" id="wkhz" role="group" aria-label="Objectif">${MODES
       .map(([h, l]) => `<button class="${H === h ? 'on' : ''}" data-h="${h}">${l}</button>`).join('')}</div>
     <div class="small muted" style="margin:8px 0 12px">${(MODES.find(x => x[0] === H) || MODES[0])[2]}</div>`;
-  const pBase = powerH(m.players, 'long'), perW = (D.config.gpw || 3.5) * (D.config.injury || 1);
-  if (BEST) sugg.forEach(x => { x.score = x.gainWk + PLAN_LTW * (powerH(x.r, 'long') - pBase) / perW; });
+  if (BEST) { const ltv = ltValue(m.players, futDays(ymdAdd(D.weekEnd, 1), 28)); sugg.forEach(x => { x.score = x.gainWk + PLAN_LTW * (ltv(x.p) - ltv(x.w)); }); }
   if (BEST) sugg.sort((a, b) => b.score - a.score);
   const acq = povOn() ? {} : D.espn || {}, left = acqLeft(acq, daysWk);
   const plan = H === 'best' || H === 'court' ? streamPlan(m, daysWk, left == null ? 2 : Math.min(left, 7), LTW) : { steps: [] };
@@ -572,7 +574,7 @@ function vTodo() {
   const longCard = `<h2>Ajouts long terme : reste de la saison</h2>${dropSel}${lwhy}
     ${lsugg.length ? moveGroups(lsugg.slice(0, 8), 'long')
       : '<div class="muted">Aucun joueur libre n’améliore ton alignement à long terme.</div>'}
-    <div class="legend"><span>Gain = hausse de ton meilleur alignement chaque semaine (projection maison, blessés comptés à 60 % puisqu’ils reviennent) × ${weeksLeft} semaines restantes. Un ajout qui finirait sur ton banc ne rapporte rien.</span></div>`;
+    <div class="legend"><span>Gain = (projection × part de ses matchs où il entre dans ton alignement) − même calcul pour le joueur retiré, × ${D.config.gpw} matchs par semaine × ${weeksLeft} semaines restantes. La part est mesurée soir par soir sur les 4 prochaines semaines : un joueur qui finirait souvent sur ton banc vaut moins. Le calendrier, lui, n’entre pas en compte (il s’égalise sur une saison).</span></div>`;
   const body = H === 'hail' ? hailCard(m, left) : H === 'long' ? longCard : shortCard;
   const povSel = `<div class="card" style="padding:10px 14px;${povOn() ? 'border-color:var(--opp)' : ''}"><label class="small muted" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Point de vue
     <select id="povsel" style="flex:1;min-width:180px">${D.teams.slice().sort((a, b) => (b.team === POV_REAL) - (a.team === POV_REAL)).map(t => `<option value="${esc(t.team)}" ${t.team === D.me ? 'selected' : ''}>${t.team === POV_REAL ? 'Toi (' + esc(t.team) + ')' : esc(t.team)}</option>`).join('')}</select></label>
@@ -2308,6 +2310,27 @@ function dayLineup(players, d) {
                    U: Math.max(0, L.UTIL - util.length), G: Math.max(0, L.G - G.length) } };
 }
 const planFp = (players, days) => days.reduce((t, d) => t + dayLineup(players, d).fp, 0);
+const futDays = (start, n) => { const out = []; for (let i = 0; i < n; i++) out.push(ymdAdd(start, i)); return out; };
+// Valeur à long terme d'un joueur pour TON alignement = projection × part de ses matchs où il y entrerait (soir par soir, sur « days »).
+// Le calendrier ne compte pas (il s'égalise sur une saison) ; les places rarement pleines font qu'un 6e défenseur
+// ou un 13e attaquant joue presque tous ses matchs. Gardiens : projection × part des départs.
+function ltValue(roster, days) {
+  // référence pour un joueur libre : ton alignement sans ton patineur le plus faible (il prendrait sa place)
+  const weakest = roster.filter(q => q.grp !== 'G' && !OUT[q.status]).sort((x, y) => (x.model || 0) - (y.model || 0))[0];
+  const ref = roster.filter(q => q !== weakest), base = planFp(roster, days), baseRef = planFp(ref, days), memo = new Map();
+  return x => {
+    if (memo.has(x)) return memo.get(x);
+    let v;
+    if (x.grp === 'G') v = (x.model || 0) * (x.share || D.config.share);
+    else {
+      const g = days.filter(d => playsOn(x, d)).length, mine = roster.indexOf(x) >= 0;
+      const add = mine ? base - planFp(roster.filter(q => q !== x), days) : planFp(ref.concat([x]), days) - baseRef;
+      const fit = g && x.model > 0 ? Math.max(0, Math.min(1, add / (x.model * g))) : (OUT[x.status] ? 0 : 1);
+      v = (x.model || 0) * fit;
+    }
+    memo.set(x, v); return v;
+  };
+}
 function slotsByDay(players, days) {
   return days.map(d => { const x = dayLineup(players, d), n = x.free.F + x.free.D + x.free.U;
     return `<span class="chip ${n >= 3 ? 'warn' : ''}" style="margin:2px 2px 2px 0">${dLabel(d)} · ${n ? n + ' vide' + (n > 1 ? 's' : '') : 'complet'}${x.free.G ? ' · ' + x.free.G + ' G' : ''}</span>`; }).join('');
@@ -2370,7 +2393,8 @@ function weekPlan(m, days, n, ltw) {
   // valeur à long terme : chaque point de projection gagné (ou perdu) sur l'alignement vaut PLAN_LTW FP (voir plus bas)
   // ltOf = hausse de ton meilleur alignement à long terme (FP/sem.), ramenée en « points de projection » (÷ matchs par semaine) :
   // compte les trous d'alignement (ex. un 6e défenseur) et ignore un joueur qui finirait sur le banc
-  const p0 = powerH(m.players, 'long'), per = (D.config.gpw || 3.5) * (D.config.injury || 1), ltOf = r => (powerH(r, 'long') - p0) / per;
+  // (mesuré jour par jour sur les 2 semaines suivantes : un joueur ne compte que les soirs où il entre dans ton alignement)
+  const ltv = ltValue(m.players, futDays(ymdAdd(days[days.length - 1], 1), 28));
   const obj = s => s.done + LTW * s.lt;
   const startFp = planFp(m.players, days);
   let states = [{ r: m.players.slice(), used: {}, added: [], moves: [], acq: 0, done: 0, lt: 0 }];
@@ -2382,11 +2406,11 @@ function weekPlan(m, days, n, ltw) {
     pool.forEach(p => drops.forEach(w => {
       if (leavesHole(st.r, w, p) || !okDrop(w, st)) return;
       const r = st.r.filter(q => q !== w).concat([p]), g = planFp(r, rem) - base;
-      const v = g + LTW * (ltOf(r) - st.lt);
+      const v = g + LTW * (ltv(p) - ltv(w));
       if (v >= 1) opts.push({ p: p, w: w, g: g, v: v, r: r });
     }));
     return opts.sort((a, b) => b.v - a.v).slice(0, 4).map(o => ({ r: o.r, used: Object.assign({}, st.used, { [o.p.name]: 1, [o.w.name]: 1 }), added: st.added.concat([o.p]),
-      moves: st.moves.concat([{ p: o.p, w: o.w, gain: o.g, from: d }]), acq: st.acq + 1, done: st.done, lt: ltOf(o.r) }));
+      moves: st.moves.concat([{ p: o.p, w: o.w, gain: o.g, from: d }]), acq: st.acq + 1, done: st.done, lt: st.lt + ltv(o.p) - ltv(o.w) }));
   };
   days.forEach((d, i) => {
     const rem = days.slice(i), after = days.slice(i + 1), cand = [];
