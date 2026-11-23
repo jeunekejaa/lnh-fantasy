@@ -1998,14 +1998,95 @@ function recapPanel(R, g, live) {
       ${S.drops.length ? `<div class="small muted" style="margin-top:4px">Retirés : ${S.drops.map(n => esc(n.split(' ').slice(-1)[0])).join(', ')}</div>` : ''}
       ${S.benchL.length ? `<div class="lbl" style="color:${c};margin:8px 0 4px">Sur le banc</div>${S.benchL.slice(0, 3).map(x => `<div class="small" style="margin:3px 0">${esc(x.n.split(' ').slice(-1)[0])} <span class="muted">${f1(x.fp)} FP non comptés</span></div>`).join('')}` : ''}</div>`; };
   let rest = '';
+  const started = !live || (g.pa || 0) + (g.pb || 0) > 0 || A.gsSk + B.gsSk > 0;
+  if (!started && calA) rest += `<div style="line-height:1.5">Lundi, l’app prévoyait ${f1(calA.me)} à ${f1(calA.op)} : <b>${calA.p >= 0.5 ? (meA ? 'tu étais favori' : esc(dn(na)) + ' favori') : (meA ? 'ton adversaire était favori' : esc(dn(nb)) + ' favori')} à ${Math.round(Math.max(calA.p, 1 - calA.p) * 100)} %</b>.</div>`;
   if (live) { const t = D.teams.find(x => x.team === na), o = t && duelOdds(t);
-    if (o) rest = `<div class="small" style="margin-top:10px">Pour la suite : l’app projette <b style="color:${ca}">${f1(o.me)}</b> à <b style="color:${cb}">${f1(o.opp)}</b> en fin de semaine, soit <b>${Math.round(o.p * 100)} %</b> pour ${esc(na)}.</div>`; }
+    if (o) rest = `<div class="small" style="margin-top:10px">Pour la suite : l’app projette <b style="color:${ca}">${f1(o.me)}</b> à <b style="color:${cb}">${f1(o.opp)}</b> en fin de semaine, soit <b>${Math.round(o.p * 100)} %</b> pour ${esc(na)}.</div>`;
+    try { if (t) rest += outlookPanel(t, ca, cb); } catch (e) { /* analyse facultative */ } }
   return `<div class="card"><h2>${live ? 'Qu’est-ce qui se passe ?' : 'Qu’est-ce qui s’est passé ?'}</h2>
-    <div style="margin-bottom:10px;line-height:1.5">${verdict}</div>${rest}
-    ${decomp}
+    ${started ? `<div style="margin-bottom:10px;line-height:1.5">${verdict}</div>` : ''}${rest}
+    ${started ? `${decomp}
     <div style="margin-top:10px">${tbl}</div>
-    <div class="fo2" style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">${perfL(A, ca)}${perfL(B, cb)}</div>
+    <div class="fo2" style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">${perfL(A, ca)}${perfL(B, cb)}</div>` : '<div class="small muted" style="margin-top:10px">Aucun match joué encore cette semaine : l’analyse de ce qui s’est passé apparaîtra après les premiers matchs.</div>'}
     <div class="legend"><span>Source : ESPN, jour par jour. « Attendu » = projection maison actuelle × matchs joués dans l’alignement (approximation : la projection du lundi n’est pas gardée joueur par joueur).</span>${calA ? '' : '<span>Pas de prédiction du lundi pour cette semaine (enregistrées depuis la semaine 6).</span>'}</div></div>`;
+}
+// ---------- La suite de la semaine : pourquoi ce pronostic, comment l'autre peut revenir, comment verrouiller ----------
+// Reste de la semaine, jour par jour, avec le vrai alignement de chaque équipe : matchs de patineurs, FP, départs de gardiens
+function restSplit(players, days) {
+  const out = { sk: 0, fpSk: 0, g: 0, fpG: 0, by: [], who: new Map() };
+  days.forEach(d => {
+    const L = dayLineup(players, d); let n = 0, f = 0, gg = 0, fg = 0;
+    L.starters.forEach(p => { const a = avail(p, d) * gameFrac(p, d), v = (p.model || 0) * a * oppMult(p, d); n += a; f += v; out.who.set(p, (out.who.get(p) || 0) + v); });
+    L.goalies.forEach(p => { const sh = gShare(p, d) * avail(p, d) * gameFrac(p, d), v = goalieFP(p, d) * sh; gg += sh; fg += v; out.who.set(p, (out.who.get(p) || 0) + v); });
+    out.sk += n; out.fpSk += f; out.g += gg; out.fpG += fg; out.by.push({ d: d, n: n, fp: f + fg, g: gg });
+  });
+  return out;
+}
+// acquisitions déjà faites cette semaine par une équipe (transactions ESPN)
+function acqUsedBy(team) {
+  if (team === D.me && D.espn && D.espn.acqUsed != null) return D.espn.acqUsed;
+  const s = ymdAdd(D.weekEnd, -6);
+  return (D.tx || []).filter(t => String(t.date || '').slice(0, 10) >= s).reduce((n, t) => n + (t.items || []).filter(i => i.kind === 'ADD' && i.to === team).length, 0);
+}
+function outlookPanel(m, ca, cb) {
+  const r = m.record || {}, o = D.teams.find(t => t.team === r.opp); if (!o || r.live == null) return '';
+  const days = horizonDays(D.weekEnd); if (!days.length) return '';
+  const isMe = m.team === D.me, I = isMe ? 'tu' : esc(dn(m.team)), He = isMe ? 'il' : esc(dn(o.team));
+  const A = restSplit(m.players, days), B = restSplit(o.players, days);
+  const avA = A.sk ? A.fpSk / A.sk : 0, avB = B.sk ? B.fpSk / B.sk : 0;
+  const lead = (r.live || 0) - (r.oppLive || 0);
+  const parts = [
+    { l: 'Avance actuelle au pointage', v: lead, d: `${f1(r.live || 0)} contre ${f1(r.oppLive || 0)}` },
+    { l: 'Qualité des joueurs qui restent à jouer', v: A.sk * (avA - avB), d: `${f2(avA)} contre ${f2(avB)} FP par match de patineur` },
+    { l: 'Nombre de matchs de patineurs qui restent', v: (A.sk - B.sk) * avB, d: `${f1(A.sk)} contre ${f1(B.sk)} matchs alignés (places libres comprises)` },
+    { l: 'Gardiens', v: A.fpG - B.fpG, d: `${f1(A.g)} départs attendus contre ${f1(B.g)} · ${f1(A.fpG)} contre ${f1(B.fpG)} FP` }];
+  const tot = parts.reduce((t, p) => t + p.v, 0), od = duelOdds(m), pNow = od ? od.p : 0.5;
+  const fav = tot >= 0, sg = v => (v >= 0 ? '+' : '−') + f1(Math.abs(v));
+  const pro = parts.filter(p => p.v * (fav ? 1 : -1) > 1).sort((x, y) => Math.abs(y.v) - Math.abs(x.v)), con = parts.filter(p => p.v * (fav ? 1 : -1) < -1).sort((x, y) => Math.abs(y.v) - Math.abs(x.v));
+  const lab = { 'Avance actuelle au pointage': isMe ? 'ton avance actuelle' : 'son avance actuelle', 'Qualité des joueurs qui restent à jouer': 'la qualité des joueurs', 'Nombre de matchs de patineurs qui restent': 'le nombre de matchs', 'Gardiens': 'les gardiens' };
+  const lab2 = { 'Avance actuelle au pointage': 'le pointage actuel', 'Qualité des joueurs qui restent à jouer': 'la qualité de ses joueurs', 'Nombre de matchs de patineurs qui restent': 'le nombre de matchs', 'Gardiens': 'ses gardiens' };
+  const W = fav ? (isMe ? 'Tu es' : esc(dn(m.team)) + ' est') : (isMe ? 'Ton adversaire est' : esc(dn(o.team)) + ' est');
+  let why = `<b>${W} favori à ${Math.round(Math.max(pNow, 1 - pNow) * 100)} %</b> : écart projeté de ${f1(Math.abs(tot))} FP en fin de semaine.`;
+  if (con.length && pro.length) why += ` L’autre équipe a l’avantage sur ${con.map(p => `${lab2[p.l]} (${f1(Math.abs(p.v))} FP)`).join(' et ')}, mais ça ne compense pas ${pro.map(p => `${lab[p.l]} (${f1(Math.abs(p.v))} FP)`).join(' et ')}.`;
+  else if (pro.length) why += ` L’avantage vient de ${pro.map(p => `${lab[p.l]} (${f1(Math.abs(p.v))} FP)`).join(', ')}.`;
+  if (A.sk < B.sk - 1 && A.sk * (avA - avB) > 0) why += ` ${isMe ? 'Il a' : esc(dn(o.team)) + ' a'} ${f1(B.sk - A.sk)} matchs de patineurs de plus, mais chaque match ${isMe ? 'de tes joueurs' : 'des joueurs de ' + esc(dn(m.team))} vaut ${f2(avA - avB)} FP de plus.`;
+  const decomp = `<div class="tbl" style="margin-top:8px"><table class="nosort"><tr><th class="l">D’ici dimanche</th><th>${isMe ? 'Pour toi' : 'Pour ' + esc(dn(m.team))}</th></tr>${parts.map(p => `<tr><td class="l">${p.l}<div class="msub small muted">${p.d}</div></td><td class="${p.v >= 0 ? 'up' : 'down'}"><b>${sg(p.v)}</b></td></tr>`).join('')}
+    <tr class="tot"><td class="l">Écart projeté en fin de semaine</td><td><b>${sg(tot)}</b></td></tr></table></div>`;
+  // jour par jour
+  let cum = lead;
+  const dayRows = days.map((d, i) => { const a = A.by[i], b = B.by[i]; cum += a.fp - b.fp;
+    return `<tr><td class="l">${dLabel(d)}</td><td style="color:${ca}">${f1(a.n)} · ${f1(a.fp)}</td><td style="color:${cb}">${f1(b.n)} · ${f1(b.fp)}</td><td class="${a.fp - b.fp >= 0 ? 'up' : 'down'}">${sg(a.fp - b.fp)}</td><td><b>${sg(cum)}</b></td></tr>`; }).join('');
+  const dayTbl = `<div class="lbl" style="margin:14px 0 6px">Jour par jour (matchs alignés · FP attendus)</div><div class="tbl"><table class="nosort"><tr><th class="l">Soir</th><th style="color:${ca}">${esc(dn(m.team))}</th><th style="color:${cb}">${esc(dn(o.team))}</th><th>Écart</th><th>Cumul</th></tr>${dayRows}</table></div>`;
+  // joueurs clés
+  const keys = (S, c) => [...S.who.entries()].sort((x, y) => y[1] - x[1]).slice(0, 5).map(([p, v]) => `<div class="small" style="margin:3px 0">${pname(p)} <span class="pos">${esc(p.pos)}</span> <span class="muted">${f1(v)} FP attendus</span></div>`).join('');
+  const keyBox = `<div class="fo2" style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
+    <div><div class="lbl" style="color:${ca};margin-bottom:4px">Joueurs clés · ${esc(dn(m.team))}</div>${keys(A)}</div>
+    <div><div class="lbl" style="color:${cb};margin-bottom:4px">Joueurs clés · ${esc(dn(o.team))}</div>${keys(B)}</div></div>`;
+  // scénarios : ajouts de chacun (mode « gagner cette semaine »)
+  const a0 = weekOutlook(m), b0 = weekOutlook(o), sd = Math.sqrt(a0.sd ** 2 + b0.sd ** 2);
+  const P = (ga, gb) => sd > 0 ? normCdf(((r.live || 0) + a0.mean + ga - (r.oppLive || 0) - b0.mean - gb) / sd) : 0.5;
+  const leftA = Math.max(0, (D.espn && D.espn.acqLimit || 7) - acqUsedBy(m.team)), leftB = Math.max(0, (D.espn && D.espn.acqLimit || 7) - acqUsedBy(o.team));
+  let pa = { steps: [], gain: 0 }, pb = { steps: [], gain: 0 };
+  try { if (leftA) pa = streamPlan(m, days, Math.min(leftA, 7), 0); } catch (e) {}
+  try { if (leftB) pb = streamPlan(o, days, Math.min(leftB, 7), 0); } catch (e) {}
+  const pc = x => Math.round(x * 100) + ' %';
+  const needB = (r.live || 0) + a0.mean - (r.oppLive || 0) - b0.mean;   // ce qu'il lui manque, en FP
+  const hiB = b0.mean + 1.28 * b0.sd, loA = a0.mean - 1.28 * a0.sd;
+  const mvs = pl => pl.steps.slice(0, 4).map(x => `${esc(x.w.name.split(' ').slice(-1)[0])} → <b>${esc(x.p.name.split(' ').slice(-1)[0])}</b>`).join(', ');
+  const catchUp = needB > 0 ? `<ul style="margin:6px 0 0 18px;padding:0;line-height:1.55">
+      <li><b>Par les ajouts :</b> ${pb.steps.length ? `avec ses ${leftB} acquisitions restantes, son meilleur plan (${mvs(pb)}) rapporte environ <b>+${f1(pb.gain)} FP</b> — ses chances passeraient de ${pc(1 - pNow)} à <b>${pc(1 - P(0, pb.gain))}</b>.` : leftB ? 'aucun ajout ne l’aide vraiment : ses places sont déjà bien remplies.' : 'il n’a plus d’acquisitions cette semaine.'}</li>
+      <li><b>Par la chance :</b> il lui manque ${f1(needB)} FP par rapport aux projections. ${isMe ? 'Ses' : 'Les'} joueurs feraient ${f1(hiB - b0.mean)} FP de plus que prévu une semaine sur 10, et ${isMe ? 'les tiens' : 'ceux d’en face'} ${f1(a0.mean - loA)} FP de moins une semaine sur 10.</li>
+      <li><b>Par ses gardiens :</b> ${f1(B.g)} départs attendus — un blanchissage vaut environ 3 FP de plus, une victoire 3 FP.</li></ul>` : '';
+  const lock = `<ul style="margin:6px 0 0 18px;padding:0;line-height:1.55">
+      <li><b>Fais tes ajouts :</b> ${pa.steps.length ? `${mvs(pa)} → <b>+${f1(pa.gain)} FP</b>, tes chances passent de ${pc(pNow)} à <b>${pc(P(pa.gain, 0))}</b>.` : leftA ? 'aucun ajout ne rapporte vraiment cette semaine.' : 'plus d’acquisitions cette semaine.'}</li>
+      ${pb.steps.length ? `<li><b>Si les deux font leurs ajouts :</b> ${pc(P(pa.gain, pb.gain))} pour ${isMe ? 'toi' : esc(dn(m.team))}.${pa.gain < pb.gain ? ' Il a plus à gagner que toi par les ajouts : ne reste pas les bras croisés.' : ''}</li>` : ''}
+      <li><b>Vérifie tes gardiens partants</b> chaque matin (onglet Semaine) : ${f1(A.g)} départs attendus, ${f1(A.fpG)} FP — c’est la partie la plus incertaine de ta semaine.</li>
+      <li><b>Les soirs serrés</b> du tableau jour par jour sont ceux où un joueur de plus dans ton alignement change le plus le cumul.</li>
+      <li>Pour aller plus loin : onglet <b>Que faire</b>, objectif « Gagner cette semaine » (ou « Hail Mary » si tu es derrière).</li></ul>`;
+  return `<div class="lbl" style="margin:14px 0 6px">Pourquoi ce pronostic ?</div><div style="line-height:1.5">${why}</div>${decomp}${dayTbl}${keyBox}
+    ${needB > 0 ? `<div class="lbl" style="margin:14px 0 4px">Comment ${isMe ? 'il pourrait te rattraper' : esc(dn(o.team)) + ' pourrait revenir'}</div>${catchUp}` : `<div class="lbl" style="margin:14px 0 4px">Ce qu’il te faut pour revenir</div><div class="small">Il te manque ${f1(-needB)} FP par rapport aux projections.</div>`}
+    <div class="lbl" style="margin:14px 0 4px">${needB > 0 ? 'Comment t’assurer de gagner' : 'Comment remonter'}</div>${lock}
+    <div class="legend"><span>« Matchs alignés » : les matchs qui entrent vraiment dans l’alignement chaque soir (un joueur de trop reste sur le banc). Ajouts calculés avec le mode « Gagner cette semaine », chacun de son côté (vous pourriez viser les mêmes joueurs libres). Acquisitions de l’adversaire déduites des transactions ESPN.</span></div>`;
 }
 function recapBlock(per, live, selApp) {
   const R = RECAP[per];
