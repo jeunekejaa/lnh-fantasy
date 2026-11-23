@@ -507,6 +507,12 @@ function fantasyNow_() {
   FNOW = fd === real ? now : new Date(fd + 'T16:00:00Z');            // midi à Toronto ce jour-là
   return FNOW;
 }
+// heure de début (UTC) de chaque match de la semaine : { date: { équipe: 'ISO' } } — sert au verrouillage de l'alignement
+function gameTimes_(wg) {
+  const out = {};
+  wg.forEach(g => { if (!g.t) return; const o = out[g.date] = out[g.date] || {}; o[g.a] = g.t; o[g.h] = g.t; });
+  return out;
+}
 function weekSchedule_() {
   const now = fantasyNow_();
   const dow = +Utilities.formatDate(now, 'America/Toronto', 'u');   // 1 = lundi … 7 = dimanche
@@ -523,7 +529,7 @@ function weekSchedule_() {
     if (g.gameType !== CONFIG.GAME_TYPE || seen[g.id]) return;
     seen[g.id] = true;
     const teams = [g.awayTeam.abbrev, g.homeTeam.abbrev];
-    if (day.date >= today && day.date <= sunday) weekGames.push({ id: g.id, date: day.date, a: g.awayTeam.abbrev, h: g.homeTeam.abbrev });
+    if (day.date >= today && day.date <= sunday) weekGames.push({ id: g.id, date: day.date, a: g.awayTeam.abbrev, h: g.homeTeam.abbrev, t: g.startTimeUTC || '', st: g.gameState || '' });
     if (day.date === today && (g.gameState === 'LIVE' || g.gameState === 'CRIT')) teams.forEach(t => { liveTeams[t] = true; });   // match en cours
     if (day.date >= today && day.date <= sunday && (g.gameState === 'FUT' || g.gameState === 'PRE')) {
       teams.forEach(t => add(left, t));
@@ -799,7 +805,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
   try { myMoves = myMoves_(teamsOut, waivers); } catch (e) { WARN.push('Bilan de tes moves : ' + e.message); }
 
   const snap = {
-    v: 1, updated: stamp_(), fday: ymd_(fantasyNow_()), names: ESPN_NAME_OF, season: CONFIG.SEASON, me: APP.MY_TEAM, weekEnd: sch.weekEnd, weeks: sch.weeks || [], teamGames: sch.games || {},
+    v: 1, updated: stamp_(), fday: ymd_(fantasyNow_()), names: ESPN_NAME_OF, season: CONFIG.SEASON, me: APP.MY_TEAM, weekEnd: sch.weekEnd, weeks: sch.weeks || [], teamGames: sch.games || {}, gt: gameTimes_(sch.weekGames || []),
     playoffTeams: sched.playoffTeams || 8, currentPeriod: sched.current || null,
     config: { gpw: CONFIG.GAMES_PER_WEEK, lineup: CONFIG.LINEUP, sd: APP.WEEK_SD, injury: APP.INJURY_FACTOR,
               share: CONFIG.GOALIE_START_SHARE, sims: APP.SIMS, luck: APP.LUCK,

@@ -602,7 +602,7 @@ function vTodo() {
   const povSel = `<div class="card" style="padding:10px 14px;${povOn() ? 'border-color:var(--opp)' : ''}"><label class="small muted" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Point de vue
     <select id="povsel" style="flex:1;min-width:180px">${D.teams.slice().sort((a, b) => (b.team === POV_REAL) - (a.team === POV_REAL)).map(t => `<option value="${esc(t.team)}" ${t.team === D.me ? 'selected' : ''}>${t.team === POV_REAL ? 'Toi (' + esc(t.team) + ')' : esc(t.team)}</option>`).join('')}</select></label>
     ${povOn() ? `<div class="small" style="margin-top:6px;color:var(--opp)">Tu vois « Que faire ? » comme si tu étais <b>${esc(D.me)}</b> : ses joueurs, son duel, ses meilleurs ajouts.</div>` : ''}</div>`;
-  return povSel + holes + `<div class="card">${hzBtns}${body}</div>
+  return povSel + holes + (H !== 'long' ? goalieTonight(m, LTW, left) : '') + `<div class="card">${hzBtns}${body}</div>
     ${goalieCompare(mine)}
     ${wantTrades()}
     ${suggestedTrades()}`;
@@ -675,6 +675,94 @@ function hailCard(m, left) {
 }
 
 // Gardiens : on juge sur la saison (FP par départ × part des départs), pas sur 2 semaines de calendrier
+// ---------- Gardiens ce soir : remplacer une place de gardien faible par un gardien libre qui part ce soir ----------
+// Verrouillage : l'alignement se barre au début du PREMIER match du jour ; un ajout fait après compte à partir du lendemain.
+function lockInfo(d) {
+  const t = Object.values((D.gt && D.gt[d]) || {}).filter(Boolean).sort()[0];
+  if (!t) return null;
+  const at = new Date(t), now = new Date(), ms = at - now;
+  const hm = at.toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' }).replace(':', ' h ');
+  const left = ms > 0 ? (ms >= 3600000 ? Math.floor(ms / 3600000) + ' h ' + String(Math.floor(ms % 3600000 / 60000)).padStart(2, '0') : Math.max(1, Math.round(ms / 60000)) + ' min') : '';
+  return { at: at, hm: hm, locked: ms <= 0, left: left };
+}
+const gTime = (team, d) => { const t = D.gt && D.gt[d] && D.gt[d][team]; return t ? new Date(t).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' }).replace(':', ' h ') : ''; };
+function startChip(p, d) {
+  const s = starterOf(p, d), g = gShare(p, d);
+  if (s && s.me && s.st === 'c') return '<span class="chip" style="background:#12351f;color:var(--good)">✔ confirmé</span>';
+  if (s && s.me) return `<span class="chip warn">probable · ${pct(g)}</span>`;
+  if (s && !s.me) return `<span class="chip" style="color:var(--bad)">${esc(s.n.split(' ').slice(-1)[0])} ${s.st === 'c' ? 'confirmé' : 'probable'}</span>`;
+  return `<span class="chip">incertain · ${pct(g)}</span>`;
+}
+function goalieTonight(m, LTW, acqLeft) {
+  const R = m.players, today = todayStr();
+  let d = today, L = lockInfo(today);
+  if (!L || L.locked) {   // trop tard pour ce soir : on regarde le prochain soir avec des matchs
+    d = horizonDays(D.weekEnd).find(x => x > today && D.gt && D.gt[x]) || null; L = d ? lockInfo(d) : null;
+  }
+  if (!d || acqLeft === 0) return '';
+  const lineup = dayLineup(R, d), base = lineup.fp;
+  const ltv = ltValue(R, futDays(ymdAdd(D.weekEnd, 1), 28));
+  const drops = dropCandidates({ players: R });
+  const fa = D.waivers.filter(p => p.grp === 'G' && !AVOID[p.name] && !OUT[p.status] && playsOn(p, d) && (!p.wv || d >= p.wv));
+  const opts = [];
+  fa.forEach(g => {
+    let best = null;
+    drops.forEach(w => {
+      if (leavesHole(R, w, g)) return;
+      const r = R.filter(q => q !== w).concat([g]), gain = dayLineup(r, d).fp - base, v = gain - LTW * ltv(w);   // il repart demain : seule compte la valeur de celui qu'on retire
+      if (!best || v > best.v) best = { g: g, w: w, gain: gain, v: v, r: r };
+    });
+    if (best && best.gain > 0.3) opts.push(best);
+  });
+  if (!opts.length) return '';
+  const sure = o => gShare(o.g, d) >= 0.95;
+  opts.sort((a, b) => b.gain - a.gain);
+  const top = opts.find(sure) || opts[0];
+  // ton gardien « faible » ce soir : celui que l'ajout remplace dans l'alignement (ou une place vide)
+  const myG = lineup.goalies, weak = myG.slice().sort((a, b) => goalieEV(a, d) - goalieEV(b, d))[0];
+  const emptyG = lineup.free.G > 0;
+  const side = (title, p, ev, extra, col) => `<div style="flex:1;min-width:0;background:var(--card2);border:1px solid ${col};border-radius:12px;padding:10px">
+      <div class="lbl" style="margin-bottom:4px">${title}</div>${p ? `<div style="font-weight:700">${pname(p)} <span class="pos">${esc(p.nhl)}</span></div>
+      <div style="margin:4px 0">${startChip(p, d)}</div>` : '<div style="font-weight:700">Place vide</div>'}
+      <div class="big" style="font-size:22px;margin-top:2px">${f1(ev)} <span class="small muted">FP attendus</span></div>${extra || ''}</div>`;
+  const wEv = emptyG ? 0 : weak ? goalieEV(weak, d) : 0;
+  const duel = `<div style="display:flex;gap:8px;align-items:stretch">
+      ${side(emptyG ? 'Ta place libre' : 'Ton gardien le plus faible ce soir', emptyG ? null : weak, wEv, weak && !emptyG ? `<div class="small muted">${pct(gShare(weak, d))} de partir${gTime(weak.nhl, d) ? ' · ' + gTime(weak.nhl, d) : ''}</div>` : '', 'var(--line)')}
+      <div style="align-self:center;font-size:20px" aria-hidden="true">→</div>
+      ${side('Gardien libre', top.g, goalieEV(top.g, d), `<div class="small muted">${gTime(top.g.nhl, d) ? 'match à ' + gTime(top.g.nhl, d) : ''}${gameWin(top.g.nhl, d) ? ' · gagne ' + pct(gameWin(top.g.nhl, d).p) : ''}</div>`, '#1E4A63')}</div>
+    <div style="margin:8px 0 2px"><b class="up">+${f1(top.gain)} FP ${d === today ? 'ce soir' : dLabel(d)}</b> en retirant <b>${esc(top.w.name)}</b>${top.w.grp !== 'G' ? ' (un patineur : tu passes à 3 gardiens)' : ''}.</div>`;
+  // pari conditionnel : un gardien pas encore confirmé qui vaudrait plus que le meilleur « sûr » s'il est titulaire
+  const sureBest = opts.filter(sure).sort((a, b) => b.gain - a.gain)[0];
+  const cond = opts.filter(o => !sure(o) && (!starterOf(o.g, d) || starterOf(o.g, d).me)).map(o => {
+    const r = o.r, fpIf = goalieFP(o.g, d), gainIf = fpIf - wEv;
+    return { o: o, fpIf: fpIf, gainIf: gainIf };
+  }).filter(x => sureBest ? x.gainIf > sureBest.gain + 0.2 : x.gainIf > 1).sort((a, b) => b.gainIf - a.gainIf).slice(0, 2);
+  const lockTxt = L ? (d === today ? `Décide <b>avant ${L.hm}</b>${L.left ? ` (dans ${L.left})` : ''} : à ce moment, ton alignement se barre pour la soirée.`
+    : `Trop tard pour ce soir (alignement barré). Pour <b>${dLabel(d)}</b>, décide avant <b>${L.hm}</b>.`) : '';
+  const condTxt = cond.length ? `<div class="lbl" style="margin:12px 0 4px">Pari conditionnel</div>${cond.map(x => {
+      const late = L && D.gt[d] && D.gt[d][x.o.g.nhl] && new Date(D.gt[d][x.o.g.nhl]) > L.at;
+      return `<div class="small" style="margin:4px 0;line-height:1.5">Si <b>${esc(x.o.g.name)}</b> (${esc(x.o.g.nhl)}) est <b>confirmé avant ${L ? L.hm : 'le verrouillage'}</b>, prends-le : ${f1(x.fpIf)} FP attendus${sureBest ? ` contre ${f1(goalieEV(sureBest.g, d))} pour ${esc(sureBest.g.name.split(' ').slice(-1)[0])}` : ''}. Sinon, ${sureBest ? `prends <b>${esc(sureBest.g.name)}</b>` : 'ne fais rien'}.
+        <span class="muted">Aujourd'hui : ${startChip(x.o.g, d)}${late ? ` · son match commence à ${gTime(x.o.g.nhl, d)}, après le verrouillage : il faut l'annonce avant ${L.hm}` : ''}</span></div>`; }).join('')}` : '';
+  // ligne du temps : le move de ce soir, puis le meilleur plan pour la suite (il se fait remplacer dès le lendemain)
+  const days = horizonDays(D.weekEnd), rest = days.filter(x => x > d);
+  let pl = { steps: [], gain: 0 };
+  try { pl = weekPlan({ players: top.r, team: m.team, record: m.record }, rest, Math.max(0, Math.min(7, (acqLeft == null ? 7 : acqLeft) - 1)), LTW); } catch (e) {}
+  const withG = planFp(top.r, days.filter(x => x >= d)) + pl.gain;
+  let noG = { steps: [], gain: 0 };
+  try { noG = streamPlan(m, days.filter(x => x >= d), acqLeft == null ? 7 : Math.min(7, acqLeft), LTW); } catch (e) {}
+  const noGtot = planFp(R, days.filter(x => x >= d)) + noG.gain, delta = withG - noGtot;
+  const step = (lab, txt, g) => `<div style="display:flex;gap:10px;align-items:flex-start;margin:6px 0"><div class="chip" style="flex:0 0 auto;min-width:64px;text-align:center">${lab}</div><div style="flex:1">${txt}${g != null ? ` <b class="up">+${f1(g)}</b>` : ''}</div></div>`;
+  const tl = `<div class="lbl" style="margin:12px 0 4px">Ligne du temps</div>
+    ${step(d === today ? 'ce soir' : dLabel(d), `${esc(top.w.name.split(' ').slice(-1)[0])} → <b>${esc(top.g.name)}</b>`, top.gain)}
+    ${pl.steps.map(x => step(dLabel(x.from), `${esc(x.w.name.split(' ').slice(-1)[0])} → <b>${esc(x.p.name)}</b>${x.w === top.g ? ' <span class="small muted">(le gardien a fait sa job : on le remplace)</span>' : ''}`, x.gain)).join('')}
+    <div class="small" style="margin-top:8px">Total d’ici dimanche : <b class="${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '+' : '−'}${f1(Math.abs(delta))} FP</b> par rapport au meilleur plan sans ce gardien · ${1 + pl.steps.length} transaction${pl.steps.length ? 's' : ''} sur ${acqLeft == null ? 7 : acqLeft} restantes.</div>`;
+  const others = opts.filter(o => o !== top).slice(0, 3).map(o => `<div class="small" style="margin:3px 0">${pname(o.g)} <span class="pos">${esc(o.g.nhl)}</span> ${startChip(o.g, d)} <span class="muted">${f1(goalieEV(o.g, d))} FP attendus</span> <b class="up">+${f1(o.gain)}</b></div>`).join('');
+  return `<div class="card" style="border-color:#1E4A63"><h2>🥅 Gardiens ${d === today ? 'ce soir' : dLabel(d)}</h2>
+    ${L ? `<div class="small" style="margin-bottom:10px;${L.locked ? '' : 'color:var(--warn)'}">⏱ ${lockTxt}</div>` : ''}
+    ${duel}${condTxt}${tl}
+    ${others ? `<div class="lbl" style="margin:12px 0 4px">Autres gardiens libres ${d === today ? 'ce soir' : dLabel(d)}</div>${others}` : ''}
+    <div class="legend"><span>FP attendus = FP s’il est partant (victoire, arrêts, buts accordés selon l’adversaire) × chances d’être partant (DailyFaceoff, sinon MoneyPuck). Un gardien pris pour un soir se remplace le lendemain : l’ajout coûte une transaction, pas ta valeur à long terme.</span></div></div>`;
+}
 function goalieCompare(mine) {
   const wk = p => p.model * (p.share || D.config.share) * D.config.gpw;
   const myG = mine.filter(p => p.grp === 'G').sort((a, b) => wk(b) - wk(a));
@@ -2479,7 +2567,8 @@ function extraGoalies(players) {
 }
 // gardiens libres utiles : partants probables (≥ 40 % des départs), triés par FP attendus par match de leur équipe
 function faPoolG(days, exclude) {
-  return D.waivers.filter(p => p.grp === 'G' && !AVOID[p.name] && !OUT[p.status] && (p.share || 0) >= 0.4 && !(exclude && exclude[p.name]) && days.some(d => playsOn(p, d) && (!p.wv || d >= p.wv)))
+  return D.waivers.filter(p => p.grp === 'G' && !AVOID[p.name] && !OUT[p.status] && !(exclude && exclude[p.name])
+      && days.some(d => playsOn(p, d) && (!p.wv || d >= p.wv) && ((p.share || 0) >= 0.4 || gShare(p, d) >= 0.5)))   // partant régulier, ou partant ce soir-là
     .sort((a, b) => (b.model || 0) * (b.share || 0) - (a.model || 0) * (a.share || 0)).slice(0, 5);
 }
 const isPanne = p => { const t = trend(p); return !!(t && t.cls === 'panne'); };
