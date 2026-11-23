@@ -69,6 +69,7 @@ function doGet(e) {
       let err = null; try { hhLog_(js); } catch (e) { err = e.message; }
       return ContentService.createTextOutput(JSON.stringify({ err: err, hh: getHH_() })).setMimeType(ContentService.MimeType.JSON);
     }
+    if (what === 'z') { const t0 = Date.now(), z = getAppDataZ(); return ContentService.createTextOutput(JSON.stringify({ ms: Date.now() - t0, len: z.length, head: z.slice(0, 40) })).setMimeType(ContentService.MimeType.JSON); }
     if (what === 'recap') return ContentService.createTextOutput(getWeekRecap(+(e.parameter.p || 6))).setMimeType(ContentService.MimeType.JSON);
     if (what === 'ver') return ContentService.createTextOutput(codeStatus_()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'update') return ContentService.createTextOutput(checkCodeFromApp()).setMimeType(ContentService.MimeType.JSON);
@@ -85,10 +86,40 @@ function doGet(e) {
 }
 // Appelée par la page (google.script.run.getAppData)
 function getAppData() {
+  if (LAST_JSON) return LAST_JSON;
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(APP.DATA_SHEET);
   if (!sh || sh.getLastRow() < 1) return '';
   return sh.getRange(1, 1, sh.getLastRow(), 1).getValues().map(r => r[0]).join('');
 }
+// Données compressées (gzip, base64) : ~5 fois moins lourdes à transférer, et gardées en mémoire (cache) 6 h
+// pour éviter de relire la feuille à chaque ouverture de l'app
+let LAST_JSON = null;
+const SNAP_PART = 90000;
+function snapPut_(json, z) {
+  try {
+    z = z || Utilities.base64Encode(Utilities.gzip(Utilities.newBlob(json, 'application/json')).getBytes());
+    const c = CacheService.getScriptCache(), n = Math.ceil(z.length / SNAP_PART), o = {};
+    if (n > 9) return z;                                           // trop gros pour le cache : on s'en passe
+    for (let i = 0; i < n; i++) o['SNAP' + i] = z.slice(i * SNAP_PART, (i + 1) * SNAP_PART);
+    o.SNAPN = String(n);
+    c.putAll(o, 21600);
+  } catch (e) {}
+  return z;
+}
+function getAppDataZ() {
+  if (LAST_JSON) return snapPut_(LAST_JSON);
+  try {
+    const c = CacheService.getScriptCache(), n = +(c.get('SNAPN') || 0);
+    if (n) {
+      const keys = []; for (let i = 0; i < n; i++) keys.push('SNAP' + i);
+      const got = c.getAll(keys);
+      if (keys.every(k => got[k])) return keys.map(k => got[k]).join('');
+    }
+  } catch (e) {}
+  const json = getAppData();
+  return json ? snapPut_(json) : '';
+}
+function refreshFromAppZ() { refreshLocked_(true); return getAppDataZ(); }
 // Menu « 📱 Ouvrir l'app » : affiche le lien de l'app (une fois déployée)
 function openApp() {
   let url = '';
@@ -786,6 +817,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
   for (let i = 0; i < json.length; i += 40000) chunks.push([json.slice(i, i + 40000)]);
   sh.clearContents();
   sh.getRange(1, 1, chunks.length, 1).setValues(chunks);
+  LAST_JSON = json; snapPut_(json);
   try { calServerLog_(json); } catch (e) { console.log('Prédiction du lundi : ' + e.message); }
   try { hhLog_(json); } catch (e) { console.log('HashtagHockey : ' + e.message); }
 }

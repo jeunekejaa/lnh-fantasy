@@ -234,6 +234,18 @@ const PAGE_VER = '@@VER@@';   // remplacé par la version du code à l'envoi sur
 function verCheck(c) {
   if (c && c.ver && PAGE_VER.indexOf('@@') < 0 && c.ver !== PAGE_VER && !(CODEUP && CODEUP.updated)) { CODEUP = { updated: true, bundle: c.ver, url: c.url }; if (D) render(); }
 }
+// gzip + base64 → texte (navigateurs récents) ; sinon on demande la version non compressée
+function unzip(b64) {
+  if (!b64) return Promise.resolve('');
+  const bin = atob(b64), u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+}
+function refreshZ(ok, ko) {
+  const save = t => { try { if (t) localStorage.setItem('snap', t); } catch (e) {} ok(t); };
+  if (window.DecompressionStream) google.script.run.withSuccessHandler(z => unzip(z).then(save, ko)).withFailureHandler(ko).refreshFromAppZ();
+  else google.script.run.withSuccessHandler(save).withFailureHandler(ko).refreshFromApp();
+}
 function load(force) {
   $('#stamp').textContent = force ? 'Mise à jour en cours…' : 'Chargement…';
   if (force) progress(true);
@@ -244,7 +256,15 @@ function load(force) {
   const ko = e => { if (force) progress(false); $('#stamp').textContent = 'Erreur : ' + (e && e.message || e); };
   if (window.google && google.script && google.script.run) {
     if (!force) {
-      google.script.run.withSuccessHandler(ok).withFailureHandler(ko).getAppData();
+      // ouverture instantanée : dernières données gardées sur cet appareil, puis les données fraîches en arrière-plan
+      let shown = null;
+      try { const t = localStorage.getItem('snap'); if (t) { D = JSON.parse(t); shown = D.updated; OWN = null; applyOvr(); render(); $('#stamp').textContent += ' · actualisation…'; } } catch (e) { shown = null; }
+      const okL = txt => { try { if (txt) localStorage.setItem('snap', txt); } catch (e) { try { localStorage.removeItem('snap'); } catch (e2) {} }
+        if (shown && txt) { try { if (JSON.parse(txt.slice(0, 200).replace(/,"fday".*$/, '}')).updated === shown) { render(); return; } } catch (e) {} }
+        ok(txt); };
+      if (window.DecompressionStream) google.script.run.withSuccessHandler(z => unzip(z).then(okL, () => google.script.run.withSuccessHandler(okL).withFailureHandler(ko).getAppData()))
+        .withFailureHandler(() => google.script.run.withSuccessHandler(okL).withFailureHandler(ko).getAppData()).getAppDataZ();
+      else google.script.run.withSuccessHandler(okL).withFailureHandler(ko).getAppData();
       try { google.script.run.withSuccessHandler(t => { try { verCheck(JSON.parse(t)); } catch (e) {} }).codeVersion(); } catch (e) {}
       return;
     }
@@ -254,8 +274,8 @@ function load(force) {
       let c = {}; try { c = JSON.parse(t || '{}'); } catch (e) {}
       CODEUP = c.updated ? c : (c.err ? { err: c.err } : null);
       if (!c.updated) verCheck(c);
-      google.script.run.withSuccessHandler(ok).withFailureHandler(ko).refreshFromApp();
-    }).withFailureHandler(() => google.script.run.withSuccessHandler(ok).withFailureHandler(ko).refreshFromApp()).checkCodeFromApp();
+      refreshZ(ok, ko);
+    }).withFailureHandler(() => refreshZ(ok, ko)).checkCodeFromApp();
   } else if (window.MOCK) ok(JSON.stringify(window.MOCK));
 }
 $('#refresh').onclick = () => load(true);
@@ -2266,8 +2286,17 @@ function offShare(p) {
   if (r) { const o = 3 * r[0] + 2 * r[1] + 0.5 * r[2] + 0.5 * r[3] + 0.2 * r[4], t = o + 0.2 * r[5] + 0.4 * r[6]; if (t > 0) return o / t; }
   return p.grp === 'D' ? 0.6 : 0.85;
 }
+// facteur d'un match (adversaire, aréna, domicile, matchs consécutifs) : fixe pour un joueur et un soir → gardé en mémoire
+let OPPM = new WeakMap(), OPPMD = null;
 function oppMult(p, d) {
   if (p.grp === 'G') return 1;
+  if (OPPMD !== D) { OPPMD = D; OPPM = new WeakMap(); }
+  let c = OPPM.get(p); if (!c) { c = {}; OPPM.set(p, c); }
+  const k = d + (p.nhl || '');
+  if (c[k] === undefined) c[k] = oppMult0(p, d);
+  return c[k];
+}
+function oppMult0(p, d) {
   const g = teamGames(p).find(x => x[0] === d); if (!g) return 1;
   if (!D.opp || !D.opp.t) return arenaMult(p, g) * ctxMult(p, g);
   const m = D.opp.t[g[1]]; return (m ? 1 + (m - 1) * offShare(p) : 1) * arenaMult(p, g) * ctxMult(p, g);
@@ -2277,7 +2306,9 @@ function oppMult(p, d) {
 let B2BC = null, B2BD = null;
 const B2B = (ab, d) => {
   if (B2BD !== D) { B2BD = D; B2BC = {}; Object.keys(D.teamGames || {}).forEach(t => (D.teamGames[t] || []).forEach(x => { B2BC[t + x[0]] = 1; })); }
-  const y = new Date(Date.parse(d + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10); return !!B2BC[ab + y]; };
+  let y = PREVD[d]; if (!y) y = PREVD[d] = new Date(Date.parse(d + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
+  return !!B2BC[ab + y]; };
+const PREVD = {};
 function ctxMult(p, g) {
   const r = p.x && p.x.r; if (!r || !(p.model > 0)) return 1;
   const home = g[2] ? 1 : -1, me2 = B2B(p.nhl, g[0]), op2 = B2B(g[1], g[0]);
@@ -2469,7 +2500,8 @@ function gameWin(ab, d) {
 }
 // FP d'un gardien S'IL EST PARTANT ce soir-là : sa projection, ajustée selon les chances de victoire (3 FP) et l'attaque adverse
 // (un but de plus = −1 FP et un arrêt de moins −0,2)
-function goalieFP(p, d) {
+function goalieFP(p, d) { return memo2('f', p, d, () => goalieFP0(p, d)); }
+function goalieFP0(p, d) {
   const m = p.model || 0, w = gameWin(p.nhl, d); if (!w) return m;
   const r = p.x && p.x.r, ga = r ? r[1] : 2.9;
   return Math.max(0, m + 3 * (w.p - w.base) - 1.2 * ga * (w.oppOff - 1));
@@ -2586,7 +2618,16 @@ function startedOn(p, d) {
 // MoneyPuck : probabilité de départ (et chances de victoire) de ce soir-là, si on l'a
 const mpTeam = (p, d) => D.mpg && D.mpg[d] && D.mpg[d][p.nhl] || null;
 const mpStart = (p, d) => { const t = mpTeam(p, d); if (!t || !t.g || !Object.keys(t.g).length || p.id == null) return null; const v = t.g[p.id] != null ? t.g[p.id] : t.g[String(p.id)]; return v != null ? +v : 0; };
-const gShare = (p, d) => {
+// mémoire par joueur et par soir (remise à zéro quand les données changent)
+let MEMO = new WeakMap(), MEMOD = null;
+const memo2 = (tag, p, d, f) => {
+  if (MEMOD !== D) { MEMOD = D; MEMO = new WeakMap(); }
+  let c = MEMO.get(p); if (!c) { c = {}; MEMO.set(p, c); }
+  const k = tag + d + (p.nhl || '') + (p._ov && p._ov.start || '');
+  return c[k] !== undefined ? c[k] : (c[k] = f());
+};
+const gShare = (p, d) => memo2('s', p, d, () => gShare0(p, d));
+const gShare0 = (p, d) => {
   if (p._ov && p._ov.start === d) return 1;
   const s = starterOf(p, d);
   if (s && s.st === 'c') return s.me ? 1 : 0;                      // confirmé (DailyFaceoff) : on le sait
