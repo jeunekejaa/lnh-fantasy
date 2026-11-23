@@ -1825,8 +1825,16 @@ function calServerLog_(json, dry) {
 function calResolve_() {           // résultats ESPN des duels terminés
   const cal = getCal_(); if (!cal.length || !CONFIG.ESPN_LEAGUE_ID) return cal;
   if (!cal.some(x => x.win == null)) return cal;
-  const r = UrlFetchApp.fetch(`https://${ESPN_HOSTS[0]}/apis/v3/games/fhl/seasons/${CONFIG.ESPN_SEASON}/segments/0/leagues/${CONFIG.ESPN_LEAGUE_ID}?view=mMatchupScore&view=mTeam`, { muteHttpExceptions: true });
-  if (r.getResponseCode() !== 200) return cal;
+  // ESPN a parfois des pannes réseau passagères (« Address unavailable ») : on essaie les deux adresses, deux fois ;
+  // en cas d'échec, rien de grave — les résultats seront ajoutés au prochain rafraîchissement
+  let r = null;
+  for (let k = 0; k < 4 && !r; k++) {
+    try {
+      const x = UrlFetchApp.fetch(`https://${ESPN_HOSTS[k % ESPN_HOSTS.length]}/apis/v3/games/fhl/seasons/${CONFIG.ESPN_SEASON}/segments/0/leagues/${CONFIG.ESPN_LEAGUE_ID}?view=mMatchupScore&view=mTeam`, espnOptions_(true));
+      if (x.getResponseCode() === 200) r = x;
+    } catch (e) { if (k < 3) Utilities.sleep(400); }
+  }
+  if (!r) return cal;
   const j = JSON.parse(r.getContentText()), name = {};
   (j.teams || []).forEach(t => { name[t.id] = t.name || ((t.location || '') + ' ' + (t.nickname || '')).trim(); });
   const res = {};
