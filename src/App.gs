@@ -656,7 +656,22 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
     const m = g === 'G' ? modelGoalie_(p, prior, p ? mp[p.id] : null, name, engG)
                         : modelSkater_(p, prior, p ? mp[p.id] : null, g, pjPrior, pjPri._lg, gafPrior);
     const team = (CUR_TEAMS && ((p && CUR_TEAMS.id[p.id]) || CUR_TEAMS.nom[norm_(name)])) || (p && p.team) || nhl || '';   // équipe actuelle (échanges compris)
-    const ov = OVR[name], st = ov && ov.out && ov.out >= ymd_(new Date()) ? 'OUT' : (status || '');
+    const ov = OVR[name];
+    let st = ov && ov.out && ov.out >= ymd_(new Date()) ? 'OUT' : (status || '');
+    // Filets de sécurité blessures : le statut fantasy d'ESPN est parfois vide (surtout chez les joueurs libres)
+    let absN = 0;
+    if (!st || st === 'ACTIVE') {
+      const i0 = INJ ? INJ[norm_(name)] : null, td = ymd_(new Date());
+      if (i0 && (!i0.r || i0.r > td)) {                       // 1) liste des blessés LNH d'ESPN
+        if (/^IR/.test(i0.s) || /injured reserve/i.test(i0.s)) st = 'INJURY_RESERVE';
+        else if (/^OUT$/i.test(i0.s) || /suspens/i.test(i0.s)) st = 'OUT';
+        else if (/day/i.test(i0.s) && !st) st = 'DAY_TO_DAY';
+      }
+      if ((!st || st === 'ACTIVE') && p && p.id && g !== 'G') {   // pas les gardiens : un auxiliaire manque des matchs normalement             // 2) absent des derniers matchs de son équipe
+        absN = missedGames_(p.id, (CUR_TEAMS && CUR_TEAMS.id[p.id]) || p.team || nhl);
+        if (absN >= 3) st = 'OUT';
+      }
+    }
     const ij = INJ && (OUT_STATUSES[st] || st === 'DAY_TO_DAY') ? INJ[norm_(name)] || null : null;
     // retour estimé (ESPN) ; date dépassée mais toujours blessé → on suppose dans 3 jours
     // « Mon info » : total de points visé sur la saison (ex. McDavid 175) — sa projection pour le reste de la saison suit
@@ -684,7 +699,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
       left: sch.left[team] || 0, next: sch.next[team] || 0, today: !!sch.today[team], live: !!(sch.live && sch.live[team]),
       liveLeft: sch.liveLeft && sch.liveLeft[team] != null ? sch.liveLeft[team] : null,
       id: p ? p.id : null,
-      ret: ret, injT: ij ? ij.t : null, injC: ij ? ij.c : null, lq: m.lq || 0,
+      ret: ret, injT: ij ? ij.t : (absN >= 3 ? 'Absent' : null), injC: ij ? ij.c : (absN >= 3 ? 'N’a pas joué les ' + absN + ' derniers matchs de son équipe' : null), absN: absN || undefined, lq: m.lq || 0,
       x: playerSheet_(g, p, m, p ? mp[p.id] : null, gafPrior, pjPrior, team)
     };
   };
@@ -1161,6 +1176,21 @@ function oppAdjust_() {
 // Présences sur la glace (feuilles de présences LNH, après chaque match) : qui est sur la 1re vague d'AN, avec qui il joue à 5 c. 5.
 // 6 derniers matchs de chaque équipe (3 récents vs 3 d'avant → promotions et changements de duo). Résumés gardés dans « APP Glace ».
 const ICE = { GAMES_PER_TEAM: 6, MAX_NEW: 40, SHEET: 'APP Glace' };
+// Nombre de matchs consécutifs (les plus récents) de son équipe actuelle qu'un joueur a manqués, d'après les présences sur la glace
+let ABS_IDX = null;
+function missedGames_(pid, team) {
+  if (!ABS_IDX) {
+    const last = {}, tg = {};
+    Object.keys(ICE_STORE).forEach(id => {
+      const T = (ICE_STORE[id] || {}).teams || {};
+      Object.keys(T).forEach(t => { (tg[t] = tg[t] || []).push(+id); Object.keys(T[t].p || {}).forEach(q => { if (!last[q] || last[q] < +id) last[q] = +id; }); });
+    });
+    ABS_IDX = { last: last, tg: tg };
+  }
+  const L = ABS_IDX.last[pid], g = ABS_IDX.tg[team];
+  if (!L || !g || g.length < 5) return 0;                      // jamais vu ou données insuffisantes : on ne conclut rien
+  return g.filter(id => id > L).length;
+}
 let ICE_STORE = {}, LINEQ = {}, DFOL = null, CAL = [], L30TOI = {}, ARENA = null, PEN = null;
 // Compagnons de trio (retenu par le backtest par match 2025-26, coef 0,1) : qualité de ses 2 principaux coéquipiers à 5 c. 5
 // au DERNIER match (FP d'attaque par match de la saison) vs la moyenne de ses coéquipiers sur toute la saison → −1 à +1
