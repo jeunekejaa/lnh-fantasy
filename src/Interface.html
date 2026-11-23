@@ -237,9 +237,11 @@ function verCheck(c) {
 // gzip + base64 → texte (navigateurs récents) ; sinon on demande la version non compressée
 function unzip(b64) {
   if (!b64) return Promise.resolve('');
-  const bin = atob(b64), u = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-  return new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  try {
+    const bin = atob(b64), u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  } catch (e) { return Promise.reject(e); }
 }
 function refreshZ(ok, ko) {
   const save = t => { try { if (t) localStorage.setItem('snap', t); } catch (e) {} ok(t); };

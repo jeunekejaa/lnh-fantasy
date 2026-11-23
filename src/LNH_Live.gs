@@ -137,7 +137,9 @@ function run_() {
   updateGafLive_(ss, index, aliases);
   if (!DATA_ONLY) { setupWaivers_(ss); setupSearch_(ss); newsSheet_(ss); }
   M_('Feuille Ballotage');
-  writeWaivers_(ss);
+  // feuille « Ballotage » du classeur (l'app ne s'en sert pas) : depuis l'app, au plus toutes les 3 h
+  const DP = PropertiesService.getDocumentProperties(), wAt = +(DP.getProperty('WAIVERS_AT') || 0);
+  if (!DATA_ONLY || Date.now() - wAt > 3 * 3600 * 1000) { writeWaivers_(ss); DP.setProperty('WAIVERS_AT', String(Date.now())); }
 
   prog(60, 'Calcul des équipes…');
   const teams = [];
