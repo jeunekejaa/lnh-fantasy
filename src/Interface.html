@@ -709,9 +709,47 @@ function qfNights(m) {
   if (!tips.length) return '';
   return `<div class="card" style="padding:12px 14px"><div class="small" style="line-height:1.55">${tips.map(t => '📅 ' + t).join('<br>')}</div></div>`;
 }
-function qfSteps(pl) {
-  return pl.steps.map(x => `<div style="display:flex;gap:10px;align-items:baseline;margin:5px 0"><span class="chip" style="flex:0 0 64px;text-align:center">${x.from === todayStr() ? 'ce soir' : dLabel(x.from)}</span>
-    <span style="flex:1">Retire <b>${esc(x.w.name)}</b> → prends <b>${esc(x.p.name)}</b>${x.p.grp === 'G' ? ' 🥅' : ''}</span><b class="up">${sg1(x.gain)}</b></div>`).join('');
+// « Pourquoi » de chaque étape d'un plan : on rejoue la semaine soir par soir avec les moves du plan
+function qfWhy(m, steps) {
+  const days = horizonDays(D.weekEnd), out = new Map(), dW = d => dLabel(d).split(' ')[0].replace('.', '');
+  const inLine = (p, r, d) => { const L = dayLineup(r, d); return L.starters.indexOf(p) >= 0 || L.goalies.indexOf(p) >= 0; };
+  // roster en vigueur chaque soir
+  const rosterOn = {}; let r = m.players.slice();
+  days.forEach(d => { steps.filter(x => x.from === d).forEach(x => { r = r.filter(q => q !== x.w).concat([x.p]); }); rosterOn[d] = r; });
+  const busy = d => { const L = dayLineup(rosterOn[d], d); return L.free.F + L.free.U === 0; };
+  const nPlay = d => m.players.concat(steps.map(x => x.p)).filter(q => rosterOn[d].indexOf(q) >= 0 && q.grp !== 'G' && !OUT[q.status] && playsNow(q, d)).length;
+  const lastN = p => esc(p.name.split(' ').slice(-1)[0]);
+  steps.forEach((x, i) => {
+    const end = steps.slice(i + 1).find(y => y.w === x.p), span = days.filter(d => d >= x.from && (!end || d < end.from));
+    const mine = span.filter(d => inLine(x.p, rosterOn[d], d));
+    // ce que le joueur retiré aurait encore fait (alignement sans ce move)
+    let rb = m.players.slice(); days.filter(d => d < x.from).forEach(d => steps.filter(y => y.from === d).forEach(y => { rb = rb.filter(q => q !== y.w).concat([y.p]); }));
+    steps.slice(0, i).filter(y => y.from === x.from).forEach(y => { rb = rb.filter(q => q !== y.w).concat([y.p]); });
+    const wLeft = days.filter(d => d >= x.from && inLine(x.w, rb, d));
+    let a;
+    if (x.p.grp === 'G') a = `${lastN(x.p)} ${starterOf(x.p, x.from) && starterOf(x.p, x.from).st === 'c' ? 'partant confirmé' : 'partant probable'} ${x.from === todayStr() ? 'ce soir' : dW(x.from)}`;
+    else if (!mine.length) a = `${lastN(x.p)} ne joue pas dans ton alignement`;
+    else {
+      const q = mine.filter(d => nPlay(d) <= 3), b = mine.filter(busy);
+      a = `${lastN(x.p)} joue ${mine.map(dW).join(', ')}`;
+      if (b.length && x.p.grp === 'D') a += ` : remplit tes places de défenseur vides ${b.map(dW).join(', ')}`;
+      else if (q.length === mine.length) a += ` : ${mine.length > 1 ? 'des soirs' : 'un soir'} où presque personne ne joue chez toi`;
+      else if (q.length) a += ` (dont ${q.map(dW).join(', ')}, presque personne ne joue chez toi)`;
+    }
+    const added = steps.slice(0, i).some(y => y.p === x.w);
+    const b2 = added ? (wLeft.length ? `${lastN(x.w)} aurait encore joué ${wLeft.length} fois` : `${lastN(x.w)} a fini de jouer pour toi`)
+      : x.w.grp === 'G' && !wLeft.length ? `${lastN(x.w)} ne garde presque jamais` : wLeft.length ? `${lastN(x.w)} : ${wLeft.length} match${wLeft.length > 1 ? 's' : ''} d’ici dim.` : `${lastN(x.w)} ne joue plus pour toi cette semaine`;
+    let lt = '';
+    try { const ltv = qfWhy.ltv || (qfWhy.ltv = ltValue(m.players, futDays(ymdAdd(D.weekEnd, 1), 28))); if (!end && x.p.grp !== 'G' && ltv(x.p) > ltv(x.w) + 0.15) lt = ' · meilleur aussi pour la suite'; } catch (e) {}
+    out.set(x, `${a} · ${b2}${lt}`);
+  });
+  return out;
+}
+function qfSteps(pl, m, all) {
+  // « all » = tout le plan (pour rejouer la semaine) ; pl.steps = les étapes à afficher
+  const why = m ? qfWhy(m, all || pl.steps) : new Map();
+  return pl.steps.map(x => `<div style="display:flex;gap:10px;align-items:baseline;margin:7px 0"><span class="chip" style="flex:0 0 64px;text-align:center">${x.from === todayStr() ? 'ce soir' : dLabel(x.from)}</span>
+    <span style="flex:1;line-height:1.4">Retire <b>${esc(x.w.name)}</b> → prends <b>${esc(x.p.name)}</b>${x.p.grp === 'G' ? ' 🥅' : ''}${why.get(x) ? `<span class="small muted"> — ${why.get(x)}</span>` : ''}</span><b class="up">${sg1(x.gain)}</b></div>`).join('');
 }
 function qfToday(pl, A, m, best1) {
   if (!pl || !pl.steps.length) return `<div class="card"><h2>À faire aujourd’hui</h2><div class="muted">Rien : aucun move ne vaut la peine pour l’instant.</div></div>`;
@@ -728,7 +766,7 @@ function qfToday(pl, A, m, best1) {
   return `<div class="card" style="border-color:#1E4A63"><h2>À faire aujourd’hui ${dl ? `<span class="small" style="color:var(--warn);font-weight:600;text-transform:none;letter-spacing:0">· ${dl}</span>` : ''}</h2>
     ${now.length ? now.map(x => `<div style="font-size:17px;margin:6px 0">☐ Retire <b>${esc(x.w.name)}</b>, prends <b>${esc(x.p.name)}</b>${x.p.grp === 'G' ? ` 🥅 ${startChip(x.p, x.from)}` : ''} <b class="up">${sg1(x.gain)}</b></div>`).join('') : '<div class="muted">Rien aujourd’hui.</div>'}
     ${cond}
-    ${later.length ? `<details style="margin-top:10px"><summary class="small">Ensuite : ${later.length} move${later.length > 1 ? 's' : ''} d’ici dimanche ▾</summary>${qfSteps({ steps: later })}</details>` : ''}
+    ${later.length ? `<details style="margin-top:10px"><summary class="small">Ensuite : ${later.length} move${later.length > 1 ? 's' : ''} d’ici dimanche ▾</summary>${qfSteps({ steps: later }, m, pl.steps)}</details>` : ''}
     <div class="small muted" style="margin-top:8px">Plan : <b>${esc(pl.lab)}</b> · ${sg1(pl.week)} FP cette semaine · ${sg0(pl.season)} sur la saison · ${pl.n} transaction${pl.n > 1 ? 's' : ''}</div>
     ${best1 && now[0] && best1.p !== now[0].p ? (() => { const nx = pl.steps.find(y => y.w === now[0].p);
       return `<div class="small" style="margin-top:8px;line-height:1.5;border-top:1px solid var(--line);padding-top:8px"><b>Pourquoi ${esc(now[0].p.name.split(' ').slice(-1)[0])} et pas ${esc(best1.p.name.split(' ').slice(-1)[0])}</b> (le n° 1 de « Si tu fais un seul move ») ?
@@ -815,6 +853,7 @@ function qfCard(x, i, P0) {
     <div class="small" style="margin-top:2px">Pourquoi : ${x.why}</div></div>`;
 }
 function vTodo() {
+  qfWhy.ltv = null;
   const m = me(), H = WK.h || 'best', daysWk = horizonDays(D.weekEnd);
   const acq = povOn() ? {} : D.espn || {}, left = acqLeft(acq, daysWk), A = actDay();
   const L0 = D.config.lineup, healthy = k => m.players.filter(p => p.grp === k && !OUT[p.status]).length;
@@ -833,7 +872,7 @@ function vTodo() {
   const acqTxt = left == null ? '' : `<div class="small muted" style="margin-bottom:8px">Acquisitions : ${acq.acqUsed} sur ${acq.acqLimit} utilisées — il t’en reste <b>${left}</b>.</div>`;
   return povSel + holes + qfToday(pl, A, m, moves.find(x => x.t !== 'tr')) + qfNights(m)
     + `<div class="card"><h2>Comparer les plans de la semaine</h2>${hz}${acqTxt}${qfTable(plans, star, sel, left, P0)}
-      <div class="lbl" style="margin:14px 0 4px">${sel === star ? '★ ' : ''}${esc(pl.lab)} : les étapes</div>${pl.steps.length ? qfSteps(pl) : '<div class="muted small">Aucun move.</div>'}</div>`
+      <div class="lbl" style="margin:14px 0 4px">${sel === star ? '★ ' : ''}${esc(pl.lab)} : les étapes</div>${pl.steps.length ? qfSteps(pl, m) : '<div class="muted small">Aucun move.</div>'}</div>`
     + `<div class="card"><h2>Si tu fais un seul move</h2><div class="small muted">Chaque option seule, gardée jusqu’à la fin de la semaine (sauf 🥅 : un soir). Classées selon l’objectif « ${esc((QF_MODES.find(x => x[0] === H) || QF_MODES[0])[1])} ». ➕ joueur gardé · 🥅 gardien pour un soir · 🔁 échange.</div>
       ${moves.slice(0, 8).map((x, i) => qfCard(x, i, P0)).join('') || '<div class="muted">Aucune option intéressante.</div>'}
       ${moves.length > 8 ? `<details style="margin-top:8px"><summary class="small">Voir ${moves.length - 8} autres options ▾</summary>${moves.slice(8, 20).map((x, i) => qfCard(x, i + 8, P0)).join('')}</details>` : ''}
@@ -2804,7 +2843,8 @@ function extraGoalies(players) {
 function faPoolG(days, exclude) {
   return D.waivers.filter(p => p.grp === 'G' && !AVOID[p.name] && !OUT[p.status] && !(exclude && exclude[p.name])
       && days.some(d => playsOn(p, d) && (!p.wv || d >= p.wv) && ((p.share || 0) >= 0.4 || gShare(p, d) >= 0.5)))   // partant régulier, ou partant ce soir-là
-    .sort((a, b) => (b.model || 0) * (b.share || 0) - (a.model || 0) * (a.share || 0)).slice(0, 5);
+    .map(p => ({ p: p, v: days.reduce((t, d) => t + (playsOn(p, d) ? goalieEV(p, d) : 0), 0) }))   // FP attendus sur ces soirs-là (un auxiliaire confirmé ce soir compte)
+    .sort((a, b) => b.v - a.v).slice(0, 6).map(x => x.p);
 }
 const isPanne = p => { const t = trend(p); return !!(t && t.cls === 'panne'); };
 function faPool(days, exclude) {
@@ -2867,7 +2907,8 @@ function weekPlan(m, days, n, ltw, opt) {
   let states = [{ r: m.players.slice(), used: {}, added: [], moves: [], acq: 0, done: 0, lt: 0 }];
   const expand = (st, d, rem) => {
     if (st.acq >= n) return [];
-    const base = planFp(st.r, rem), pool = (opt.pool === 'G' ? [] : (l => l.filter(p => p.grp === 'F').slice(0, 10).concat(l.filter(p => p.grp === 'D').slice(0, 6)))(faPool([d], st.used).filter(p => playsOn(p, d) && (!p.wv || d >= p.wv))))   // 10 attaquants + 6 défenseurs : un défenseur peut valoir plus qu'un meilleur attaquant les soirs où tes places d'attaquant sont pleines.concat(opt.pool === 'SK' ? [] : faPoolG([d], st.used).filter(p => opt.pool !== 'G' || gShare(p, d) >= 0.5));
+    const base = planFp(st.r, rem), pool = (opt.pool === 'G' ? [] : (l => l.filter(p => p.grp === 'F').slice(0, 10).concat(l.filter(p => p.grp === 'D').slice(0, 6)))(faPool([d], st.used).filter(p => playsOn(p, d) && (!p.wv || d >= p.wv)))).concat(opt.pool === 'SK' ? [] : faPoolG([d], st.used).filter(p => opt.pool !== 'G' || gShare(p, d) >= 0.5));
+    // (10 attaquants + 6 défenseurs : un défenseur peut valoir plus qu'un meilleur attaquant les soirs où tes places d'attaquant sont pleines)
     const dc = dropCandidates({ players: st.r }).filter(p => !opt.keep || st.added.indexOf(p) < 0);
     const drops = opt.keep ? dc : dc.concat(st.added.filter(p => st.r.indexOf(p) >= 0 && dc.indexOf(p) < 0));
     const opts = [];
