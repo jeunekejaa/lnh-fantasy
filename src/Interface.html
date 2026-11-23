@@ -652,10 +652,10 @@ function qfPlans(m, left) {
   };
   const tryP = f => { try { return f(); } catch (e) { return base; } };
   return [
-    mk('g', 'Gardien du soir', 'un gardien partant, changé chaque soir', tryP(() => weekPlan(m, days, n, PLAN_LTW, { pool: 'G' }))),
-    mk('sk', 'Patineur pour la semaine', 'le meilleur patineur libre, gardé', tryP(() => weekPlan(m, days, Math.min(n, 2), PLAN_LTW, { pool: 'SK', keep: true }))),
-    mk('st', 'Streaming de patineurs', 'des patineurs changés selon le calendrier', tryP(() => weekPlan(m, days, n, 0, { pool: 'SK' }))),
-    mk('mix', 'Mélange optimal', 'la meilleure combinaison de tout', tryP(() => weekPlan(m, days, n, PLAN_LTW))),
+    mk('g', 'Gardien qui joue ce soir', 'tu prends un gardien libre partant, et tu le changes au besoin', tryP(() => weekPlan(m, days, n, PLAN_LTW, { pool: 'G' }))),
+    mk('sk', 'Un ou deux ajouts gardés', 'tu prends le meilleur joueur libre et tu le gardes', tryP(() => weekPlan(m, days, Math.min(n, 2), PLAN_LTW, { pool: 'SK', keep: true }))),
+    mk('st', 'Changer de joueurs chaque jour', 'tu prends des joueurs qui jouent ce soir-là, et tu les changes le lendemain', tryP(() => weekPlan(m, days, n, 0, { pool: 'SK' }))),
+    mk('mix', 'Meilleur mélange', 'la meilleure combinaison des trois', tryP(() => weekPlan(m, days, n, PLAN_LTW))),
     mk('none', 'Ne rien faire', 'référence', base)];
 }
 function qfStar(plans, H) {
@@ -669,7 +669,7 @@ const sg1 = v => (v >= 0.05 ? '+' : v <= -0.05 ? '−' : '±') + f1(Math.abs(v))
 const sg0 = v => (v >= 0.5 ? '+' : v <= -0.5 ? '−' : '±') + Math.round(Math.abs(v));
 function qfTable(plans, star, sel, left, P0) {
   // grille simple (pas un <table> : sur téléphone les tableaux se transforment en cartes) : 1 colonne d'étiquettes + 4 plans
-  const cols = plans.filter(x => x.key !== 'none'), short = { g: 'Gardien du soir', sk: 'Patineur semaine', st: 'Streaming', mix: 'Mélange' };
+  const cols = plans.filter(x => x.key !== 'none'), short = { g: '🥅 Gardien du soir', sk: '➕ Ajout gardé', st: '🔄 Chaque jour', mix: 'Meilleur mélange' };
   const cell = (x, inner, extra) => `<div data-qfplan="${x.key}" style="cursor:pointer;text-align:center;padding:7px 2px;${x.key === sel ? 'background:var(--me);' : ''}${extra || ''}">${inner}</div>`;
   const lab = (t, h) => `<div style="padding:7px 4px 7px 0;font-size:12.5px;line-height:1.2">${t}${h ? `<div class="muted" style="font-size:10.5px">${h}</div>` : ''}</div>`;
   const row = (t, h, f) => lab(t, h) + cols.map(x => cell(x, x.n ? f(x) : '<span class="muted">—</span>', 'border-top:1px solid var(--line);font-size:13.5px')).join('');
@@ -682,13 +682,18 @@ function qfTable(plans, star, sel, left, P0) {
     ${row('Transactions', '', x => `${x.n}/${left == null ? 7 : left}`)}
     ${row('Soirs où agir', '', x => x.nights)}
     ${row('Risque', '± FP possibles', x => `<span class="${x.risk.lab === 'élevé' ? 'down' : x.risk.lab === 'faible' ? 'up' : ''}">${x.risk.lab}</span><div class="muted" style="font-size:10.5px">±${Math.round(x.risk.sd)}</div>`)}
-  </div><div class="small muted" style="margin-top:8px">★ = recommandé pour ton objectif. Touche une colonne pour voir ses étapes et la mettre dans « À faire aujourd’hui ».</div>`;
+  </div><div class="small" style="margin-top:10px;line-height:1.5">
+    <div>🥅 <b>Gardien du soir</b> : tu prends un gardien libre qui part ce soir-là, et tu le changes au besoin.</div>
+    <div>➕ <b>Ajout gardé</b> : tu prends 1 ou 2 bons joueurs libres et tu les gardes.</div>
+    <div>🔄 <b>Chaque jour</b> : tu prends des joueurs qui jouent ce soir-là et tu les remplaces le lendemain (beaucoup de transactions).</div>
+    <div><b>Meilleur mélange</b> : la meilleure combinaison des trois.</div></div>
+    <div class="small muted" style="margin-top:6px">★ = recommandé pour ton objectif. Touche une colonne pour voir ses étapes et la mettre dans « À faire aujourd’hui ».</div>`;
 }
 function qfSteps(pl) {
   return pl.steps.map(x => `<div style="display:flex;gap:10px;align-items:baseline;margin:5px 0"><span class="chip" style="flex:0 0 64px;text-align:center">${x.from === todayStr() ? 'ce soir' : dLabel(x.from)}</span>
     <span style="flex:1">Retire <b>${esc(x.w.name)}</b> → prends <b>${esc(x.p.name)}</b>${x.p.grp === 'G' ? ' 🥅' : ''}</span><b class="up">${sg1(x.gain)}</b></div>`).join('');
 }
-function qfToday(pl, A, m) {
+function qfToday(pl, A, m, best1) {
   if (!pl || !pl.steps.length) return `<div class="card"><h2>À faire aujourd’hui</h2><div class="muted">Rien : aucun move ne vaut la peine pour l’instant.</div></div>`;
   const now = pl.steps.filter(x => x.from <= A.d), later = pl.steps.filter(x => x.from > A.d);
   const dl = A.L ? (A.late ? `trop tard pour ce soir · pour ${dLabel(A.d)}, avant ${A.L.hm}` : `avant ${A.L.hm}${A.L.left ? ' (dans ' + A.L.left + ')' : ''}`) : '';
@@ -704,7 +709,11 @@ function qfToday(pl, A, m) {
     ${now.length ? now.map(x => `<div style="font-size:17px;margin:6px 0">☐ Retire <b>${esc(x.w.name)}</b>, prends <b>${esc(x.p.name)}</b>${x.p.grp === 'G' ? ` 🥅 ${startChip(x.p, x.from)}` : ''} <b class="up">${sg1(x.gain)}</b></div>`).join('') : '<div class="muted">Rien aujourd’hui.</div>'}
     ${cond}
     ${later.length ? `<details style="margin-top:10px"><summary class="small">Ensuite : ${later.length} move${later.length > 1 ? 's' : ''} d’ici dimanche ▾</summary>${qfSteps({ steps: later })}</details>` : ''}
-    <div class="small muted" style="margin-top:8px">Plan : <b>${esc(pl.lab)}</b> · ${sg1(pl.week)} FP cette semaine · ${sg0(pl.season)} sur la saison</div></div>`;
+    <div class="small muted" style="margin-top:8px">Plan : <b>${esc(pl.lab)}</b> · ${sg1(pl.week)} FP cette semaine · ${sg0(pl.season)} sur la saison · ${pl.n} transaction${pl.n > 1 ? 's' : ''}</div>
+    ${best1 && now[0] && best1.p !== now[0].p ? (() => { const nx = pl.steps.find(y => y.w === now[0].p);
+      return `<div class="small" style="margin-top:8px;line-height:1.5;border-top:1px solid var(--line);padding-top:8px"><b>Pourquoi ${esc(now[0].p.name.split(' ').slice(-1)[0])} et pas ${esc(best1.p.name.split(' ').slice(-1)[0])}</b> (le n° 1 de « Si tu fais un seul move ») ?
+        ${nx ? `Le plan est une suite de moves : ${esc(now[0].p.name.split(' ').slice(-1)[0])} joue ce soir, puis <b>${esc(nx.p.name)}</b> prend sa place ${dLabel(nx.from)}.` : 'Le plan combine plusieurs moves.'}
+        Au total : <b>${sg1(pl.week)} FP</b> cette semaine, contre ${sg1(best1.week)} si tu fais seulement ${esc(best1.w.name.split(' ').slice(-1)[0])} → ${esc(best1.p.name.split(' ').slice(-1)[0])} (1 transaction).</div>`; })() : ''}</div>`;
 }
 // toutes les options, une à la fois (patineurs, gardiens du soir, échanges)
 function qfMoves(m, H, left) {
@@ -724,8 +733,8 @@ function qfMoves(m, H, left) {
       if (wk < 0.5 && se < 3) return;
       const dd = daysWk.filter(d => inLine(p, r, d)), nw = daysWk.filter(d => inLine(w, m.players, d)).length;
       out.push({ t: 'sk', p: p, w: w, week: wk, season: se, days: dd,
-        why: `${lastN(p)} entrerait dans ton alignement ${dd.length} soir${dd.length > 1 ? 's' : ''} cette semaine, ${lastN(w)} ${nw}. `
-          + (p.grp === 'G' || w.grp === 'G' ? `Valeur pour ton alignement : ${f2(ltv(p))} contre ${f2(ltv(w))} FP par match d’équipe.` : `Projection ${f2(p.model)} contre ${f2(w.model)} par match.`) });
+        why: (w.grp === 'G' && p.grp !== 'G' ? `${lastN(w)} n’entre presque jamais dans ton alignement (${nw} fois cette semaine) : le retirer ne coûte rien. ${lastN(p)} : ${f2(p.model)} FP par match.`
+          : `${lastN(p)} : ${f2(p.model)} FP par match, ${dd.length} match${dd.length > 1 ? 's' : ''} dans ton alignement cette semaine. ${lastN(w)} : ${f2(w.model)} FP par match, ${nw} match${nw > 1 ? 's' : ''}.`) });
     });
   });
   // gardiens du soir (repris le lendemain : la saison ne change pas)
@@ -775,9 +784,12 @@ function qfCard(x, i, P0) {
   const ico = { sk: '➕', g: '🥅', tr: '🔁' }[x.t];
   const head = x.t === 'tr' ? `Donne <b>${x.give.map(p => esc(p.name)).join(' + ')}</b> → reçois <b>${x.get.map(p => esc(p.name)).join(' + ')}</b> <span class="small muted">· ${esc(dn(x.team))}</span>`
     : `Retire <b>${esc(x.w.name)}</b> → prends <b>${pname(x.p)}</b> <span class="pos">${esc(x.p.pos)} · ${esc(x.p.nhl)}</span>${x.t === 'g' ? ' ' + startChip(x.p, x.days[0]) : ''}`;
-  const when = x.t === 'tr' ? 'échange (pas de transaction)' : x.night ? (x.days[0] === todayStr() ? 'pour ce soir seulement' : 'pour ' + dLabel(x.days[0]) + ' seulement') : x.days.length ? 'joue ' + x.days.map(d => dLabel(d).split(' ')[0]).join(', ') : 'ne joue plus cette semaine';
+  const dW = d => dLabel(d).split(' ')[0].replace('.', ''), plays = x.t === 'tr' ? [] : horizonDays(D.weekEnd).filter(d => playsOn(x.p, d)), bench = plays.filter(d => x.days.indexOf(d) < 0);
+  const when = x.t === 'tr' ? 'échange (pas de transaction)' : x.night ? (x.days[0] === todayStr() ? 'pour ce soir seulement' : 'pour ' + dLabel(x.days[0]) + ' seulement')
+    : !plays.length ? 'ne joue plus cette semaine'
+    : `joue ${plays.length} fois (${plays.map(dW).join(', ')})${bench.length ? ` · dans ton alignement ${x.days.length} fois${x.days.length ? ' (' + x.days.map(dW).join(', ') + ')' : ''} · <b>${bench.map(dW).join(', ')}</b> : il resterait sur ton banc, tes places d’${x.p.grp === 'D' ? 'défenseur' : 'attaquant'} et UTIL sont déjà pleines` : ' · dans ton alignement chaque fois'}`;
   return `<div style="padding:12px 0;border-top:1px solid var(--line)">
-    <div style="line-height:1.45">${i + 1}. ${ico} ${head}</div>
+    <div style="line-height:1.45">${i + 1}. ${ico} ${head}${x.inPlan ? ' <span class="chip" style="color:var(--accent)">dans le plan</span>' : ''}</div>
     <div style="margin:4px 0"><b class="${x.week >= 0 ? 'up' : 'down'}">${x.t === 'tr' ? '—' : sg1(x.week)}</b> <span class="small muted">cette sem.</span> · <b class="${x.season >= 0 ? 'up' : 'down'}">${x.night ? '±0' : sg0(x.season)}</b> <span class="small muted">saison</span>${x.pw != null && x.t !== 'tr' ? ` · <span class="small">chances ${pct(P0)} → <b>${pct(x.pw)}</b></span>` : ''}</div>
     <div class="small muted">${when}</div>
     <div class="small" style="margin-top:2px">Pourquoi : ${x.why}</div></div>`;
@@ -796,11 +808,13 @@ function vTodo() {
   const hz = `<div class="seg seg4" id="wkhz" role="group" aria-label="Objectif">${QF_MODES.map(([h, l]) => `<button class="${H === h ? 'on' : ''}" data-h="${h}">${l}</button>`).join('')}</div>
     <div class="small muted" style="margin:8px 0 12px">${(QF_MODES.find(x => x[0] === H) || QF_MODES[0])[2]} L’étoile ★ marque le plan recommandé pour cet objectif.</div>`;
   const moves = qfMoves(m, H, left);
+  // dans la liste : les moves qui font partie du plan choisi
+  moves.forEach(x => { x.inPlan = pl.steps.some(y => y.p === x.p && y.w === x.w); });
   const acqTxt = left == null ? '' : `<div class="small muted" style="margin-bottom:8px">Acquisitions : ${acq.acqUsed} sur ${acq.acqLimit} utilisées — il t’en reste <b>${left}</b>.</div>`;
-  return povSel + holes + qfToday(pl, A, m)
+  return povSel + holes + qfToday(pl, A, m, moves.find(x => x.t !== 'tr'))
     + `<div class="card"><h2>Comparer les plans de la semaine</h2>${hz}${acqTxt}${qfTable(plans, star, sel, left, P0)}
       <div class="lbl" style="margin:14px 0 4px">${sel === star ? '★ ' : ''}${esc(pl.lab)} : les étapes</div>${pl.steps.length ? qfSteps(pl) : '<div class="muted small">Aucun move.</div>'}</div>`
-    + `<div class="card"><h2>Toutes les options, une à la fois</h2><div class="small muted">Classées selon l’objectif « ${esc((QF_MODES.find(x => x[0] === H) || QF_MODES[0])[1])} ». ➕ patineur · 🥅 gardien pour un soir · 🔁 échange.</div>
+    + `<div class="card"><h2>Si tu fais un seul move</h2><div class="small muted">Chaque option seule, gardée jusqu’à la fin de la semaine (sauf 🥅 : un soir). Classées selon l’objectif « ${esc((QF_MODES.find(x => x[0] === H) || QF_MODES[0])[1])} ». ➕ joueur gardé · 🥅 gardien pour un soir · 🔁 échange.</div>
       ${moves.slice(0, 8).map((x, i) => qfCard(x, i, P0)).join('') || '<div class="muted">Aucune option intéressante.</div>'}
       ${moves.length > 8 ? `<details style="margin-top:8px"><summary class="small">Voir ${moves.length - 8} autres options ▾</summary>${moves.slice(8, 20).map((x, i) => qfCard(x, i + 8, P0)).join('')}</details>` : ''}
       <details style="margin-top:12px"><summary class="small muted">Comment c’est calculé ▾</summary><div class="legend"><span>Cette semaine = FP de plus d’ici dimanche, soir par soir avec ton vrai alignement (places libres, gardiens partants, adversaires). Saison = (projection × part des matchs où le joueur entre dans ton alignement) − même chose pour celui qui sort, × ${D.config.gpw} matchs × ${weeksAfter(m)} semaines restantes après celle-ci. Un gardien pris pour un soir est remplacé le lendemain. Risque = variabilité des points des joueurs ajoutés (un gardien peut faire −2 ou +10). Échanges : réalistes selon la réputation des joueurs ; détails et simulateur dans Plus › Échanges.</span></div></details></div>`;
