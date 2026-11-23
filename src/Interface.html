@@ -689,6 +689,26 @@ function qfTable(plans, star, sel, left, P0) {
     <div><b>Meilleur mélange</b> : la meilleure combinaison des trois.</div></div>
     <div class="small muted" style="margin-top:6px">★ = recommandé pour ton objectif. Touche une colonne pour voir ses étapes et la mettre dans « À faire aujourd’hui ».</div>`;
 }
+// Ta semaine soir par soir : qui joue chez toi, places vides par position, joueurs au banc, et la conclusion en une phrase
+function qfNights(m) {
+  const R = m.players, days = horizonDays(D.weekEnd); if (!days.length) return '';
+  const rows = days.map(d => {
+    const L = dayLineup(R, d), pl = g => R.filter(x => x.grp === g && !OUT[x.status] && playsNow(x, d)).length;
+    const F = pl('F'), Dd = pl('D'), G = pl('G'), bench = Math.max(0, F + Dd - L.starters.length);
+    return { d, F, Dd, G, fF: L.free.F, fD: L.free.D, fU: L.free.U, fG: L.free.G, bench, busy: L.free.F + L.free.U === 0 };
+  });
+  // conclusion
+  const busy = rows.filter(r => r.busy), quiet = rows.filter(r => r.F + r.Dd <= 3 && r.d >= todayStr());
+  const lst = l => l.map(r => dLabel(r.d).split(' ')[0].replace('.', '')).join(', ');
+  const tips = [];
+  if (busy.length) {
+    const dOpen = busy.filter(r => r.fD > 0), b1 = busy.filter(r => r.bench);
+    tips.push(`<b>${lst(busy)}</b> : presque tous tes joueurs jouent${b1.length ? ` (${b1.map(r => r.bench + ' au banc ' + dLabel(r.d).split(' ')[0].replace('.', '')).join(', ')})` : ''} — tes places d’attaquant et UTIL sont pleines, un attaquant de plus ne rapporte rien ces soirs-là.${dOpen.length ? ` Il te reste <b>${Math.max(...dOpen.map(r => r.fD))} place${Math.max(...dOpen.map(r => r.fD)) > 1 ? 's' : ''} de défenseur</b> : c’est là qu’un ajout rapporte le plus.` : ''}`);
+  }
+  if (quiet.length) tips.push(`<b>${lst(quiet)}</b> : presque personne ne joue chez toi — n’importe quel joueur qui joue ces soirs-là rapporte, peu importe sa position.`);
+  if (!tips.length) return '';
+  return `<div class="card" style="padding:12px 14px"><div class="small" style="line-height:1.55">${tips.map(t => '📅 ' + t).join('<br>')}</div></div>`;
+}
 function qfSteps(pl) {
   return pl.steps.map(x => `<div style="display:flex;gap:10px;align-items:baseline;margin:5px 0"><span class="chip" style="flex:0 0 64px;text-align:center">${x.from === todayStr() ? 'ce soir' : dLabel(x.from)}</span>
     <span style="flex:1">Retire <b>${esc(x.w.name)}</b> → prends <b>${esc(x.p.name)}</b>${x.p.grp === 'G' ? ' 🥅' : ''}</span><b class="up">${sg1(x.gain)}</b></div>`).join('');
@@ -811,7 +831,7 @@ function vTodo() {
   // dans la liste : les moves qui font partie du plan choisi
   moves.forEach(x => { x.inPlan = pl.steps.some(y => y.p === x.p && y.w === x.w); });
   const acqTxt = left == null ? '' : `<div class="small muted" style="margin-bottom:8px">Acquisitions : ${acq.acqUsed} sur ${acq.acqLimit} utilisées — il t’en reste <b>${left}</b>.</div>`;
-  return povSel + holes + qfToday(pl, A, m, moves.find(x => x.t !== 'tr'))
+  return povSel + holes + qfToday(pl, A, m, moves.find(x => x.t !== 'tr')) + qfNights(m)
     + `<div class="card"><h2>Comparer les plans de la semaine</h2>${hz}${acqTxt}${qfTable(plans, star, sel, left, P0)}
       <div class="lbl" style="margin:14px 0 4px">${sel === star ? '★ ' : ''}${esc(pl.lab)} : les étapes</div>${pl.steps.length ? qfSteps(pl) : '<div class="muted small">Aucun move.</div>'}</div>`
     + `<div class="card"><h2>Si tu fais un seul move</h2><div class="small muted">Chaque option seule, gardée jusqu’à la fin de la semaine (sauf 🥅 : un soir). Classées selon l’objectif « ${esc((QF_MODES.find(x => x[0] === H) || QF_MODES[0])[1])} ». ➕ joueur gardé · 🥅 gardien pour un soir · 🔁 échange.</div>
@@ -2847,7 +2867,7 @@ function weekPlan(m, days, n, ltw, opt) {
   let states = [{ r: m.players.slice(), used: {}, added: [], moves: [], acq: 0, done: 0, lt: 0 }];
   const expand = (st, d, rem) => {
     if (st.acq >= n) return [];
-    const base = planFp(st.r, rem), pool = (opt.pool === 'G' ? [] : faPool([d], st.used).filter(p => playsOn(p, d) && (!p.wv || d >= p.wv)).slice(0, 14)).concat(opt.pool === 'SK' ? [] : faPoolG([d], st.used).filter(p => opt.pool !== 'G' || gShare(p, d) >= 0.5));
+    const base = planFp(st.r, rem), pool = (opt.pool === 'G' ? [] : (l => l.filter(p => p.grp === 'F').slice(0, 10).concat(l.filter(p => p.grp === 'D').slice(0, 6)))(faPool([d], st.used).filter(p => playsOn(p, d) && (!p.wv || d >= p.wv))))   // 10 attaquants + 6 défenseurs : un défenseur peut valoir plus qu'un meilleur attaquant les soirs où tes places d'attaquant sont pleines.concat(opt.pool === 'SK' ? [] : faPoolG([d], st.used).filter(p => opt.pool !== 'G' || gShare(p, d) >= 0.5));
     const dc = dropCandidates({ players: st.r }).filter(p => !opt.keep || st.added.indexOf(p) < 0);
     const drops = opt.keep ? dc : dc.concat(st.added.filter(p => st.r.indexOf(p) >= 0 && dc.indexOf(p) < 0));
     const opts = [];
