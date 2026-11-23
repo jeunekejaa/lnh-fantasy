@@ -2356,8 +2356,10 @@ function weekPlan(m, days, n) {
   // de son groupe + 0,1) ou un joueur ajouté plus tôt dans ce plan
   const repl = {}; faPool(days).forEach(p => { repl[p.grp] = Math.max(repl[p.grp] || 0, p.model || 0); });
   const okDrop = (w, st) => st.added.indexOf(w) >= 0 || (w.model || 0) <= (repl[w.grp] || 0) + 0.1;
+  // valeur à long terme : chaque point de projection gagné (ou perdu) sur l'alignement vaut PLAN_LTW FP (voir plus bas)
+  const dLt = (p, w) => p.grp === 'G' || w.grp === 'G' ? 0 : (p.model || 0) - (w.model || 0), obj = s => s.done + PLAN_LTW * s.lt;
   const startFp = planFp(m.players, days);
-  let states = [{ r: m.players.slice(), used: {}, added: [], moves: [], acq: 0, done: 0 }];
+  let states = [{ r: m.players.slice(), used: {}, added: [], moves: [], acq: 0, done: 0, lt: 0 }];
   const expand = (st, d, rem) => {
     if (st.acq >= n) return [];
     const base = planFp(st.r, rem), pool = faPool([d], st.used).filter(p => playsOn(p, d) && (!p.wv || d >= p.wv)).slice(0, 14);
@@ -2366,26 +2368,27 @@ function weekPlan(m, days, n) {
     pool.forEach(p => drops.forEach(w => {
       if (leavesHole(st.r, w, p) || !okDrop(w, st)) return;
       const r = st.r.filter(q => q !== w).concat([p]), g = planFp(r, rem) - base;
-      if (g >= 1) opts.push({ p: p, w: w, g: g, r: r });
+      const v = g + PLAN_LTW * dLt(p, w);
+      if (v >= 1) opts.push({ p: p, w: w, g: g, v: v, r: r });
     }));
-    return opts.sort((a, b) => b.g - a.g).slice(0, 4).map(o => ({ r: o.r, used: Object.assign({}, st.used, { [o.p.name]: 1, [o.w.name]: 1 }), added: st.added.concat([o.p]),
-      moves: st.moves.concat([{ p: o.p, w: o.w, gain: o.g, from: d }]), acq: st.acq + 1, done: st.done }));
+    return opts.sort((a, b) => b.v - a.v).slice(0, 4).map(o => ({ r: o.r, used: Object.assign({}, st.used, { [o.p.name]: 1, [o.w.name]: 1 }), added: st.added.concat([o.p]),
+      moves: st.moves.concat([{ p: o.p, w: o.w, gain: o.g, from: d }]), acq: st.acq + 1, done: st.done, lt: st.lt + dLt(o.p, o.w) }));
   };
   days.forEach((d, i) => {
     const rem = days.slice(i), after = days.slice(i + 1), cand = [];
     states.forEach(st => { cand.push(st); expand(st, d, rem).forEach(s1 => { cand.push(s1); expand(s1, d, rem).slice(0, 2).forEach(s2 => cand.push(s2)); }); });
     const best = {};
-    cand.forEach(st => { const s = Object.assign({}, st, { done: st.done + dayLineup(st.r, d).fp }); s.est = s.done + planFp(s.r, after);
+    cand.forEach(st => { const s = Object.assign({}, st, { done: st.done + dayLineup(st.r, d).fp }); s.est = s.done + planFp(s.r, after) + PLAN_LTW * s.lt;
       const k = key(s.r) + '#' + s.acq; if (!best[k] || best[k].est < s.est) best[k] = s; });
     states = Object.values(best).sort((a, b) => b.est - a.est).slice(0, B);
   });
-  const top = states.sort((a, b) => b.done - a.done)[0];
-  if (!top || top.done - startFp < 1) return { steps: [], gain: 0 };
+  const top = states.sort((a, b) => obj(b) - obj(a))[0];
+  if (!top || obj(top) - startFp < 1) return { steps: [], gain: 0 };
   // jours où chaque ajout entre réellement dans l'alignement (jusqu'à ce qu'il soit retiré à son tour)
   let r = m.players.slice(); const roster = {};
   days.forEach(d => { top.moves.filter(x => x.from === d).forEach(x => { r = r.filter(q => q !== x.w).concat([x.p]); }); roster[d] = r.slice(); });
   const steps = top.moves.map(x => Object.assign({}, x, { days: days.filter(d => d >= x.from && roster[d].indexOf(x.p) >= 0 && dayLineup(roster[d], d).starters.indexOf(x.p) >= 0) }));
-  return { steps: steps, gain: top.done - startFp, greedy: false };
+  return { steps: steps, gain: top.done - startFp, lt: top.lt, greedy: false };
 }
 function streamPlan(m, days, n) {
   let roster = m.players.slice(), gain = 0;
@@ -2405,9 +2408,9 @@ function streamPlan(m, days, n) {
     steps.push(best); used[best.p.name] = 1; roster = best.r; gain += best.gain;
   }
   const wp = PLAN_FULL ? weekPlan(m, days, n) : null;
-  return wp && wp.gain > gain + 0.05 ? wp : { steps: steps, gain: gain };
+  return wp || { steps: steps, gain: gain };          // le plan complet tient compte du long terme : on le préfère toujours
 }
-let PLAN_FULL = true;
+let PLAN_FULL = true, PLAN_LTW = 2;   // 1 point de projection = 2 FP : on peut se rattraper la semaine suivante, mais le meilleur joueur libre peut partir
 // ---------- Chances de victoire d'un match (force des équipes LNH : buts pour / contre, ramenés vers la moyenne) ----------
 let TSC = null, TSCD = null;
 function tStr(ab) {
