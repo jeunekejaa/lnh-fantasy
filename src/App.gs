@@ -1185,7 +1185,14 @@ function missedGames_(pid, team) {
       const T = (ICE_STORE[id] || {}).teams || {};
       Object.keys(T).forEach(t => { (tg[t] = tg[t] || []).push(+id); Object.keys(T[t].p || {}).forEach(q => { if (!last[q] || last[q] < +id) last[q] = +id; }); });
     });
-    ABS_IDX = { last: last, tg: tg };
+    const ab = {};                                                 // présences : clé = id d'équipe LNH → on passe par l'abréviation
+    try {
+      const c = CacheService.getScriptCache(), hit = c.get('TRI1');
+      let tri = hit ? JSON.parse(hit) : null;
+      if (!tri) { tri = {}; (JSON.parse(UrlFetchApp.fetch('https://api.nhle.com/stats/rest/en/team').getContentText()).data || []).forEach(t => { tri[t.id] = t.triCode; }); c.put('TRI1', JSON.stringify(tri), 21600); }
+      Object.keys(tg).forEach(id => { if (tri[id]) ab[tri[id]] = tg[id]; });
+    } catch (e) {}
+    ABS_IDX = { last: last, tg: ab };
   }
   const L = ABS_IDX.last[pid], g = ABS_IDX.tg[team];
   if (!L || !g || g.length < 5) return 0;                      // jamais vu ou données insuffisantes : on ne conclut rien
