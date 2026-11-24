@@ -672,7 +672,7 @@ function qfStar(plans, H) {
   if (!c.length) return 'none';
   const per = (D.config.gpw || 3.5), wks = Math.max(1, weeksAfter(me()));
   const sc = { best: x => x.week + PLAN_LTW * x.season / (per * wks), court: x => x.week, hail: x => x.p == null ? x.week : x.p, long: x => x.season + 0.01 * x.week }[H] || (x => x.week);
-  return c.sort((a, b) => sc(b) - sc(a))[0].key;
+  return c.sort((a, b) => sc(b) + (b.key === 'mix' ? 1e-6 : 0) - sc(a) - (a.key === 'mix' ? 1e-6 : 0))[0].key;   // à égalité : le meilleur mélange
 }
 const sg1 = v => (v >= 0.05 ? '+' : v <= -0.05 ? '−' : '±') + f1(Math.abs(v));
 const sg0 = v => (v >= 0.5 ? '+' : v <= -0.5 ? '−' : '±') + Math.round(Math.abs(v));
