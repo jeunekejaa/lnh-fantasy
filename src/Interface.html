@@ -658,6 +658,15 @@ function qfPlans(m, left) {
     mk('mix', 'Meilleur mélange', 'la meilleure combinaison des trois', tryP(() => weekPlan(m, days, n, PLAN_LTW))),
     mk('none', 'Ne rien faire', 'référence', base)];
 }
+// le « meilleur mélange » ne peut pas être moins bon qu'un des autres plans (la recherche est approximative) :
+// s'il l'est selon l'objectif, il reprend les étapes du meilleur
+function qfFixMix(plans, H) {
+  const per = (D.config.gpw || 3.5) * Math.max(1, weeksAfter(me()));
+  const sc = { best: x => x.week + PLAN_LTW * x.season / per, court: x => x.week, hail: x => x.p == null ? x.week : x.p, long: x => x.season + 0.01 * x.week }[H] || (x => x.week);
+  const mix = plans.find(x => x.key === 'mix'), top = plans.filter(x => x.n).sort((a, b) => sc(b) - sc(a))[0];
+  if (mix && top && top !== mix && (!mix.n || sc(top) > sc(mix))) Object.assign(mix, { steps: top.steps, week: top.week, season: top.season, p: top.p, n: top.n, nights: top.nights, risk: top.risk });
+  return plans;
+}
 function qfStar(plans, H) {
   const c = plans.filter(x => x.key !== 'none' && x.n);
   if (!c.length) return 'none';
@@ -855,14 +864,16 @@ function qfCard(x, i, P0) {
 function vTodo() {
   qfWhy.ltv = null;
   const m = me(), H = WK.h || 'best', daysWk = horizonDays(D.weekEnd);
-  const acq = povOn() ? {} : D.espn || {}, left = acqLeft(acq, daysWk), A = actDay();
+  // acquisitions de l'équipe affichée : les tiennes viennent d'ESPN ; pour une autre équipe (point de vue), on les compte dans ses transactions de la semaine
+  const lim = (D.espn && D.espn.acqLimit) || 7, used = Math.max(povOn() ? 0 : (D.espn && D.espn.acqUsed) || 0, acqUsedBy(m.team));
+  const acq = { acqUsed: used, acqLimit: lim }, left = acqLeft(acq, daysWk), A = actDay();
   const L0 = D.config.lineup, healthy = k => m.players.filter(p => p.grp === k && !OUT[p.status]).length;
   const holes = healthy('G') < L0.G ? `<div class="warnbox" style="margin:0 0 12px">⚠ Il te manque <b>${L0.G - healthy('G')} gardien${L0.G - healthy('G') > 1 ? 's' : ''}</b> en santé.</div>` : '';
   const povSel = `<div class="card" style="padding:10px 14px;${povOn() ? 'border-color:var(--opp)' : ''}"><label class="small muted" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Point de vue
     <select id="povsel" style="flex:1;min-width:180px">${D.teams.slice().sort((a, b) => (b.team === POV_REAL) - (a.team === POV_REAL)).map(t => `<option value="${esc(t.team)}" ${t.team === D.me ? 'selected' : ''}>${t.team === POV_REAL ? 'Toi (' + esc(t.team) + ')' : esc(t.team)}</option>`).join('')}</select></label>
     ${povOn() ? `<div class="small" style="margin-top:6px;color:var(--opp)">Tu vois « Que faire ? » comme si tu étais <b>${esc(D.me)}</b>.</div>` : ''}</div>`;
   if (left === 0) return povSel + holes + `<div class="card"><h2>Que faire ?</h2><div class="muted">Plus d’acquisitions cette semaine. Regarde <b>Plus › Échanges</b> pour améliorer ton équipe.</div></div>`;
-  const plans = qfPlans(m, left), star = qfStar(plans, H), sel = QF.plan && plans.find(x => x.key === QF.plan && x.n) ? QF.plan : star;
+  const plans = qfFixMix(qfPlans(m, left), H), star = qfStar(plans, H), sel = QF.plan && plans.find(x => x.key === QF.plan && x.n) ? QF.plan : star;
   const pl = plans.find(x => x.key === sel), P = duelPWith(m), P0 = P ? P(0) : null;
   const hz = `<div class="seg seg4" id="wkhz" role="group" aria-label="Objectif">${QF_MODES.map(([h, l]) => `<button class="${H === h ? 'on' : ''}" data-h="${h}">${l}</button>`).join('')}</div>
     <div class="small muted" style="margin:8px 0 12px">${(QF_MODES.find(x => x[0] === H) || QF_MODES[0])[2]} L’étoile ★ marque le plan recommandé pour cet objectif.</div>`;
