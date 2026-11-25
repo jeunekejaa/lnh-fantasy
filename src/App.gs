@@ -698,15 +698,17 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
     const ov = OVR[name];
     let st = ov && ov.out && ov.out >= ymd_(new Date()) ? 'OUT' : (status || '');
     // Filets de sécurité blessures : le statut fantasy d'ESPN est parfois vide (surtout chez les joueurs libres)
+    // un statut ESPN explicite « ACTIVE » (joueur d'une équipe de la ligue) fait foi : on ne le remplace jamais
+    // (sinon un joueur qui revient au jeu reste « absent » chez nous alors qu'ESPN l'a réactivé — Hagel, Barkov, 25 nov.)
     let absN = 0;
-    if (!st || st === 'ACTIVE') {
+    if (!st) {
       const i0 = INJ ? INJ[norm_(name)] : null, td = ymd_(new Date());
       if (i0 && (!i0.r || i0.r > td)) {                       // 1) liste des blessés LNH d'ESPN
         if (/^IR/.test(i0.s) || /injured reserve/i.test(i0.s)) st = 'INJURY_RESERVE';
         else if (/^OUT$/i.test(i0.s) || /suspens/i.test(i0.s)) st = 'OUT';
         else if (/day/i.test(i0.s) && !st) st = 'DAY_TO_DAY';
       }
-      if ((!st || st === 'ACTIVE') && p && p.id && g !== 'G') {   // pas les gardiens : un auxiliaire manque des matchs normalement             // 2) absent des derniers matchs de son équipe
+      if (!st && p && p.id && g !== 'G') {   // pas les gardiens : un auxiliaire manque des matchs normalement             // 2) absent des derniers matchs de son équipe
         absN = missedGames_(p.id, (CUR_TEAMS && CUR_TEAMS.id[p.id]) || p.team || nhl);
         if (absN >= 3) st = 'OUT';
       }
