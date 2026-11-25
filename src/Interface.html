@@ -804,13 +804,13 @@ function irReturns(m) {
   const back = R.filter(p => inIRslot(p) && (!OUT[p.status] || (p.ret && p.ret <= soon))).sort((a, b) => (a.ret || '') < (b.ret || '') ? -1 : 1);
   if (!back.length) return null;
   const daysWk = horizonDays(D.weekEnd), ltv = ltValue(R, futDays(ymdAdd(D.weekEnd, 1), 28)), wks = weeksAfter(m);
-  let cur = R.slice(); const res = [];
+  let cur = R.slice(); const res = [], toIR = new Set();
   back.forEach(b => {
     // un autre blessé qui occupe une des 21 places peut aller à l'IR à sa place (aucun retrait)
-    const swap = cur.find(p => p !== b && !inIRslot(p) && (p.status === 'OUT' || p.status === 'INJURY_RESERVE') && !(p.ret && p.ret <= soon));
-    if (swap) { res.push({ b: b, irSwap: swap }); return; }
+    const swap = cur.find(p => p !== b && !inIRslot(p) && !toIR.has(p) && (p.status === 'OUT' || p.status === 'INJURY_RESERVE') && !(p.ret && p.ret <= soon));
+    if (swap) { toIR.add(swap); res.push({ b: b, irSwap: swap }); return; }
     const base = planFp(cur, daysWk), nG = cur.filter(p => p.grp === 'G' && !OUT[p.status]).length;
-    const opts = cur.filter(p => p !== b && !PROTECT[p.name] && !inIRslot(p) && !(p.grp === 'G' && nG <= D.config.lineup.G)).map(w => {
+    const opts = cur.filter(p => p !== b && !PROTECT[p.name] && !inIRslot(p) && !toIR.has(p) && !OUT[p.status] && !(p.grp === 'G' && nG <= D.config.lineup.G)).map(w => {
       const r = cur.filter(q => q !== w), wk = base - planFp(r, daysWk);
       const L = daysWk.filter(d => { const x = dayLineup(cur, d); return x.starters.indexOf(w) >= 0 || x.goalies.indexOf(w) >= 0; }).length;
       return { w: w, wk: wk, lt: ltv(w), cost: wk + PLAN_LTW * ltv(w) * Math.min(1, wks), n: L };
@@ -831,7 +831,7 @@ function irCard(ir) {
       ${x.irSwap ? `<div style="font-size:17px;margin-top:4px">☐ Mets <b>${pname(x.irSwap)}</b> (${esc({ OUT: 'absent', INJURY_RESERVE: 'IR' }[x.irSwap.status])}) à la réserve des blessés à sa place — personne à retirer.</div>`
         : `<div style="font-size:17px;margin-top:4px">☐ Retire <b>${pname(x.drop.w)}</b> <span class="small muted">— ${why(x.drop)}</span></div>
           ${x.alts.length ? `<div class="small muted">Autres choix : ${x.alts.map(o => `${pname(o.w)} (${why(o)})`).join(' · ')}</div>` : ''}`}</div>`).join('')}
-    <div class="small muted" style="margin-top:6px">Fais-le dès que son retour est confirmé : tant qu’un joueur rétabli occupe une case IR, ESPN bloque normalement tes ajouts. Un retrait ne compte pas dans tes acquisitions. Les plans plus bas supposent que tu fais ce${ir.list.length > 1 ? 's' : ''} changement${ir.list.length > 1 ? 's' : ''}.</div></div>`;
+    <div class="small muted" style="margin-top:6px">${ir.list.some(x => !OUT[x.b.status]) ? 'À faire maintenant' : 'Fais-le dès que son retour est confirmé'} : tant qu’un joueur rétabli occupe une case IR, ESPN bloque normalement tes ajouts. Un retrait ne compte pas dans tes acquisitions. Les plans plus bas supposent que tu fais ce${ir.list.length > 1 ? 's' : ''} changement${ir.list.length > 1 ? 's' : ''}.</div></div>`;
 }
 function qfToday(pl, A, m, best1) {
   if (!pl || !pl.steps.length) return `<div class="card"><h2>À faire aujourd’hui</h2><div class="muted">Rien : aucun move ne vaut la peine pour l’instant.</div></div>`;
