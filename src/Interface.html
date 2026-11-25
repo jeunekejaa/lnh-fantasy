@@ -862,7 +862,7 @@ function qfMoves(m, H, left) {
         weak.forEach(w => { const t = findTrades([w], 'long')[0]; if (t) QFT.res.push(t); });
       } catch (e) {}
     }
-    QFT.res.forEach(t => out.push({ t: 'tr', p: t.get[0], w: t.give[0], get: t.get, give: t.give, team: t.o.team, week: 0, season: t.dm * wks, days: [],
+    QFT.res.forEach(t => out.push({ t: 'tr', p: t.get[0], w: t.give[0], get: t.get, give: t.give, team: t.o.team, week: planFp(R.filter(q => t.give.indexOf(q) < 0).concat(t.get), daysWk) - baseWk, season: t.dm * wks, days: [],
       why: `${t.ratio >= 1.15 ? esc(dn(t.o.team)) + ' y gagne à ses yeux (réputation des joueurs) : facile à faire accepter.' : esc(dn(t.o.team)) + ' le verrait comme équitable (réputation des joueurs).'} Toi : ${sgn(t.dm)} FP par semaine. ${tradeWhy(t).slice(0, 1).join('')}` }));
   }
   const per = gpw * Math.max(1, wks);
@@ -2920,7 +2920,10 @@ const isPanne = p => { const t = trend(p); return !!(t && t.cls === 'panne'); };
 function faPool(days, exclude) {
   // pas de joueurs 🔴 en panne : le backtest montre qu'ils font en moyenne un peu moins que leur projection
   // un joueur au ballotage (p.wv = date de traitement de la réclamation) n'est disponible qu'à partir de cette date
-  return D.waivers.filter(p => p.grp !== 'G' && !AVOID[p.name] && !OUT[p.status] && p.gp >= 3 && !isPanne(p) && !(exclude && exclude[p.name]) && days.some(d => playsOn(p, d) && (!p.wv || d >= p.wv)))
+  // un blessé dont le retour est prévu dans ces soirs-là compte (avail le met à 85 % à partir de sa date) ;
+  // moins de 3 matchs joués : accepté s'il a une projection d'analystes (ex. une vedette qui revient de blessure)
+  const back = p => !OUT[p.status] || (p.ret && days.some(d => d >= p.ret && playsOn(p, d)));
+  return D.waivers.filter(p => p.grp !== 'G' && !AVOID[p.name] && back(p) && (p.gp >= 3 || p.gaf > 0) && !isPanne(p) && !(exclude && exclude[p.name]) && days.some(d => playsOn(p, d) && (!p.wv || d >= p.wv) && avail(p, d) > 0))
     .sort((a, b) => (b.model || 0) - (a.model || 0)).slice(0, 150);
 }
 // un retrait qui créerait une place vide toute la saison (ex. retirer un défenseur pour prendre un attaquant quand tu en as juste 6) : interdit
