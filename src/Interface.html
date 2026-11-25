@@ -3220,9 +3220,32 @@ function newsBox(p) {
       <div class="small muted">Notes fantasy et articles ESPN (en anglais).</div>`;
   return `<h3>Nouvelles</h3>${body}`;
 }
+// Notes fantasy ESPN (Rotowire) : ESPN les refuse aux serveurs de Google, mais les donne au navigateur → lues ici, directement.
+const ESPN_ID = {};
+async function espnNotes(name) {
+  const nm = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  let id = ESPN_ID[name];
+  if (id === undefined) {
+    const r = await fetch('https://site.web.api.espn.com/apis/common/v3/search?limit=8&type=player&query=' + encodeURIComponent(name));
+    const items = ((await r.json()).items || []).filter(x => x.league === 'nhl');
+    const hit = items.find(x => nm(x.displayName || '') === nm(name)) || items[0];
+    id = ESPN_ID[name] = hit ? String(hit.id) : null;
+  }
+  if (!id) return [];
+  const f = await (await fetch('https://site.api.espn.com/apis/fantasy/v2/games/fhl/news/players?limit=8&playerId=' + id)).json();
+  return (f.feed || []).map(a => ({ h: a.headline || a.description || '', d: a.story && a.story !== a.headline ? String(a.story).slice(0, 400) : '', t: String(a.published || '').slice(0, 16).replace('T', ' '), u: '', k: 'note' }));
+}
 function loadNews(p) {
   NEWS[p.name] = 'loading'; rerenderSheet();
-  const done = t => { try { NEWS[p.name] = JSON.parse(t || '[]'); } catch (e) { NEWS[p.name] = []; } if (CURP && CURP.name === p.name) rerenderSheet(); };
+  let notes = null, arts = null;
+  const merge = () => {
+    if (notes === null || arts === null) return;
+    const seen = {}, all = notes.concat(arts).filter(a => { const k = (a.h || '').slice(0, 60); if (!a.h || seen[k]) return false; seen[k] = 1; return true; });
+    NEWS[p.name] = all.sort((a, b) => (b.t > a.t ? 1 : b.t < a.t ? -1 : 0)).slice(0, 10);
+    if (CURP && CURP.name === p.name) rerenderSheet();
+  };
+  espnNotes(p.name).then(l => { notes = l; merge(); }, () => { notes = []; merge(); });
+  const done = t => { try { arts = JSON.parse(t || '[]'); } catch (e) { arts = []; } merge(); };
   if (window.google && google.script && google.script.run) google.script.run.withSuccessHandler(done).withFailureHandler(() => done('[]')).playerNews(p.name);
   else done('[]');
 }
