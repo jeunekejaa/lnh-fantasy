@@ -3215,8 +3215,9 @@ let NEWS = {};
 function newsBox(p) {
   const n = NEWS[p.name];
   const body = n === undefined ? '<button class="btn" id="newsbtn">Voir les nouvelles</button>' : n === 'loading' ? '<span class="muted">Lecture…</span>'
-    : !n.length ? '<span class="muted small">Aucune nouvelle récente trouvée dans le fil ESPN.</span>'
-    : `<ul class="small" style="padding-left:18px;margin:0">${n.map(a => `<li><b>${a.u ? `<a href="${esc(a.u)}" target="_blank" rel="noopener" style="color:inherit">${esc(a.h)}</a>` : esc(a.h)}</b> <span class="muted">${esc(a.t)}</span>${a.d ? `<div class="muted">${esc(a.d)}</div>` : ''}</li>`).join('')}</ul>`;
+    : !n.length ? '<span class="muted small">Aucune nouvelle trouvée pour ce joueur chez ESPN.</span>'
+    : `<ul class="small" style="padding-left:18px;margin:0">${n.map(a => `<li style="margin-bottom:6px">${a.k === 'note' ? '<span class="chip" style="font-size:10.5px">note fantasy</span> ' : ''}<b>${a.u ? `<a href="${esc(a.u)}" target="_blank" rel="noopener" style="color:inherit">${esc(a.h)}</a>` : esc(a.h)}</b> <span class="muted">${esc(a.t)}</span>${a.d ? `<div class="muted">${esc(a.d)}</div>` : ''}</li>`).join('')}</ul>
+      <div class="small muted">Notes fantasy et articles ESPN (en anglais).</div>`;
   return `<h3>Nouvelles</h3>${body}`;
 }
 function loadNews(p) {

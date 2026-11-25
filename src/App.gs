@@ -69,6 +69,7 @@ function doGet(e) {
       let err = null; try { hhLog_(js); } catch (e) { err = e.message; }
       return ContentService.createTextOutput(JSON.stringify({ err: err, hh: getHH_() })).setMimeType(ContentService.MimeType.JSON);
     }
+    if (what === 'news') return ContentService.createTextOutput(playerNews(e.parameter.n || '')).setMimeType(ContentService.MimeType.JSON);
     if (what === 'z') { const t0 = Date.now(), z = getAppDataZ(); return ContentService.createTextOutput(JSON.stringify({ ms: Date.now() - t0, len: z.length, head: z.slice(0, 40) })).setMimeType(ContentService.MimeType.JSON); }
     if (what === 'recap') return ContentService.createTextOutput(getWeekRecap(+(e.parameter.p || 6))).setMimeType(ContentService.MimeType.JSON);
     if (what === 'ver') return ContentService.createTextOutput(codeStatus_()).setMimeType(ContentService.MimeType.JSON);
@@ -1897,25 +1898,49 @@ function saveOverride(name, obj) {          // appelée par l'app (fiche de joue
 }
 
 // Nouvelles d'un joueur (fil public d'ESPN LNH, gardé 30 min) — demandé par la fiche au besoin
-function playerNews(name) {
-  const cache = CacheService.getScriptCache(), key = 'NEWS_FEED';
-  let feed = cache.get(key);
-  if (!feed) {
-    const r = UrlFetchApp.fetch('https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/news?limit=100', { muteHttpExceptions: true });
-    feed = r.getResponseCode() === 200 ? r.getContentText() : '{}';
-    try { cache.put(key, feed.length < 95000 ? feed : JSON.stringify({ articles: (JSON.parse(feed).articles || []).slice(0, 60) }), 1800); } catch (e) { /* rien */ }
-  }
-  let arts = []; try { arts = JSON.parse(feed).articles || []; } catch (e) { arts = []; }
-  const n = norm_(name), last = norm_(String(name).split(' ').slice(-1)[0]);
-  const hits = arts.filter(a => {
-    const cats = (a.categories || []).some(c => c.athlete && norm_(c.athlete.description || c.description || '') === n || norm_(c.description || '') === n);
-    const txt = norm_((a.headline || '') + ' ' + (a.description || ''));
-    return cats || txt.indexOf(n) >= 0 || (last.length > 4 && txt.indexOf(last) >= 0 && txt.indexOf(norm_(String(name).split(' ')[0])) >= 0);
-  }).slice(0, 6).map(a => ({ h: a.headline || '', d: a.description || '', t: String(a.published || '').slice(0, 16).replace('T', ' '),
-                             u: a.links && a.links.web && a.links.web.href || '' }));
-  return JSON.stringify(hits);
+// Nouvelles d'un joueur : 1) notes fantasy ESPN (Rotowire) du joueur, 2) articles ESPN qui le concernent,
+// 3) en dernier recours, le fil général de la LNH. L'identifiant ESPN du joueur est trouvé par la recherche ESPN (gardé 7 jours).
+function espnIdOf_(name) {
+  const c = CacheService.getScriptCache(), k = 'EID_' + norm_(name).replace(/[^a-z0-9]/g, '').slice(0, 200), hit = c.get(k);
+  if (hit) return hit === '-' ? null : hit;
+  let id = null;
+  try {
+    const r = UrlFetchApp.fetch('https://site.web.api.espn.com/apis/common/v3/search?limit=8&type=player&query=' + encodeURIComponent(name), { muteHttpExceptions: true });
+    if (r.getResponseCode() === 200) {
+      const items = (JSON.parse(r.getContentText()).items || []).filter(x => x.league === 'nhl' || /hockey/.test(x.sport || ''));
+      const exact = items.find(x => norm_(x.displayName || '') === norm_(name)) || items[0];
+      id = exact ? String(exact.id) : null;
+    }
+  } catch (e) { id = null; }
+  c.put(k, id || '-', id ? 604800 : 3600);
+  return id;
 }
-
+function playerNews(name) {
+  const out = [], seen = {};
+  const add = a => { const key = (a.h || '').slice(0, 60); if (!a.h || seen[key]) return; seen[key] = 1; out.push(a); };
+  const get = u => { try { const r = UrlFetchApp.fetch(u, { muteHttpExceptions: true }); return r.getResponseCode() === 200 ? JSON.parse(r.getContentText()) : null; } catch (e) { return null; } };
+  const id = espnIdOf_(name);
+  if (id) {
+    const f = get('https://site.api.espn.com/apis/fantasy/v2/games/fhl/news/players?limit=8&playerId=' + id);
+    ((f && f.feed) || []).forEach(a => add({ h: a.headline || a.description || '', d: a.story && a.story !== a.headline ? String(a.story).slice(0, 400) : '', t: String(a.published || '').slice(0, 16).replace('T', ' '), u: '', k: 'note' }));
+    const o = get('https://site.web.api.espn.com/apis/common/v3/sports/hockey/nhl/athletes/' + id + '/overview');
+    ((o && o.news) || []).slice(0, 5).forEach(a => add({ h: a.headline || '', d: a.description || '', t: String(a.published || '').slice(0, 16).replace('T', ' '), u: a.links && a.links.web && a.links.web.href || '', k: 'article' }));
+  }
+  if (!out.length) {   // dernier recours : le fil général
+    const cache = CacheService.getScriptCache(), key = 'NEWS_FEED';
+    let feed = cache.get(key);
+    if (!feed) {
+      const r = UrlFetchApp.fetch('https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/news?limit=100', { muteHttpExceptions: true });
+      feed = r.getResponseCode() === 200 ? r.getContentText() : '{}';
+      try { cache.put(key, feed.length < 95000 ? feed : JSON.stringify({ articles: (JSON.parse(feed).articles || []).slice(0, 60) }), 1800); } catch (e) { /* rien */ }
+    }
+    let arts = []; try { arts = JSON.parse(feed).articles || []; } catch (e) { arts = []; }
+    const n = norm_(name);
+    arts.filter(a => norm_((a.headline || '') + ' ' + (a.description || '')).indexOf(n) >= 0).slice(0, 5)
+      .forEach(a => add({ h: a.headline || '', d: a.description || '', t: String(a.published || '').slice(0, 16).replace('T', ' '), u: a.links && a.links.web && a.links.web.href || '', k: 'article' }));
+  }
+  return JSON.stringify(out.sort((a, b) => (b.t > a.t ? 1 : b.t < a.t ? -1 : 0)).slice(0, 8));
+}
 // Sonde MoneyPuck (1 fois par jour) : où sont les gardiens partants probables / confirmés ? (résultat lisible par Claude : ?what=mp)
 function mpProbe_() {
   // Sonde v2 : où MoneyPuck (et DailyFaceoff) mettent-ils les gardiens partants ? Une fois par jour, résultat dans « MP Sonde »
