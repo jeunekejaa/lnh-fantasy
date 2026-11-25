@@ -793,7 +793,7 @@ function qfSteps(pl, m, all) {
   // « all » = tout le plan (pour rejouer la semaine) ; pl.steps = les étapes à afficher
   const why = m ? qfWhy(m, all || pl.steps) : new Map();
   return pl.steps.map(x => `<div style="display:flex;gap:10px;align-items:baseline;margin:7px 0"><span class="chip" style="flex:0 0 64px;text-align:center">${x.from === todayStr() ? 'ce soir' : dLabel(x.from)}</span>
-    <span style="flex:1;line-height:1.4">Retire <b>${esc(x.w.name)}</b> → prends <b>${esc(x.p.name)}</b>${x.p.grp === 'G' ? ' 🥅' : ''}${why.get(x) ? `<span class="small muted"> — ${why.get(x)}</span>` : ''}</span><b class="up">${sg1(x.gain)}</b></div>`).join('');
+    <span style="flex:1;line-height:1.4">Retire <b>${pname(x.w)}</b> → prends <b>${pname(x.p)}</b>${x.p.grp === 'G' ? ' 🥅' : ''}${why.get(x) ? `<span class="small muted"> — ${why.get(x)}</span>` : ''}</span><b class="up">${sg1(x.gain)}</b></div>`).join('');
 }
 function qfToday(pl, A, m, best1) {
   if (!pl || !pl.steps.length) return `<div class="card"><h2>À faire aujourd’hui</h2><div class="muted">Rien : aucun move ne vaut la peine pour l’instant.</div></div>`;
@@ -805,10 +805,10 @@ function qfToday(pl, A, m, best1) {
   if (gStep && A.L) {
     const alt = D.waivers.filter(g => g.grp === 'G' && g !== gStep.p && !OUT[g.status] && !AVOID[g.name] && playsOn(g, A.d) && gShare(g, A.d) < 0.95 && (!starterOf(g, A.d) || starterOf(g, A.d).me))
       .map(g => ({ g: g, fp: goalieFP(g, A.d) })).filter(x => x.fp > goalieEV(gStep.p, A.d) + 0.2).sort((a, b) => b.fp - a.fp)[0];
-    if (alt) cond = `<div class="small" style="margin-top:8px;line-height:1.5">🎯 <b>Pari :</b> si <b>${esc(alt.g.name)}</b> (${esc(alt.g.nhl)}) est confirmé avant ${A.L.hm}, prends-le plutôt (${f1(alt.fp)} FP contre ${f1(goalieEV(gStep.p, A.d))}). Aujourd’hui : ${startChip(alt.g, A.d)}</div>`;
+    if (alt) cond = `<div class="small" style="margin-top:8px;line-height:1.5">🎯 <b>Pari :</b> si <b>${pname(alt.g)}</b> (${esc(alt.g.nhl)}) est confirmé avant ${A.L.hm}, prends-le plutôt (${f1(alt.fp)} FP contre ${f1(goalieEV(gStep.p, A.d))}). Aujourd’hui : ${startChip(alt.g, A.d)}</div>`;
   }
   return `<div class="card" style="border-color:#1E4A63"><h2>À faire aujourd’hui ${dl ? `<span class="small" style="color:var(--warn);font-weight:600;text-transform:none;letter-spacing:0">· ${dl}</span>` : ''}</h2>
-    ${now.length ? now.map(x => `<div style="font-size:17px;margin:6px 0">☐ Retire <b>${esc(x.w.name)}</b>, prends <b>${esc(x.p.name)}</b>${x.p.grp === 'G' ? ` 🥅 ${startChip(x.p, x.from)}` : ''} <b class="up">${sg1(x.gain)}</b></div>`).join('') : '<div class="muted">Rien aujourd’hui.</div>'}
+    ${now.length ? now.map(x => `<div style="font-size:17px;margin:6px 0">☐ Retire <b>${pname(x.w)}</b>, prends <b>${pname(x.p)}</b>${x.p.grp === 'G' ? ` 🥅 ${startChip(x.p, x.from)}` : ''} <b class="up">${sg1(x.gain)}</b></div>`).join('') : '<div class="muted">Rien aujourd’hui.</div>'}
     ${cond}
     ${later.length ? `<details style="margin-top:10px"><summary class="small">Ensuite : ${later.length} move${later.length > 1 ? 's' : ''} d’ici dimanche ▾</summary>${qfSteps({ steps: later }, m, pl.steps)}</details>` : ''}
     <div class="small muted" style="margin-top:8px">Plan : <b>${esc(pl.lab)}</b> · ${sg1(pl.week)} FP cette semaine · ${sg0(pl.season)} sur la saison · ${pl.n} transaction${pl.n > 1 ? 's' : ''}</div>
@@ -884,8 +884,8 @@ function qfMoves(m, H, left) {
 let QFT = { key: '', res: [] };
 function qfCard(x, i, P0) {
   const ico = { sk: '➕', g: '🥅', tr: '🔁' }[x.t];
-  const head = x.t === 'tr' ? `Donne <b>${x.give.map(p => esc(p.name)).join(' + ')}</b> → reçois <b>${x.get.map(p => esc(p.name)).join(' + ')}</b> <span class="small muted">· ${esc(dn(x.team))}</span>`
-    : `Retire <b>${esc(x.w.name)}</b> → prends <b>${pname(x.p)}</b> <span class="pos">${esc(x.p.pos)} · ${esc(x.p.nhl)}</span>${x.t === 'g' ? ' ' + startChip(x.p, x.days[0]) : ''}`;
+  const head = x.t === 'tr' ? `Donne <b>${x.give.map(p => pname(p)).join(' + ')}</b> → reçois <b>${x.get.map(p => pname(p)).join(' + ')}</b> <span class="small muted">· ${esc(dn(x.team))}</span>`
+    : `Retire <b>${pname(x.w)}</b> → prends <b>${pname(x.p)}</b> <span class="pos">${esc(x.p.pos)} · ${esc(x.p.nhl)}</span>${x.t === 'g' ? ' ' + startChip(x.p, x.days[0]) : ''}`;
   const dW = d => dLabel(d).split(' ')[0].replace('.', ''), plays = x.t === 'tr' ? [] : horizonDays(D.weekEnd).filter(d => playsOn(x.p, d)), bench = plays.filter(d => x.days.indexOf(d) < 0);
   const when = x.t === 'tr' ? 'échange (pas de transaction)' : x.night ? (x.days[0] === todayStr() ? 'pour ce soir seulement' : 'pour ' + dLabel(x.days[0]) + ' seulement')
     : !plays.length ? 'ne joue plus cette semaine'
