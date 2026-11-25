@@ -812,8 +812,10 @@ function irReturns(m) {
     const base = planFp(cur, daysWk), nG = cur.filter(p => p.grp === 'G' && !OUT[p.status]).length;
     const opts = cur.filter(p => p !== b && !PROTECT[p.name] && !inIRslot(p) && !toIR.has(p) && !OUT[p.status] && !(p.grp === 'G' && nG <= D.config.lineup.G)).map(w => {
       const r = cur.filter(q => q !== w), wk = base - planFp(r, daysWk);
-      const L = daysWk.filter(d => { const x = dayLineup(cur, d); return x.starters.indexOf(w) >= 0 || x.goalies.indexOf(w) >= 0; }).length;
-      return { w: w, wk: wk, lt: ltv(w), cost: wk + PLAN_LTW * ltv(w) * Math.min(1, wks), n: L };
+      const Ld = daysWk.filter(d => { const x = dayLineup(cur, d); return x.starters.indexOf(w) >= 0 || x.goalies.indexOf(w) >= 0; }), L = Ld.length;
+      // les soirs où un de tes joueurs au banc prendrait sa place : le perdre ne coûte presque rien ces soirs-là
+      const cover = Ld.map(d => { const a = dayLineup(cur, d), b2 = dayLineup(r, d), n = b2.starters.concat(b2.goalies).find(x => a.starters.indexOf(x) < 0 && a.goalies.indexOf(x) < 0); return n ? { d: d, by: n } : null; }).filter(Boolean);
+      return { w: w, wk: wk, lt: ltv(w), cost: wk + PLAN_LTW * ltv(w) * Math.min(1, wks), n: L, cover: cover };
     }).sort((a, b) => a.cost - b.cost);
     if (!opts.length) return;
     res.push({ b: b, drop: opts[0], alts: opts.slice(1, 3) });
@@ -825,7 +827,7 @@ function irCard(ir) {
   if (!ir || !ir.list.length) return '';
   const ln = p => esc(p.name.split(' ').slice(-1)[0]);
   const when = b => !OUT[b.status] ? 'il est rétabli' : b.ret && b.ret <= todayStr() ? 'retour prévu aujourd’hui, pas encore confirmé par ESPN' : 'retour prévu ' + dLabel(b.ret);
-  const why = o => `${o.n ? `dans ton alignement ${o.n} fois d’ici dimanche` : 'n’entre pas dans ton alignement d’ici dimanche'} · ${f2(o.w.model)} FP par match${o.wk > 0.05 ? ` · coûte ${f1(o.wk)} FP cette semaine` : ' · ne coûte rien cette semaine'}`;
+  const why = o => `${o.n ? `dans ton alignement ${o.n} fois d’ici dimanche` : 'n’entre pas dans ton alignement d’ici dimanche'} · ${f2(o.w.model)} FP par match${o.wk > 0.05 ? ` · coûte ${f1(o.wk)} FP cette semaine` : ' · ne coûte rien cette semaine'}${o.cover && o.cover.length ? ` (${o.cover.map(c => dLabel(c.d).split(' ')[0].replace('.', '') + ', ' + esc(c.by.name.split(' ').slice(-1)[0]) + ' prendrait sa place').join(' ; ')})` : ''}`;
   return `<div class="card" style="border-color:var(--warn)"><h2>🩹 Retour de blessure</h2>
     ${ir.list.map(x => `<div style="margin:8px 0;line-height:1.5"><div><b>${pname(x.b)}</b> revient (${when(x.b)}). Il est dans ta réserve des blessés : pour l’aligner, il doit reprendre une de tes 21 places.</div>
       ${x.irSwap ? `<div style="font-size:17px;margin-top:4px">☐ Mets <b>${pname(x.irSwap)}</b> (${esc({ OUT: 'absent', INJURY_RESERVE: 'IR' }[x.irSwap.status])}) à la réserve des blessés à sa place — personne à retirer.</div>`
