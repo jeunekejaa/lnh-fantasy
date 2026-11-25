@@ -862,7 +862,7 @@ function qfMoves(m, H, left) {
         weak.forEach(w => { const t = findTrades([w], 'long')[0]; if (t) QFT.res.push(t); });
       } catch (e) {}
     }
-    QFT.res.forEach(t => out.push({ t: 'tr', p: t.get[0], w: t.give[0], get: t.get, give: t.give, team: t.o.team, week: planFp(R.filter(q => t.give.indexOf(q) < 0).concat(t.get), daysWk) - baseWk, season: t.dm * wks, days: [],
+    QFT.res.forEach(t => out.push({ t: 'tr', p: t.get[0], w: t.give[0], get: t.get, give: t.give, drop: t.drop || [], team: t.o.team, week: planFp(swapRoster(R, t.give, t.get, 'long'), daysWk) - baseWk, season: t.dm * wks, days: [],
       why: `${t.ratio >= 1.15 ? esc(dn(t.o.team)) + ' y gagne à ses yeux (réputation des joueurs) : facile à faire accepter.' : esc(dn(t.o.team)) + ' le verrait comme équitable (réputation des joueurs).'} Toi : ${sgn(t.dm)} FP par semaine. ${tradeWhy(t).slice(0, 1).join('')}` }));
   }
   const per = gpw * Math.max(1, wks);
@@ -884,7 +884,7 @@ function qfMoves(m, H, left) {
 let QFT = { key: '', res: [] };
 function qfCard(x, i, P0) {
   const ico = { sk: '➕', g: '🥅', tr: '🔁' }[x.t];
-  const head = x.t === 'tr' ? `Donne <b>${x.give.map(p => pname(p)).join(' + ')}</b> → reçois <b>${x.get.map(p => pname(p)).join(' + ')}</b> <span class="small muted">· ${esc(dn(x.team))}</span>`
+  const head = x.t === 'tr' ? `Donne <b>${x.give.map(p => pname(p)).join(' + ')}</b> → reçois <b>${x.get.map(p => pname(p)).join(' + ')}</b> <span class="small muted">· ${esc(dn(x.team))}</span>${x.drop && x.drop.length ? `<div class="small">Roster plein : tu dois aussi <b>retirer ${x.drop.map(p => pname(p)).join(' + ')}</b> (ton plus faible à long terme)</div>` : ''}`
     : `Retire <b>${pname(x.w)}</b> → prends <b>${pname(x.p)}</b> <span class="pos">${esc(x.p.pos)} · ${esc(x.p.nhl)}</span>${x.t === 'g' ? ' ' + startChip(x.p, x.days[0]) : ''}`;
   const dW = d => dLabel(d).split(' ')[0].replace('.', ''), plays = x.t === 'tr' ? [] : horizonDays(D.weekEnd).filter(d => playsOn(x.p, d)), bench = plays.filter(d => x.days.indexOf(d) < 0);
   const when = x.t === 'tr' ? 'échange (pas de transaction)' : x.night ? (x.days[0] === todayStr() ? 'pour ce soir seulement' : 'pour ' + dLabel(x.days[0]) + ' seulement')
@@ -892,7 +892,7 @@ function qfCard(x, i, P0) {
     : `joue ${plays.length} fois (${plays.map(dW).join(', ')})${bench.length ? ` · dans ton alignement ${x.days.length} fois${x.days.length ? ' (' + x.days.map(dW).join(', ') + ')' : ''} · <b>${bench.map(dW).join(', ')}</b> : il resterait sur ton banc, tes places d’${x.p.grp === 'D' ? 'défenseur' : 'attaquant'} et UTIL sont déjà pleines` : ' · dans ton alignement chaque fois'}`;
   return `<div style="padding:12px 0;border-top:1px solid var(--line)">
     <div style="line-height:1.45">${i + 1}. ${ico} ${head}${x.inPlan ? ' <span class="chip" style="color:var(--accent)">dans le plan</span>' : ''}</div>
-    <div style="margin:4px 0"><b class="${x.week >= 0 ? 'up' : 'down'}">${x.t === 'tr' ? '—' : sg1(x.week)}</b> <span class="small muted">cette sem.</span> · <b class="${x.season >= 0 ? 'up' : 'down'}">${x.night ? '±0' : sg0(x.season)}</b> <span class="small muted">saison</span>${x.pw != null && x.t !== 'tr' ? ` · <span class="small">chances ${pct(P0)} → <b>${pct(x.pw)}</b></span>` : ''}</div>
+    <div style="margin:4px 0"><b class="${x.week >= 0 ? 'up' : 'down'}">${sg1(x.week)}</b> <span class="small muted">cette sem.${x.t === 'tr' ? ' (si accepté aujourd’hui)' : ''}</span> · <b class="${x.season >= 0 ? 'up' : 'down'}">${x.night ? '±0' : sg0(x.season)}</b> <span class="small muted">saison</span>${x.pw != null && x.t !== 'tr' ? ` · <span class="small">chances ${pct(P0)} → <b>${pct(x.pw)}</b></span>` : ''}</div>
     <div class="small muted">${when}</div>
     <div class="small" style="margin-top:2px">Pourquoi : ${x.why}</div></div>`;
 }
@@ -1578,8 +1578,16 @@ const tradeValue = p => Math.max(0, perceived(p) - replLevel(p.grp));
 const tvSum = l => l.reduce((s, p) => s + tradeValue(p), 0);
 // Après l'échange : si l'alignement grossit, on libère le joueur le moins utile
 function swapRoster(list, out, inn, h) {
-  const r = list.filter(p => out.indexOf(p) < 0).concat(inn);
-  while (r.length > list.length) { let w = -1; r.forEach((p, i) => { if (inn.indexOf(p) < 0 && (w < 0 || hVal(p, h) < hVal(r[w], h))) w = i; }); r.splice(w, 1); }
+  // roster plein : recevoir plus de joueurs qu'on en donne oblige à en retirer (le plus faible, jamais un intouchable,
+  // un joueur à la réserve des blessés ni un de tes 2 derniers gardiens) ; r.dropped = les joueurs retirés
+  const r = list.filter(p => out.indexOf(p) < 0).concat(inn), dropped = [];
+  while (r.length > list.length) {
+    const nG = r.filter(p => p.grp === 'G').length;
+    let w = -1; r.forEach((p, i) => { if (inn.indexOf(p) >= 0 || PROTECT[p.name] || p.status === 'INJURY_RESERVE' || (p.grp === 'G' && nG <= 2)) return; if (w < 0 || hVal(p, h) < hVal(r[w], h)) w = i; });
+    if (w < 0) break;
+    dropped.push(r.splice(w, 1)[0]);
+  }
+  r.dropped = dropped;
   return r;
 }
 function mockTrades(h) {
@@ -1680,7 +1688,7 @@ function calcTrade() {
       <div class="small" style="margin-top:10px">Séries : ${A} ${pct(s0.po[im])} → <b>${pct(s1.po[im])}</b> (victoires ${f1(s0.wins[im])} → ${f1(s1.wins[im])}) · ${esc(o.team)} ${pct(s0.po[io])} → <b>${pct(s1.po[io])}</b></div>
       <div class="legend"><span>Projection maison échangée : ${A} donne ${f2(sum(give))}, reçoit ${f2(sum(get))} (FP/match)</span>
       ${ratio != null ? `<span>Acceptabilité : aux yeux de ${esc(o.team)} (analystes + stats réelles, au-dessus d’un joueur libre), il reçoit ${Math.round(ratio * 100)} % de ce qu’il donne${ratio < 0.97 ? ' — il risque de refuser' : ''}</span>` : ''}
-      ${spots < 0 ? `<span>${isMe ? 'Tu reçois' : esc(m.team) + ' reçoit'} plus de joueurs que ${isMe ? 'tu en donnes' : 'donnés'} : le joueur le moins utile est libéré dans le calcul.</span>` : spots > 0 ? `<span>${isMe ? 'Tu libères' : esc(m.team) + ' libère'} ${spots} place(s) : la force n’inclut pas le joueur ajouté ensuite.</span>` : ''}
+      ${spots < 0 ? `<span>${isMe ? 'Tu reçois' : esc(m.team) + ' reçoit'} plus de joueurs que ${isMe ? 'tu en donnes' : 'donnés'} : il faut retirer <b>${(mNew.dropped || []).map(p => esc(p.name)).join(' + ') || 'un joueur'}</b> (le moins utile, jamais un intouchable), déjà compté dans le calcul.</span>` : spots > 0 ? `<span>${isMe ? 'Tu libères' : esc(m.team) + ' libère'} ${spots} place(s) : la force n’inclut pas le joueur ajouté ensuite.</span>` : ''}
       <span>Force = ton meilleur alignement chaque semaine ; un échange qui n’améliore que ton banc ne change rien.</span></div>`;
   }, 30);
 }
@@ -2139,7 +2147,9 @@ function findTrades(give, h) {
     }
     let best = null, nOk = 0;
     packs.forEach(get => {
-      const dm = powerH(swapRoster(m.players, give, get, h), h) - b0;
+      const mr = swapRoster(m.players, give, get, h);
+      if (mr.length > m.players.length) return;   // impossible de faire de la place
+      const dm = powerH(mr, h) - b0;
       if (dm < 0.3) return;
       const dO = powerH(swapRoster(o.players, get, give, h), h) - o0;
       if (dO < -2) return;
@@ -2148,7 +2158,7 @@ function findTrades(give, h) {
       nOk++;
       // à gain presque égal, on préfère les 🟡 malchanceux (prix bas, ils vont remonter) : +0,2 FP/sem. de préférence chacun
       const score = dm + 0.2 * get.filter(p => cls(p) === 'malchanceux').length;
-      if (!best || score > best.score) best = { o: o, give: give, get: get, dm: dm, dO: dO, ratio: ratio, score: score };
+      if (!best || score > best.score) best = { o: o, give: give, get: get, drop: mr.dropped, dm: dm, dO: dO, ratio: ratio, score: score };
     });
     if (best) { best.n = nOk; byTeam.push(best); }
   });
@@ -2168,6 +2178,7 @@ function suggestedTrades() {
       : TS.res.map((t, i) => `<div style="padding:10px 0;border-bottom:1px solid var(--line)">
         <div class="small muted">${i + 1}. Avec <b>${esc(t.o.team)}</b> <span class="small">(${t.n} retour${t.n > 1 ? 's' : ''} possible${t.n > 1 ? 's' : ''} chez lui)</span></div>
         <div style="margin:4px 0">Tu reçois : ${chips(t.get)}</div>
+        ${t.drop && t.drop.length ? `<div class="small">Roster plein : tu dois aussi retirer <b>${t.drop.map(p => esc(p.name)).join(' + ')}</b> (déjà compté dans le gain)</div>` : ''}
         <div class="small"><span class="up"><b>Toi ${sgn(t.dm)} FP/sem.</b></span> · lui ${sgn(t.dO)} · à ses yeux il reçoit ${Math.round(t.ratio * 100)} % de ce qu’il donne</div>
         ${tradeWhy(t).length ? `<div class="small muted">Pourquoi : ${tradeWhy(t).join(' · ')}</div>` : ''}
         ${povOn() ? '' : `<button class="btn" style="margin-top:6px" data-mock="${i}">Analyser dans le simulateur</button>`}</div>`).join('');
@@ -2204,7 +2215,7 @@ function wantSearch() {
       const dO = powerH(swapRoster(o.players, get, give, 'long'), 'long') - O0;
       if (dO < -4) return;                                          // ça le démolit : il dira non
       const p1 = odds(r);
-      res.push({ give, get, ratio, dl, dO, p: p1, dp: p1 != null && P0 != null ? p1 - P0 : 0 });
+      res.push({ give, get, drop: r.dropped, ratio, dl, dO, p: p1, dp: p1 != null && P0 != null ? p1 - P0 : 0 });
     });
   });
   return res.sort((a, b) => (b.dl + 25 * b.dp) - (a.dl + 25 * a.dp)).slice(0, 6);
@@ -2222,7 +2233,7 @@ function wantTrades() {
   let res = '';
   if (WT.res && WT.key === key) res = !WT.res.length ? '<div class="empty">Aucun échange à la fois gagnant pour toi et acceptable pour lui. Essaie d’ajouter un de tes joueurs (une vraie pièce) ou de viser moins haut.</div>'
     : WT.res.map(x => `<div style="padding:10px 0;border-bottom:1px solid var(--line)">
-        <div><span class="muted small">Tu donnes</span> ${names(x.give)}</div><div><span class="muted small">Tu reçois</span> ${names(x.get)}</div>
+        <div><span class="muted small">Tu donnes</span> ${names(x.give)}</div><div><span class="muted small">Tu reçois</span> ${names(x.get)}</div>${x.drop && x.drop.length ? `<div class="small">Roster plein : tu retires aussi <b>${names(x.drop)}</b></div>` : ''}
         <div class="small" style="margin-top:2px"><b class="up">Toi ${sgn(x.dl)} FP/sem.</b>${x.p != null ? ` · cette semaine : <b>${pct(x.p)}</b> de chances (${x.dp >= 0 ? '+' : ''}${Math.round(x.dp * 100)})` : ''} · lui ${sgn(x.dO)} · à ses yeux il reçoit ${Math.round(x.ratio * 100)} %</div></div>`).join('');
   return `<div class="card"><h2>Je veux… <span class="muted small">(tu choisis la cible, l’app complète l’échange)</span></h2>
     <div class="controls"><select id="wtteam">${teams.map(t => `<option value="${esc(t.team)}" ${t.team === WT.team ? 'selected' : ''}>${esc(t.team)}</option>`).join('')}</select>
