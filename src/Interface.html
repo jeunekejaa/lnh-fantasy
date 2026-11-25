@@ -653,8 +653,29 @@ function planRisk(steps, days) {
   const sd = Math.sqrt(v), gain = steps.reduce((t, x) => t + (x.gain || 0), 0), r = sd / Math.max(1, gain);
   return { sd: sd, lab: !steps.length ? '—' : r < 0.6 ? 'faible' : r < 1 ? 'moyen' : 'élevé' };
 }
-function qfPlans(m, left) {
-  const days = horizonDays(D.weekEnd), n = left == null ? 7 : Math.min(7, left);
+// ---- Hail Mary (all-in) ----
+// valeur d'un joueur pour le reste de la semaine (pour choisir qui peut sauter : ceux qui ne joueront presque plus)
+function restWeek(p, days) {
+  return days.reduce((t, d) => t + (p.grp === 'G' ? goalieEV(p, d) : playsNow(p, d) ? (p.model || 0) * oppMult(p, d) * avail(p, d) : 0), 0);
+}
+// all-in : les 8 joueurs qui rapporteront le moins d'ici dimanche, intouchables compris (une vedette dont l'équipe ne joue plus peut sauter)
+function allInDrops(r, days) { return r.slice().sort((a, b) => restWeek(a, days) - restWeek(b, days)).slice(0, 6); }
+// variance des points d'un joueur d'ici dimanche, s'il est dans l'alignement « r »
+function restVar(p, r, days) {
+  return days.reduce((t, d) => { if (!playsOn(p, d)) return t; const L = dayLineup(r, d);
+    if (p.grp === 'G') return t + (L.goalies.indexOf(p) >= 0 ? varGame(p) * gShare(p, d) : 0);
+    return t + (L.starters.indexOf(p) >= 0 ? varGame(p) : 0); }, 0);
+}
+// combien vaut 1 unité de variance en FP : P(gagner) = Φ(μ/σ) ; dP/dVar ÷ dP/dμ = −μ / (2σ²) (positif seulement si tu es derrière)
+function hailVarW(m) {
+  const r = m.record || {}, o = D.teams.find(t => t.team === r.opp); if (!o || r.live == null) return 0;
+  const a = weekOutlook(m), b = weekOutlook(o), V = a.sd * a.sd + b.sd * b.sd, mu = (r.live || 0) + a.mean - (r.oppLive || 0) - b.mean;
+  return V > 0 ? Math.max(0, Math.min(0.2, -mu / (2 * V))) : 0;
+}
+function qfPlans(m, left, H) {
+  const days = horizonDays(D.weekEnd), n = left == null ? 7 : Math.min(7, left), ALL = H === 'hail';
+  // Hail Mary = all-in : intouchables et long terme ignorés, n'importe qui peut sauter, et la variance compte (si tu es derrière)
+  const vw = ALL ? hailVarW(m) : 0, LT = ALL ? 0 : PLAN_LTW, o = x => ALL ? Object.assign({ allIn: true, varW: vw }, x) : x;
   const f28 = futDays(ymdAdd(D.weekEnd, 1), 28), ltv = ltValue(m.players, f28), gpw = D.config.gpw || 3.5, wks = weeksAfter(m);
   const P = duelPWith(m), base = { steps: [], gain: 0 };
   const mk = (key, lab, sub, pl) => {
@@ -666,10 +687,10 @@ function qfPlans(m, left) {
   };
   const tryP = f => { try { return f(); } catch (e) { return base; } };
   return [
-    mk('g', 'Gardien qui joue ce soir', 'tu prends un gardien libre partant, et tu le changes au besoin', tryP(() => weekPlan(m, days, n, PLAN_LTW, { pool: 'G' }))),
-    mk('sk', 'Un ou deux ajouts gardés', 'tu prends le meilleur joueur libre et tu le gardes', tryP(() => weekPlan(m, days, Math.min(n, 2), PLAN_LTW, { pool: 'SK', keep: true }))),
-    mk('st', 'Changer de joueurs chaque jour', 'tu prends des joueurs qui jouent ce soir-là, et tu les changes le lendemain', tryP(() => weekPlan(m, days, n, 0, { pool: 'SK' }))),
-    mk('mix', 'Meilleur mélange', 'la meilleure combinaison des trois', tryP(() => weekPlan(m, days, n, PLAN_LTW))),
+    mk('g', 'Gardien qui joue ce soir', 'tu prends un gardien libre partant, et tu le changes au besoin', tryP(() => weekPlan(m, days, n, LT, o({ pool: 'G' })))),
+    mk('sk', 'Un ou deux ajouts gardés', 'tu prends le meilleur joueur libre et tu le gardes', tryP(() => weekPlan(m, days, Math.min(n, 2), LT, o({ pool: 'SK', keep: true })))),
+    mk('st', 'Changer de joueurs chaque jour', 'tu prends des joueurs qui jouent ce soir-là, et tu les changes le lendemain', tryP(() => weekPlan(m, days, n, 0, o({ pool: 'SK' })))),
+    mk('mix', 'Meilleur mélange', 'la meilleure combinaison des trois', tryP(() => weekPlan(m, days, n, LT, o({})))),
     mk('none', 'Ne rien faire', 'référence', base)];
 }
 // le « meilleur mélange » ne peut pas être moins bon qu'un des autres plans (la recherche est approximative) :
@@ -804,7 +825,7 @@ function qfMoves(m, H, left) {
   // ajouts gardés (patineurs, ou un gardien partant régulier) : pour chaque joueur libre, le meilleur joueur à retirer SELON L'OBJECTIF
   const per0 = gpw * Math.max(1, wks), sc0 = { best: (wk, se) => wk + PLAN_LTW * se / per0, court: (wk) => wk, hail: (wk) => wk, long: (wk, se) => se }[H] || ((wk) => wk);
   const inLine = (p, r, d) => { const L = dayLineup(r, d); return L.starters.indexOf(p) >= 0 || L.goalies.indexOf(p) >= 0; };
-  const baseWk = planFp(m.players, daysWk), dropsK = dropCandidates({ players: m.players });
+  const ALL = H === 'hail', baseWk = planFp(m.players, daysWk), dropsK = ALL ? allInDrops(m.players, daysWk) : dropCandidates({ players: m.players });
   faPool(daysWk.length ? daysWk : days2).slice(0, 40).concat(faPoolG(daysWk.length ? daysWk : days2).filter(g => (g.share || 0) >= 0.4)).forEach(p => {
     // une option par joueur à retirer (pas seulement la meilleure) : la liste peut alors comparer « Husso → X » et « Beniers → X »
     const lastN = x => esc(x.name.split(' ').slice(-1)[0]);
@@ -820,10 +841,10 @@ function qfMoves(m, H, left) {
   });
   // gardiens du soir (repris le lendemain : la saison ne change pas)
   const R = m.players, L0 = dayLineup(R, A.d);
-  const drops = dropCandidates({ players: R });
-  D.waivers.filter(g => g.grp === 'G' && !AVOID[g.name] && !OUT[g.status] && playsOn(g, A.d) && (!g.wv || A.d >= g.wv) && gShare(g, A.d) >= 0.5).forEach(g => {
+  const drops = ALL ? allInDrops(R, daysWk.filter(d => d >= A.d)) : dropCandidates({ players: R });
+  D.waivers.filter(g => g.grp === 'G' && (ALL || !AVOID[g.name]) && !OUT[g.status] && playsOn(g, A.d) && (!g.wv || A.d >= g.wv) && gShare(g, A.d) >= (ALL ? 0.15 : 0.5)).forEach(g => {
     let best = null;
-    drops.forEach(w => { if (leavesHole(R, w, g)) return; const r = R.filter(q => q !== w).concat([g]), gain = dayLineup(r, A.d).fp - L0.fp, v = gain - PLAN_LTW * ltv(w);
+    drops.forEach(w => { if (leavesHole(R, w, g)) return; const r = R.filter(q => q !== w).concat([g]), gain = dayLineup(r, A.d).fp - L0.fp, v = gain - (ALL ? 0 : PLAN_LTW * ltv(w));
       if (!best || v > best.v) best = { w: w, gain: gain, v: v }; });
     if (best && best.gain > 0.3) {
       const wk = L0.goalies.find(q => q === best.w) ? best.w : null;
@@ -832,7 +853,7 @@ function qfMoves(m, H, left) {
     }
   });
   // échanges : pour tes 2 joueurs les plus faibles à long terme, le meilleur retour réaliste
-  if (!povOn()) {
+  if (!povOn() && !ALL) {   // pas d'échange en Hail Mary : il faut des points cette semaine
     const key = 'QFT|' + D.updated + '|' + R.map(p => p.name).join(',');
     if (QFT.key !== key) {
       QFT = { key: key, res: [] };
@@ -887,10 +908,11 @@ function vTodo() {
     <select id="povsel" style="flex:1;min-width:180px">${D.teams.slice().sort((a, b) => (b.team === POV_REAL) - (a.team === POV_REAL)).map(t => `<option value="${esc(t.team)}" ${t.team === D.me ? 'selected' : ''}>${t.team === POV_REAL ? 'Toi (' + esc(t.team) + ')' : esc(t.team)}</option>`).join('')}</select></label>
     ${povOn() ? `<div class="small" style="margin-top:6px;color:var(--opp)">Tu vois « Que faire ? » comme si tu étais <b>${esc(D.me)}</b>.</div>` : ''}</div>`;
   if (left === 0) return povSel + holes + `<div class="card"><h2>Que faire ?</h2><div class="muted">Plus d’acquisitions cette semaine. Regarde <b>Plus › Échanges</b> pour améliorer ton équipe.</div></div>`;
-  const plans = qfFixMix(qfPlans(m, left), H), star = qfStar(plans, H), sel = QF.plan && plans.find(x => x.key === QF.plan && x.n) ? QF.plan : star;
+  const plans = qfFixMix(qfPlans(m, left, H), H), star = qfStar(plans, H), sel = QF.plan && plans.find(x => x.key === QF.plan && x.n) ? QF.plan : star;
   const pl = plans.find(x => x.key === sel), P = duelPWith(m), P0 = P ? P(0) : null;
   const hz = `<div class="seg seg4" id="wkhz" role="group" aria-label="Objectif">${QF_MODES.map(([h, l]) => `<button class="${H === h ? 'on' : ''}" data-h="${h}">${l}</button>`).join('')}</div>
-    <div class="small muted" style="margin:8px 0 12px">${(QF_MODES.find(x => x[0] === H) || QF_MODES[0])[2]} L’étoile ★ marque le plan recommandé pour cet objectif.</div>`;
+    <div class="small muted" style="margin:8px 0 12px">${(QF_MODES.find(x => x[0] === H) || QF_MODES[0])[2]} L’étoile ★ marque le plan recommandé pour cet objectif.</div>
+    ${H === 'hail' ? `<div class="warnbox" style="margin:0 0 12px">🎲 <b>Mode all-in.</b> Les intouchables et la suite de la saison ne comptent plus : n’importe qui peut sauter (même une vedette qui ne joue plus d’ici dimanche) pour un joueur — ou un gardien qui n’est même pas sûr de partir — qui peut encore te rapporter.${hailVarW(m) > 0 ? ' Comme tu es derrière, les choix risqués sont favorisés : il te faut un gros coup.' : ' Tu n’es pas derrière : ici, le risque ne t’aide pas — garde ce mode pour une fin de semaine serrée.'}</div>` : ''}`;
   const moves = qfMoves(m, H, left);
   // dans la liste : les moves qui font partie du plan choisi
   moves.forEach(x => { x.inPlan = pl.steps.some(y => y.p === x.p && y.w === x.w); });
@@ -2949,30 +2971,32 @@ function weekPlan(m, days, n, ltw, opt) {
   // compte les trous d'alignement (ex. un 6e défenseur) et ignore un joueur qui finirait sur le banc
   // (mesuré jour par jour sur les 2 semaines suivantes : un joueur ne compte que les soirs où il entre dans ton alignement)
   const ltv = ltValue(m.players, futDays(ymdAdd(days[days.length - 1], 1), 28));
-  const obj = s => s.done + LTW * s.lt;
+  const obj = s => s.done + LTW * s.lt + (opt.varW || 0) * (s.vr || 0);
   const startFp = planFp(m.players, days);
   let states = [{ r: m.players.slice(), used: {}, added: [], moves: [], acq: 0, done: 0, lt: 0 }];
   const expand = (st, d, rem) => {
     if (st.acq >= n) return [];
-    const base = planFp(st.r, rem), pool = (opt.pool === 'G' ? [] : (l => l.filter(p => p.grp === 'F').slice(0, 10).concat(l.filter(p => p.grp === 'D').slice(0, 6)))(faPool([d], st.used).filter(p => playsOn(p, d) && (!p.wv || d >= p.wv)))).concat(opt.pool === 'SK' ? [] : faPoolG([d], st.used).filter(p => opt.pool !== 'G' || gShare(p, d) >= 0.5));
+    const gMin = opt.allIn ? 0.15 : 0.5;   // all-in : même un gardien qui a peu de chances de partir peut valoir le coup
+    const base = planFp(st.r, rem), pool = (opt.pool === 'G' ? [] : (l => l.filter(p => p.grp === 'F').slice(0, 10).concat(l.filter(p => p.grp === 'D').slice(0, 6)))(faPool([d], st.used).filter(p => playsOn(p, d) && (!p.wv || d >= p.wv)))).concat(opt.pool === 'SK' ? [] : (opt.allIn ? D.waivers.filter(g => g.grp === 'G' && !OUT[g.status] && !st.used[g.name] && playsOn(g, d) && (!g.wv || d >= g.wv) && gShare(g, d) >= gMin) : faPoolG([d], st.used)).filter(p => opt.pool !== 'G' || gShare(p, d) >= gMin));
     // (10 attaquants + 6 défenseurs : un défenseur peut valoir plus qu'un meilleur attaquant les soirs où tes places d'attaquant sont pleines)
-    const dc = dropCandidates({ players: st.r }).filter(p => !opt.keep || st.added.indexOf(p) < 0);
+    const dc = (opt.allIn ? allInDrops(st.r, rem) : dropCandidates({ players: st.r })).filter(p => !opt.keep || st.added.indexOf(p) < 0);
     const drops = opt.keep ? dc : dc.concat(st.added.filter(p => st.r.indexOf(p) >= 0 && dc.indexOf(p) < 0));
     const opts = [];
     pool.forEach(p => drops.forEach(w => {
-      if (leavesHole(st.r, w, p) || !okDrop(w, st)) return;
+      if (leavesHole(st.r, w, p) || (!opt.allIn && !okDrop(w, st))) return;
       const r = st.r.filter(q => q !== w).concat([p]), g = planFp(r, rem) - base;
-      const v = g + LTW * (ltv(p) - ltv(w));
-      if (v >= 1) opts.push({ p: p, w: w, g: g, v: v, r: r });
+      const dv = opt.varW ? restVar(p, r, rem) - restVar(w, st.r, rem) : 0;   // Hail Mary : de la variance en plus vaut des points quand tu es derrière
+      const v = g + LTW * (ltv(p) - ltv(w)) + (opt.varW || 0) * dv;
+      if (v >= 1) opts.push({ p: p, w: w, g: g, v: v, r: r, dv: dv });
     }));
     return opts.sort((a, b) => b.v - a.v).slice(0, 4).map(o => ({ r: o.r, used: Object.assign({}, st.used, { [o.p.name]: 1, [o.w.name]: 1 }), added: st.added.concat([o.p]),
-      moves: st.moves.concat([{ p: o.p, w: o.w, gain: o.g, from: d }]), acq: st.acq + 1, done: st.done, lt: st.lt + ltv(o.p) - ltv(o.w) }));
+      moves: st.moves.concat([{ p: o.p, w: o.w, gain: o.g, from: d }]), acq: st.acq + 1, done: st.done, lt: st.lt + ltv(o.p) - ltv(o.w), vr: (st.vr || 0) + o.dv }));
   };
   days.forEach((d, i) => {
     const rem = days.slice(i), after = days.slice(i + 1), cand = [];
     states.forEach(st => { cand.push(st); expand(st, d, rem).forEach(s1 => { cand.push(s1); expand(s1, d, rem).slice(0, 2).forEach(s2 => cand.push(s2)); }); });
     const best = {};
-    cand.forEach(st => { const s = Object.assign({}, st, { done: st.done + dayLineup(st.r, d).fp }); s.est = s.done + planFp(s.r, after) + LTW * s.lt;
+    cand.forEach(st => { const s = Object.assign({}, st, { done: st.done + dayLineup(st.r, d).fp }); s.est = s.done + planFp(s.r, after) + LTW * s.lt + (opt.varW || 0) * (s.vr || 0);
       const k = key(s.r) + '#' + s.acq; if (!best[k] || best[k].est < s.est) best[k] = s; });
     states = Object.values(best).sort((a, b) => b.est - a.est).slice(0, B);
   });
