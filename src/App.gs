@@ -811,7 +811,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
               share: CONFIG.GOALIE_START_SHARE, sims: APP.SIMS, luck: APP.LUCK,
               k: inSeason_() ? Object.assign({}, APP.K, inSeason_().K, { gx: inSeason_().kxg, g: inSeason_().gsrc === 'tirs' || inSeason_().gsrc === 'mix' ? inSeason_().K.g : inSeason_().kg, gstart: inSeason_().gk ? inSeason_().gk.k : APP.K.gstart }) : APP.K,
               bt: inSeason_() },
-    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), rookies: rookies_(), lsv: LSV, odds: getOdds_(), moves: myMoves, journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS, lines: DFOL, cal: CAL, hh: getHH_(), arena: ARENA, pen: PEN,
+    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), untouch: getUntouch_(), rookies: rookies_(), lsv: LSV, odds: getOdds_(), moves: myMoves, journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS, lines: DFOL, cal: CAL, hh: getHH_(), arena: ARENA, pen: PEN,
     teams: teamsOut, waivers: waivers, schedule: sched.games, warn: WARN.slice(),
     sources: ['LNH (api-web.nhle.com)', 'ESPN Fantasy', 'GAF Aggregate Projections', 'MoneyPuck.com']
   };
@@ -1865,6 +1865,18 @@ function rookies_() {
     if (ids.length) cache.put('ROOKIES', JSON.stringify(ids), 43200);
     return ids;
   } catch (e) { WARN.push('Recrues : ' + e.message); return []; }
+}
+// Intouchables par équipe (les joueurs qu'un gérant ne veut ni retirer ni échanger) : { équipe: [noms] }, gardés sur le serveur
+const UNTOUCH_DEFAULT = { 'dans mon inoxtag kaizen era': ['Jimmy Snuggerud'], 'cest quoi les dark patterns': ['Zack Bolduc'] };
+function getUntouch_() {
+  try { const t = PropertiesService.getDocumentProperties().getProperty('UNTOUCH'); return t ? JSON.parse(t) : UNTOUCH_DEFAULT; } catch (e) { return UNTOUCH_DEFAULT; }
+}
+function getUntouch() { return JSON.stringify(getUntouch_()); }       // appelée par l'app à l'ouverture (la copie en cache peut être plus vieille)
+function saveUntouch(obj) {           // appelée par l'app
+  const clean = {};
+  Object.keys(obj || {}).forEach(t => { const l = (obj[t] || []).filter(n => typeof n === 'string' && n.length < 80).slice(0, 25); if (l.length) clean[String(t).slice(0, 80)] = l; });
+  PropertiesService.getDocumentProperties().setProperty('UNTOUCH', JSON.stringify(clean));
+  return JSON.stringify(clean);
 }
 function getWatch_() { try { return JSON.parse(PropertiesService.getDocumentProperties().getProperty('WATCH') || '[]'); } catch (e) { return []; } }
 function saveWatch(list) {          // appelée par l'app

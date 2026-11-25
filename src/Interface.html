@@ -258,6 +258,7 @@ function load(force) {
   };
   const ko = e => { if (force) progress(false); $('#stamp').textContent = 'Erreur : ' + (e && e.message || e); };
   if (window.google && google.script && google.script.run) {
+    google.script.run.withSuccessHandler(t => { try { const o = JSON.parse(t); if (untOk(o)) { UNT_LIVE = o; refreshProtect(); if (D) render(); } } catch (e) {} }).getUntouch();
     if (!force) {
       // ouverture instantanée : dernières données gardées sur cet appareil, puis les données fraîches en arrière-plan
       let shown = null;
@@ -474,6 +475,12 @@ function playerRows(list, opts = {}) {
 const PHEAD = (extra = '') => `<tr><th>Joueur</th><th>MJ</th><th title="FP par match cette saison">Réel</th><th title="Projection des analystes (moyenne GAF des experts, avant la saison)">Analystes</th><th title="Projection maison : analystes + moteur maison, mélangés à la saison en cours stat par stat">Maison</th><th title="Chance : réel − mérité. Négatif = malchanceux (va remonter)">Chance</th><th title="Temps de jeu (min/match), dont avantage numérique · gardiens : part des départs">TJ / départs</th><th>Matchs restants</th><th>Sem. proch.</th>${extra}</tr>`;
 
 let TEAMV = null;
+function untouchCard(m) {
+  const l = (untouch()[m.team] || []).map(n => m.players.find(p => p.name === n) || { name: n, pos: '', nhl: '' });
+  return `<div class="card" style="padding:12px 14px"><div class="lbl" style="margin-bottom:6px">🔒 Intouchables · ${esc(dn(m.team))}</div>
+    ${l.length ? l.map(p => `<span class="chip" style="margin:2px 4px 2px 0">${esc(p.name)} <button class="btn" data-unt="${esc(p.name)}" aria-label="Retirer ${esc(p.name)} des intouchables" style="min-height:22px;padding:0 6px;font-size:12px;margin-left:4px">✕</button></span>`).join('') : '<span class="small muted">Aucun.</span>'}
+    <div class="small muted" style="margin-top:6px">Jamais proposés au retrait dans « Que faire », ni dans les échanges suggérés (à donner ou à demander). Pour en ajouter : touche un joueur, puis « 🔓 Rendre intouchable ».</div></div>`;
+}
 function vTeam() {
   if (!TEAMV || !D.teams.find(t => t.team === TEAMV)) TEAMV = D.me;
   const m = D.teams.find(t => t.team === TEAMV), g = k => m.players.filter(p => p.grp === k).sort((a, b) => b.model - a.model);
@@ -484,7 +491,7 @@ function vTeam() {
   return pick + `<div class="grid" style="margin-bottom:14px">
     <div class="kpi"><div class="v">${f1(m.power)}</div><div class="l">Force / semaine (maison)</div></div>
     <div class="kpi"><div class="v">${f1(m.powerReal)}</div><div class="l">Force / semaine (stats réelles)</div></div>
-  </div>` + teamReport(m) + sec('Attaquants', 'F') + sec('Défenseurs', 'D') + sec('Gardiens', 'G');
+  </div>` + untouchCard(m) + teamReport(m) + sec('Attaquants', 'F') + sec('Défenseurs', 'D') + sec('Gardiens', 'G');
 }
 
 // Options d'ajout, groupées par joueur à retirer : son nom une seule fois, puis une ligne compacte par ajout possible
@@ -865,7 +872,7 @@ function vTodo() {
   qfWhy.ltv = null;
   const m = me(), H = WK.h || 'best', daysWk = horizonDays(D.weekEnd);
   // acquisitions de l'équipe affichée : les tiennes viennent d'ESPN ; pour une autre équipe (point de vue), on les compte dans ses transactions de la semaine
-  const lim = (D.espn && D.espn.acqLimit) || 7, used = Math.max(povOn() ? 0 : (D.espn && D.espn.acqUsed) || 0, acqUsedBy(m.team));
+  const lim = (D.espn && D.espn.acqLimit) || 7, used = acqUsedBy(m.team);
   const acq = { acqUsed: used, acqLimit: lim }, left = acqLeft(acq, daysWk), A = actDay();
   const L0 = D.config.lineup, healthy = k => m.players.filter(p => p.grp === k && !OUT[p.status]).length;
   const holes = healthy('G') < L0.G ? `<div class="warnbox" style="margin:0 0 12px">⚠ Il te manque <b>${L0.G - healthy('G')} gardien${L0.G - healthy('G') > 1 ? 's' : ''}</b> en santé.</div>` : '';
@@ -1468,7 +1475,24 @@ function bindWaivers() {
 
 // ---------- Échanges ----------
 // Jamais d'échange avec cette équipe ; joueurs que tu ne veux pas donner ; joueurs à ne jamais recevoir
-const NO_TRADE = /dark patterns/i, PROTECT = { 'Jimmy Snuggerud': 1 }, AVOID = { 'Carter Hart': 1 };
+const NO_TRADE = /dark patterns/i, AVOID = { 'Carter Hart': 1 };
+// Intouchables : choisis par équipe (fiche du joueur ou onglet Équipes). Un intouchable n'est jamais proposé
+// au retrait (Que faire), ni à donner, ni à demander dans un échange suggéré.
+let PROTECT = { 'Jimmy Snuggerud': 1 };
+let UNT_LIVE = null;   // version lue directement sur le serveur (plus récente que la copie des données en cache)
+const UNT_DEFAULT = { 'dans mon inoxtag kaizen era': ['Jimmy Snuggerud'], 'cest quoi les dark patterns': ['Zack Bolduc'] };
+const untOk = o => o && typeof o === 'object' && !Array.isArray(o) && Object.values(o).every(Array.isArray);
+function untouch() { return untOk(UNT_LIVE) ? UNT_LIVE : untOk(D && D.untouch) ? D.untouch : UNT_DEFAULT; }
+function refreshProtect() { PROTECT = {}; Object.values(untouch()).forEach(l => (l || []).forEach(n => { PROTECT[n] = 1; })); }
+function isUntouch(p, team) { const l = untouch()[team || ownerOf(p)] || []; return l.indexOf(p.name) >= 0; }
+function toggleUntouch(p) {
+  const team = ownerOf(p); if (!team) return;
+  const U = JSON.parse(JSON.stringify(untouch())), l = U[team] = U[team] || [], i = l.indexOf(p.name);
+  if (i >= 0) l.splice(i, 1); else l.push(p.name);
+  if (!l.length) delete U[team];
+  UNT_LIVE = U; if (D) D.untouch = U; refreshProtect(); QFT = { key: '', res: [] };
+  if (window.google && google.script && google.script.run) google.script.run.withFailureHandler(() => { $('#stamp').textContent = 'Intouchables : sauvegarde impossible (réessaie)'; }).saveUntouch(U);
+}
 // Disponibilité selon l'horizon : à court terme un blessé ne rapporte rien ; à long terme il finit par revenir
 const AVAIL = { court: { INJURY_RESERVE: 0, OUT: 0, SUSPENSION: 0, DAY_TO_DAY: 0.7 },
                 long: { INJURY_RESERVE: 0.6, OUT: 0.6, SUSPENSION: 0.5, DAY_TO_DAY: 0.95 } };
@@ -1541,7 +1565,7 @@ function mockTrades(h) {
   const mine = packs(m.players, PROTECT);
   D.teams.filter(t => t !== m && !NO_TRADE.test(t.team)).forEach(o => {
     const o0 = powerH(o.players, h);
-    packs(o.players, AVOID).forEach(get => mine.forEach(give => {
+    packs(o.players, Object.assign({}, AVOID, PROTECT)).forEach(get => mine.forEach(give => {
       if (give.length === 2 && get.length === 2) return;
       const dm = powerH(swapRoster(m.players, give, get, h), h) - b0;
       if (dm < 0.5) return;
@@ -1668,6 +1692,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet()
 function bindSheet() {
   const sv = $('#ovsave'); if (sv) sv.onclick = () => saveOvr(CURP);
   const ws = $('#wstar'); if (ws) ws.onclick = () => toggleWatch(CURP);
+  const ut = $('#untouch'); if (ut) ut.onclick = () => { toggleUntouch(CURP); rerenderSheet(); render(); };
   const cl = $('#ovclear'); if (cl) cl.onclick = () => saveOvr(CURP, true);
   const nb = $('#newsbtn'); if (nb) nb.onclick = () => loadNews(CURP);
   document.querySelectorAll('#psmode button').forEach(b => b.onclick = () => { PSV.mode = b.dataset.m; rerenderSheet(); });
@@ -1813,7 +1838,7 @@ function sheetHtml(p) {
   const x = p.x || {}, S = D.config, isG = p.grp === 'G';
   const owner = p.owner === undefined ? ownerOf(p) : p.owner;
   const own = owner ? (owner === D.me ? '<span class="chip good">ton équipe</span>' : `<span class="chip">${esc(owner)}</span>`) : '<span class="chip warn">libre</span>';
-  const head = `<div class="hd"><div><h2>${esc(p.name)} <button class="btn" id="wstar" style="min-height:30px;padding:0 10px;font-size:13px;vertical-align:middle">${watched(p) ? '★ Suivi' : '☆ Suivre'}</button></h2><div class="muted small" style="margin-top:4px">${esc(p.pos)} · ${esc(p.nhl)} · ${p.gp || 0} MJ ${own} ${stChip(p.status, p)} ${pChip(p)} ${lineChip(p)}${p.ml && Math.abs(p.ml - 1) >= 0.01 ? ` <span class="chip" title="Correction apprise sur 10 saisons (validée avec analystes sur 5 saisons)">ajusté ${p.ml > 1 ? '+' : '−'}${Math.round(Math.abs(p.ml - 1) * 100)} %</span>` : ''}</div></div><button class="x" aria-label="Fermer">✕</button></div>`;
+  const head = `<div class="hd"><div><h2>${esc(p.name)} <button class="btn" id="wstar" style="min-height:30px;padding:0 10px;font-size:13px;vertical-align:middle">${watched(p) ? '★ Suivi' : '☆ Suivre'}</button>${owner ? ` <button class="btn" id="untouch" style="min-height:30px;padding:0 10px;font-size:13px;vertical-align:middle;${isUntouch(p, owner) ? 'border-color:var(--warn);color:var(--warn)' : ''}" title="Intouchable : jamais proposé au retrait ni dans un échange">${isUntouch(p, owner) ? '🔒 Intouchable' : '🔓 Rendre intouchable'}</button>` : ''}</h2><div class="muted small" style="margin-top:4px">${esc(p.pos)} · ${esc(p.nhl)} · ${p.gp || 0} MJ ${own} ${stChip(p.status, p)} ${pChip(p)} ${lineChip(p)}${p.ml && Math.abs(p.ml - 1) >= 0.01 ? ` <span class="chip" title="Correction apprise sur 10 saisons (validée avec analystes sur 5 saisons)">ajusté ${p.ml > 1 ? '+' : '−'}${Math.round(Math.abs(p.ml - 1) * 100)} %</span>` : ''}</div></div><button class="x" aria-label="Fermer">✕</button></div>`;
   const wk = `<h3>Calendrier</h3><div class="grid">${kp(p.left + (p.live ? ' <span class="chip bad">🔴 en cours</span>' : p.today ? ' <span class="chip good">ce soir</span>' : ''), 'Matchs restants cette semaine')}${kp(p.next, 'Matchs la semaine prochaine')}
     ${kp(f1((p.perGame ?? p.model) * p.left), 'FP attendus d’ici dimanche', 'Projection maison × matchs restants cette semaine')}${kp(f1((p.perGame ?? p.model) * p.next), 'FP attendus sem. proch.')}</div>
     ${nextGames(p)}`;
@@ -2397,7 +2422,11 @@ function restSplit(players, days) {
 }
 // acquisitions déjà faites cette semaine par une équipe (transactions ESPN)
 function acqUsedBy(team) {
-  if (team === D.me && D.espn && D.espn.acqUsed != null) return D.espn.acqUsed;
+  const fromTx = acqFromTx(team);
+  if (team === POV_REAL && D.espn && D.espn.acqUsed != null) return Math.max(D.espn.acqUsed, fromTx);   // ESPN ne donne le compte que pour TON équipe (pas celle du point de vue)
+  return fromTx;
+}
+function acqFromTx(team) {
   const s = ymdAdd(D.weekEnd, -6);
   return (D.tx || []).filter(t => String(t.date || '').slice(0, 10) >= s).reduce((n, t) => n + (t.items || []).filter(i => i.kind === 'ADD' && i.to === team).length, 0);
 }
@@ -3073,6 +3102,7 @@ function teamReport(m) {
 
 // ---------- « Mon info » : corrections manuelles (gardées sur le serveur) ----------
 function applyOvr() {
+  refreshProtect();
   const O = D.ovr || {}, t = todayStr();
   const all = []; D.teams.forEach(tm => tm.players.forEach(p => all.push(p))); D.waivers.forEach(p => all.push(p));
   D.waivers.forEach(p => { p._fa = true; });                // joueurs libres : un match commencé ne peut plus servir
