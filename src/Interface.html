@@ -352,7 +352,14 @@ function render() {
   if (TAB === 'trade') { bindTrade(); bindTodo(); }
   if (TAB === 'trend') bindTrend();
   if (TAB === 'tx') bindTx();
-  if (TAB === 'team') $('#teamsel').onchange = e => { TEAMV = e.target.value.replace(/ \(toi\)$/, ''); render(); };
+  if (TAB === 'team') {
+    $('#teamsel').onchange = e => { TEAMV = e.target.value.replace(/ \(toi\)$/, ''); render(); };
+    document.querySelectorAll('[data-unt]').forEach(x => x.onclick = () => {
+      const t = D.teams.find(t => t.team === (TEAMV || D.me)), pl = t && t.players.find(q => q.name === x.dataset.unt);
+      if (pl) toggleUntouch(pl); else { const U = JSON.parse(JSON.stringify(untouch())); U[t.team] = (U[t.team] || []).filter(n => n !== x.dataset.unt); UNT_LIVE = U; refreshProtect();
+        if (window.google && google.script && google.script.run) google.script.run.saveUntouch(U); }
+      render(); });
+  }
   document.querySelectorAll('[data-sub],[data-go]').forEach(b => b.onclick = () => setTab(b.dataset.sub || b.dataset.go));
   document.querySelectorAll('[data-wk]').forEach(b => b.onclick = () => { WKV.per = (WKV.per || D.currentPeriod) + (+b.dataset.wk); render(); });
   document.querySelectorAll('[data-duel]').forEach(b => b.onclick = () => { WKV.sel = b.dataset.duel; render(); });
