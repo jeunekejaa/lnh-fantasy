@@ -69,6 +69,7 @@ function doGet(e) {
       let err = null; try { hhLog_(js); } catch (e) { err = e.message; }
       return ContentService.createTextOutput(JSON.stringify({ err: err, hh: getHH_() })).setMimeType(ContentService.MimeType.JSON);
     }
+    if (what === 'newsdbg') { const id = espnIdOf_(e.parameter.n || ''); let r = null; try { r = UrlFetchApp.fetch('https://site.api.espn.com/apis/fantasy/v2/games/fhl/news/players?limit=8&playerId=' + id, { muteHttpExceptions: true }); } catch (x) { return ContentService.createTextOutput('ERR ' + x.message); } return ContentService.createTextOutput(id + ' ' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 300)); }
     if (what === 'news') return ContentService.createTextOutput(playerNews(e.parameter.n || '')).setMimeType(ContentService.MimeType.JSON);
     if (what === 'z') { const t0 = Date.now(), z = getAppDataZ(); return ContentService.createTextOutput(JSON.stringify({ ms: Date.now() - t0, len: z.length, head: z.slice(0, 40) })).setMimeType(ContentService.MimeType.JSON); }
     if (what === 'recap') return ContentService.createTextOutput(getWeekRecap(+(e.parameter.p || 6))).setMimeType(ContentService.MimeType.JSON);
