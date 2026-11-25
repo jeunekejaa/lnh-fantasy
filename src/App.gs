@@ -261,7 +261,8 @@ function availFor_(p, pj) {
   const sg = typeof pjGames_ === 'function' ? pjGames_(String(CONFIG.SEASON)) : 82;
   const h0 = pj && pj.ly && pj.ly.gp ? pj.ly.gp / 82 : pj && pj.gp ? pj.gp / sg : null;
   const base = h0 != null ? Math.max(0.55, Math.min(0.95, 0.70 + 0.12 * Math.min(1, h0))) : 0.80;
-  const n = p ? +p.gp || 0 : 0, tg = p ? TEAM_GP[p.team] || 0 : 0, cur = tg ? Math.min(1, n / tg) : null;
+  const n = p ? +p.gp || 0 : 0, tg0 = p ? TEAM_GP[p.team] || 0 : 0, gap = p && p.id ? longAbsence_(p.id, p.team) : 0;
+  const tg = Math.max(n, tg0 - gap), cur = tg ? Math.min(1, n / tg) : null;      // revenu d'une longue absence : on ne compte pas ces matchs-là
   const v = cur != null ? (20 * base + n * cur) / (20 + n) : base;
   return Math.round(Math.max(0.5, Math.min(0.97, v)) * 1000) / 1000;
 }
@@ -1219,11 +1220,13 @@ const ICE = { GAMES_PER_TEAM: 6, MAX_NEW: 40, SHEET: 'APP Glace' };
 let ABS_IDX = null;
 function missedGames_(pid, team) {
   if (!ABS_IDX) {
-    const last = {}, tg = {};
+    const last = {}, tg = {}, seen = {}, tms = {};
     Object.keys(ICE_STORE).forEach(id => {
       const T = (ICE_STORE[id] || {}).teams || {};
-      Object.keys(T).forEach(t => { (tg[t] = tg[t] || []).push(+id); Object.keys(T[t].p || {}).forEach(q => { if (!last[q] || last[q] < +id) last[q] = +id; }); });
+      Object.keys(T).forEach(t => { (tg[t] = tg[t] || []).push(+id); Object.keys(T[t].p || {}).forEach(q => { if (!last[q] || last[q] < +id) last[q] = +id;
+        (seen[q] = seen[q] || {})[id] = 1; (tms[q] = tms[q] || {})[t] = 1; }); });
     });
+    Object.keys(tg).forEach(t => tg[t].sort((a, b) => a - b));
     const ab = {};                                                 // présences : clé = id d'équipe LNH → on passe par l'abréviation
     try {
       const c = CacheService.getScriptCache(), hit = c.get('TRI1');
@@ -1231,11 +1234,22 @@ function missedGames_(pid, team) {
       if (!tri) { tri = {}; (JSON.parse(UrlFetchApp.fetch('https://api.nhle.com/stats/rest/en/team').getContentText()).data || []).forEach(t => { tri[t.id] = t.triCode; }); c.put('TRI1', JSON.stringify(tri), 21600); }
       Object.keys(tg).forEach(id => { if (tri[id]) ab[tri[id]] = tg[id]; });
     } catch (e) {}
-    ABS_IDX = { last: last, tg: ab };
+    ABS_IDX = { last: last, tg: ab, seen: seen, tms: tms };
   }
   const L = ABS_IDX.last[pid], g = ABS_IDX.tg[team];
   if (!L || !g || g.length < 5) return 0;                      // jamais vu ou données insuffisantes : on ne conclut rien
   return g.filter(id => id > L).length;
+}
+// Joueur revenu d'une longue absence ? (labo, 10 saisons, 890 cas : 8 matchs manqués d'affilée ou plus, puis présent aux 3 derniers
+// matchs de son équipe) → sa présence de la saison se calcule SANS la longue absence (erreur 0,223 → 0,158, 9 saisons sur 9).
+// Retourne la longueur de l'absence (0 si le joueur n'est pas dans ce cas). Les joueurs échangés en cours de saison sont exclus.
+function longAbsence_(pid, team) {
+  try { missedGames_(pid, team); } catch (e) { return 0; }       // construit l'index des présences
+  const X = ABS_IDX, g = X && X.tg[team], sn = X && X.seen[pid];
+  if (!g || g.length < 10 || !sn || Object.keys(X.tms[pid] || {}).length !== 1) return 0;
+  let streak = 0, best = 0; g.forEach(id => { streak = sn[id] ? 0 : streak + 1; best = Math.max(best, streak); });
+  const healthy = g.slice(-3).every(id => sn[id]);
+  return best >= 8 && healthy ? best : 0;
 }
 let ICE_STORE = {}, LINEQ = {}, DFOL = null, CAL = [], L30TOI = {}, ARENA = null, PEN = null;
 // Compagnons de trio (retenu par le backtest par match 2025-26, coef 0,1) : qualité de ses 2 principaux coéquipiers à 5 c. 5
