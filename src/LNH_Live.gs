@@ -71,6 +71,7 @@ const GREEN = '#C6EFCE', RED = '#FFC7CE';
 const LAYOUT_VERSION = 'v4';   // (leaderboard « vérité » : clé 'board2')
 const WARN = [];   // avertissements affichés en haut du Leaderboard Live
 let ESPN_DATA = null;      // réponse complète de la ligue ESPN (fiches, calendrier, pointage)
+const ESPN_SLOT = {};      // nom normalisé → case ESPN (8 = réserve des blessés)
 const ESPN_STATUS = {};    // nom normalisé → statut ESPN (OUT, INJURY_RESERVE, SUSPENSION…)
 const ESPN_SHEET_OF = {};
 const ESPN_NAME_OF = {};   // nom de feuille → nom actuel de l'équipe sur ESPN  // id d'équipe ESPN → nom de la feuille d'équipe
@@ -1287,6 +1288,7 @@ function fetchEspnTeams_() {
         catch (e) { errors.push(`${host} : réponse illisible (ligue privée ? reconnecte ESPN)`); break; }
         ESPN_DATA = json;
         return (json.teams || []).map(t => {
+          ((t.roster || {}).entries || []).forEach(e => { const p = e.playerPoolEntry && e.playerPoolEntry.player; if (p && p.fullName) ESPN_SLOT[norm_(p.fullName)] = e.lineupSlotId; });
           const entries = ((t.roster || {}).entries || [])
             .map(e => (e.playerPoolEntry && e.playerPoolEntry.player) || null).filter(p => p && p.fullName);
           entries.forEach(p => { ESPN_STATUS[norm_(p.fullName)] = p.injuryStatus || (p.injured ? 'OUT' : ''); });

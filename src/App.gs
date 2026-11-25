@@ -752,7 +752,9 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
     const ps = t.players.map(x => {
       rostered[keyOf(x.name)] = true;
       const p = findPlayer_(x.name, x.nhl, x.pos, index, aliases);
-      return enrich(x.name, x.nhl, x.pos, x.status, p);
+      const q = enrich(x.name, x.nhl, x.pos, x.status, p);
+      if (ESPN_SLOT[norm_(x.name)] === 8) q.ir = 1;   // dans une case de la réserve des blessés (ne compte pas dans les 21 places)
+      return q;
     });
     const e = st ? st.byId[sheetToId[t.team]] : null;
     return {

@@ -795,6 +795,44 @@ function qfSteps(pl, m, all) {
   return pl.steps.map(x => `<div style="display:flex;gap:10px;align-items:baseline;margin:7px 0"><span class="chip" style="flex:0 0 64px;text-align:center">${x.from === todayStr() ? 'ce soir' : dLabel(x.from)}</span>
     <span style="flex:1;line-height:1.4">Retire <b>${pname(x.w)}</b> → prends <b>${pname(x.p)}</b>${x.p.grp === 'G' ? ' 🥅' : ''}${why.get(x) ? `<span class="small muted"> — ${why.get(x)}</span>` : ''}</span><b class="up">${sg1(x.gain)}</b></div>`).join('');
 }
+// ======================= RETOURS DE BLESSURE =======================
+// un joueur dans une case de la réserve des blessés (IR) qui revient doit reprendre une des 21 places :
+// soit un autre blessé « absent » va à l'IR à sa place, soit il faut retirer quelqu'un (le moins coûteux, objectif « Meilleurs moves »)
+const inIRslot = p => p.ir === 1 || (p.ir == null && p.status === 'INJURY_RESERVE');
+function irReturns(m) {
+  const R = m.players, soon = ymdAdd(todayStr(), 3);
+  const back = R.filter(p => inIRslot(p) && (!OUT[p.status] || (p.ret && p.ret <= soon))).sort((a, b) => (a.ret || '') < (b.ret || '') ? -1 : 1);
+  if (!back.length) return null;
+  const daysWk = horizonDays(D.weekEnd), ltv = ltValue(R, futDays(ymdAdd(D.weekEnd, 1), 28)), wks = weeksAfter(m);
+  let cur = R.slice(); const res = [];
+  back.forEach(b => {
+    // un autre blessé qui occupe une des 21 places peut aller à l'IR à sa place (aucun retrait)
+    const swap = cur.find(p => p !== b && !inIRslot(p) && (p.status === 'OUT' || p.status === 'INJURY_RESERVE') && !(p.ret && p.ret <= soon));
+    if (swap) { res.push({ b: b, irSwap: swap }); return; }
+    const base = planFp(cur, daysWk), nG = cur.filter(p => p.grp === 'G' && !OUT[p.status]).length;
+    const opts = cur.filter(p => p !== b && !PROTECT[p.name] && !inIRslot(p) && !(p.grp === 'G' && nG <= D.config.lineup.G)).map(w => {
+      const r = cur.filter(q => q !== w), wk = base - planFp(r, daysWk);
+      const L = daysWk.filter(d => { const x = dayLineup(cur, d); return x.starters.indexOf(w) >= 0 || x.goalies.indexOf(w) >= 0; }).length;
+      return { w: w, wk: wk, lt: ltv(w), cost: wk + PLAN_LTW * ltv(w) * Math.min(1, wks), n: L };
+    }).sort((a, b) => a.cost - b.cost);
+    if (!opts.length) return;
+    res.push({ b: b, drop: opts[0], alts: opts.slice(1, 3) });
+    cur = cur.filter(q => q !== opts[0].w);
+  });
+  return { list: res, roster: cur };
+}
+function irCard(ir) {
+  if (!ir || !ir.list.length) return '';
+  const ln = p => esc(p.name.split(' ').slice(-1)[0]);
+  const when = b => !OUT[b.status] ? 'il est rétabli' : b.ret && b.ret <= todayStr() ? 'retour prévu aujourd’hui, pas encore confirmé par ESPN' : 'retour prévu ' + dLabel(b.ret);
+  const why = o => `${o.n ? `dans ton alignement ${o.n} fois d’ici dimanche` : 'n’entre pas dans ton alignement d’ici dimanche'} · ${f2(o.w.model)} FP par match${o.wk > 0.05 ? ` · coûte ${f1(o.wk)} FP cette semaine` : ' · ne coûte rien cette semaine'}`;
+  return `<div class="card" style="border-color:var(--warn)"><h2>🩹 Retour de blessure</h2>
+    ${ir.list.map(x => `<div style="margin:8px 0;line-height:1.5"><div><b>${pname(x.b)}</b> revient (${when(x.b)}). Il est dans ta réserve des blessés : pour l’aligner, il doit reprendre une de tes 21 places.</div>
+      ${x.irSwap ? `<div style="font-size:17px;margin-top:4px">☐ Mets <b>${pname(x.irSwap)}</b> (${esc({ OUT: 'absent', INJURY_RESERVE: 'IR' }[x.irSwap.status])}) à la réserve des blessés à sa place — personne à retirer.</div>`
+        : `<div style="font-size:17px;margin-top:4px">☐ Retire <b>${pname(x.drop.w)}</b> <span class="small muted">— ${why(x.drop)}</span></div>
+          ${x.alts.length ? `<div class="small muted">Autres choix : ${x.alts.map(o => `${pname(o.w)} (${why(o)})`).join(' · ')}</div>` : ''}`}</div>`).join('')}
+    <div class="small muted" style="margin-top:6px">Fais-le dès que son retour est confirmé : tant qu’un joueur rétabli occupe une case IR, ESPN bloque normalement tes ajouts. Un retrait ne compte pas dans tes acquisitions. Les plans plus bas supposent que tu fais ce${ir.list.length > 1 ? 's' : ''} changement${ir.list.length > 1 ? 's' : ''}.</div></div>`;
+}
 function qfToday(pl, A, m, best1) {
   if (!pl || !pl.steps.length) return `<div class="card"><h2>À faire aujourd’hui</h2><div class="muted">Rien : aucun move ne vaut la peine pour l’instant.</div></div>`;
   const now = pl.steps.filter(x => x.from <= A.d), later = pl.steps.filter(x => x.from > A.d);
@@ -898,7 +936,7 @@ function qfCard(x, i, P0) {
 }
 function vTodo() {
   qfWhy.ltv = null;
-  const m = me(), H = WK.h || 'best', daysWk = horizonDays(D.weekEnd);
+  const m0 = me(), IRR = irReturns(m0), m = IRR ? Object.assign(Object.create(Object.getPrototypeOf(m0)), m0, { players: IRR.roster }) : m0, H = WK.h || 'best', daysWk = horizonDays(D.weekEnd);
   // acquisitions de l'équipe affichée : les tiennes viennent d'ESPN ; pour une autre équipe (point de vue), on les compte dans ses transactions de la semaine
   const lim = (D.espn && D.espn.acqLimit) || 7, used = acqUsedBy(m.team);
   const acq = { acqUsed: used, acqLimit: lim }, left = acqLeft(acq, daysWk), A = actDay();
@@ -907,7 +945,7 @@ function vTodo() {
   const povSel = `<div class="card" style="padding:10px 14px;${povOn() ? 'border-color:var(--opp)' : ''}"><label class="small muted" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Point de vue
     <select id="povsel" style="flex:1;min-width:180px">${D.teams.slice().sort((a, b) => (b.team === POV_REAL) - (a.team === POV_REAL)).map(t => `<option value="${esc(t.team)}" ${t.team === D.me ? 'selected' : ''}>${t.team === POV_REAL ? 'Toi (' + esc(t.team) + ')' : esc(t.team)}</option>`).join('')}</select></label>
     ${povOn() ? `<div class="small" style="margin-top:6px;color:var(--opp)">Tu vois « Que faire ? » comme si tu étais <b>${esc(D.me)}</b>.</div>` : ''}</div>`;
-  if (left === 0) return povSel + holes + `<div class="card"><h2>Que faire ?</h2><div class="muted">Plus d’acquisitions cette semaine. Regarde <b>Plus › Échanges</b> pour améliorer ton équipe.</div></div>`;
+  if (left === 0) return povSel + holes + irCard(IRR) + `<div class="card"><h2>Que faire ?</h2><div class="muted">Plus d’acquisitions cette semaine. Regarde <b>Plus › Échanges</b> pour améliorer ton équipe.</div></div>`;
   const plans = qfFixMix(qfPlans(m, left, H), H), star = qfStar(plans, H), sel = QF.plan && plans.find(x => x.key === QF.plan && x.n) ? QF.plan : star;
   const pl = plans.find(x => x.key === sel), P = duelPWith(m), P0 = P ? P(0) : null;
   const hz = `<div class="seg seg4" id="wkhz" role="group" aria-label="Objectif">${QF_MODES.map(([h, l]) => `<button class="${H === h ? 'on' : ''}" data-h="${h}">${l}</button>`).join('')}</div>
@@ -917,7 +955,7 @@ function vTodo() {
   // dans la liste : les moves qui font partie du plan choisi
   moves.forEach(x => { x.inPlan = pl.steps.some(y => y.p === x.p && y.w === x.w); });
   const acqTxt = left == null ? '' : `<div class="small muted" style="margin-bottom:8px">Acquisitions : ${acq.acqUsed} sur ${acq.acqLimit} utilisées — il t’en reste <b>${left}</b>.</div>`;
-  return povSel + holes + qfToday(pl, A, m, moves.find(x => x.t !== 'tr')) + qfNights(m)
+  return povSel + holes + irCard(IRR) + qfToday(pl, A, m, moves.find(x => x.t !== 'tr')) + qfNights(m)
     + `<div class="card"><h2>Comparer les plans de la semaine</h2>${hz}${acqTxt}${qfTable(plans, star, sel, left, P0)}
       <div class="lbl" style="margin:14px 0 4px">${sel === star ? '★ ' : ''}${esc(pl.lab)} : les étapes</div>${pl.steps.length ? qfSteps(pl, m) : '<div class="muted small">Aucun move.</div>'}</div>`
     + `<div class="card"><h2>Si tu fais un seul move</h2><div class="small muted">Chaque option seule, gardée jusqu’à la fin de la semaine (sauf 🥅 : un soir). Classées selon l’objectif « ${esc((QF_MODES.find(x => x[0] === H) || QF_MODES[0])[1])} ». ➕ joueur gardé · 🥅 gardien pour un soir · 🔁 échange.</div>
