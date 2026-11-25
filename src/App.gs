@@ -724,7 +724,8 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
         ['g', 'a', 'ppp', 'shp'].forEach(k => { R[k] = (R[k] || 0) * f; });
       }
     }
-    const today0 = ymd_(new Date()), ret = ij && ij.r ? (ij.r > today0 ? ij.r : addDays_(today0, 3)) : (ov && ov.out && ov.out >= today0 ? addDays_(ov.out, 1) : null);
+    const today0 = ymd_(new Date()), ret = ij && ij.r ? (ij.r >= today0 ? ij.r : addDays_(today0, 3))   // retour prévu aujourd'hui = aujourd'hui (une date déjà passée : dans 3 jours, par prudence)
+       : (ov && ov.out && ov.out >= today0 ? addDays_(ov.out, 1) : null);
     return {
       name: name, pos: pos || (p && p.pos) || '', grp: g, nhl: team, status: st,
       gp: p ? p.gp : 0, fpg: p && p.gp ? round_(p.fpg) : null, gaf: gafPrior ? round_(gafPrior.fpg) : null,
