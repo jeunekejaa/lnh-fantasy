@@ -835,6 +835,40 @@ function irCard(ir) {
           ${x.alts.length ? `<div class="small muted">Autres choix : ${x.alts.map(o => `${pname(o.w)} (${why(o)})`).join(' · ')}</div>` : ''}`}</div>`).join('')}
     <div class="small muted" style="margin-top:6px">${ir.list.some(x => !OUT[x.b.status]) ? 'À faire maintenant' : 'Fais-le dès que son retour est confirmé'} : tant qu’un joueur rétabli occupe une case IR, ESPN bloque normalement tes ajouts. Un retrait ne compte pas dans tes acquisitions. Les plans plus bas supposent que tu fais ce${ir.list.length > 1 ? 's' : ''} changement${ir.list.length > 1 ? 's' : ''}.</div></div>`;
 }
+// un blessé (ESPN « O » ou IR) qui occupe une de tes 21 places alors qu'une case IR est libre :
+// le mettre à l'IR libère une place → un ajout sans retrait (le meilleur selon « Meilleurs moves »)
+const IR_SLOTS = 2;
+function irStash(m, left) {
+  const R = m.players, used = R.filter(inIRslot).length;
+  if (used >= IR_SLOTS) return null;
+  const hurt = R.filter(p => !inIRslot(p) && (p.status === 'OUT' || p.status === 'INJURY_RESERVE')).slice(0, IR_SLOTS - used);
+  const dtd = R.filter(p => !inIRslot(p) && p.status === 'DAY_TO_DAY');
+  if (!hurt.length && !dtd.length) return null;
+  const daysWk = horizonDays(D.weekEnd), wks = weeksAfter(m), ltv = ltValue(R, futDays(ymdAdd(D.weekEnd, 1), 28));
+  let cur = R.filter(p => hurt.indexOf(p) < 0); const res = [], taken = {};
+  hurt.forEach(h => {
+    if (left === 0) { res.push({ h: h }); return; }
+    const base = planFp(cur, daysWk);
+    const opts = faPool(daysWk, taken).map(p => { const wk = planFp(cur.concat([p]), daysWk) - base; return { p: p, wk: wk, lt: ltv(p), sc: wk + PLAN_LTW * ltv(p) * Math.min(1, wks) }; })
+      .sort((a, b) => b.sc - a.sc);
+    if (opts.length) { taken[opts[0].p.name] = 1; cur = cur.concat([opts[0].p]); if (left != null) left--; }
+    res.push({ h: h, add: opts[0], alts: opts.slice(1, 3) });
+  });
+  return { list: res, dtd: dtd };
+}
+function stashCard(st) {
+  if (!st) return '';
+  const A = actDay();
+  const ret = h => h.ret ? (h.ret <= todayStr() ? 'retour estimé : aujourd’hui (estimation ESPN, pas une confirmation)' : 'retour estimé : ' + dLabel(h.ret)) : 'pas de date de retour';
+  const why = o => `${o.wk > 0.05 ? `+${f1(o.wk)} FP cette semaine` : 'rien de plus cette semaine'} · ${f2(o.p.model)} FP par match · ${esc(o.p.nhl || "")}`;
+  return `<div class="card" style="border-color:var(--warn)"><h2>🩹 Blessé hors de la réserve</h2>
+    ${st.list.map(x => `<div style="margin:8px 0;line-height:1.5"><div><b>${pname(x.h)}</b> est absent (${esc(x.h.injT || 'blessé')} · ${ret(x.h)}) mais occupe une de tes 21 places, et tu as une case IR libre.</div>
+      <div style="font-size:17px;margin-top:4px">☐ Mets <b>${pname(x.h)}</b> à la réserve des blessés${x.add ? ` → ça libère une place : ajoute <b>${pname(x.add.p)}</b> <span class="small muted">— ${why(x.add)}</span>` : ' (plus d’acquisitions cette semaine : la place restera vide)'}</div>
+      ${x.alts && x.alts.length ? `<div class="small muted">Autres choix : ${x.alts.map(o => `${pname(o.p)} (${why(o)})`).join(' · ')}</div>` : ''}
+      <div class="small muted">Tu le gardes : rien n’est retiré. Quand il reviendra, la carte « Retour de blessure » te dira qui retirer pour le ramener.</div></div>`).join('')}
+    ${st.dtd.length ? `<div class="small" style="margin-top:6px">${st.dtd.map(p => `<b>${pname(p)}</b>`).join(', ')} : incertain (day-to-day). ESPN n’accepte normalement pas un joueur incertain à l’IR. ${st.dtd.some(p => playsOn(p, A)) ? 'S’il est retiré de l’alignement ce soir, mets-le au banc avant le premier match.' : ''}</div>` : ''}
+    ${st.list.length ? `<div class="small muted" style="margin-top:6px">L’ajout compte dans tes acquisitions. Les plans plus bas supposent que tu fais ce changement.</div>` : ''}</div>`;
+}
 function qfToday(pl, A, m, best1) {
   if (!pl || !pl.steps.length) return `<div class="card"><h2>À faire aujourd’hui</h2><div class="muted">Rien : aucun move ne vaut la peine pour l’instant.</div></div>`;
   const now = pl.steps.filter(x => x.from <= A.d), later = pl.steps.filter(x => x.from > A.d);
@@ -938,16 +972,19 @@ function qfCard(x, i, P0) {
 }
 function vTodo() {
   qfWhy.ltv = null;
-  const m0 = me(), IRR = irReturns(m0), m = IRR ? Object.assign(Object.create(Object.getPrototypeOf(m0)), m0, { players: IRR.roster }) : m0, H = WK.h || 'best', daysWk = horizonDays(D.weekEnd);
+  const m0 = me(), IRR = irReturns(m0), m = Object.assign(Object.create(Object.getPrototypeOf(m0)), m0, { players: IRR ? IRR.roster : m0.players.slice() }), H = WK.h || 'best', daysWk = horizonDays(D.weekEnd);
   // acquisitions de l'équipe affichée : les tiennes viennent d'ESPN ; pour une autre équipe (point de vue), on les compte dans ses transactions de la semaine
   const lim = (D.espn && D.espn.acqLimit) || 7, used = acqUsedBy(m.team);
-  const acq = { acqUsed: used, acqLimit: lim }, left = acqLeft(acq, daysWk), A = actDay();
+  const acq = { acqUsed: used, acqLimit: lim }, A = actDay();
+  const STA = irStash(m, acqLeft(acq, daysWk));
+  if (STA) STA.list.forEach(x => { if (x.add) { m.players = m.players.filter(p => p !== x.h).concat([x.add.p]); acq.acqUsed++; } });
+  const left = acqLeft(acq, daysWk);
   const L0 = D.config.lineup, healthy = k => m.players.filter(p => p.grp === k && !OUT[p.status]).length;
   const holes = healthy('G') < L0.G ? `<div class="warnbox" style="margin:0 0 12px">⚠ Il te manque <b>${L0.G - healthy('G')} gardien${L0.G - healthy('G') > 1 ? 's' : ''}</b> en santé.</div>` : '';
   const povSel = `<div class="card" style="padding:10px 14px;${povOn() ? 'border-color:var(--opp)' : ''}"><label class="small muted" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Point de vue
     <select id="povsel" style="flex:1;min-width:180px">${D.teams.slice().sort((a, b) => (b.team === POV_REAL) - (a.team === POV_REAL)).map(t => `<option value="${esc(t.team)}" ${t.team === D.me ? 'selected' : ''}>${t.team === POV_REAL ? 'Toi (' + esc(t.team) + ')' : esc(t.team)}</option>`).join('')}</select></label>
     ${povOn() ? `<div class="small" style="margin-top:6px;color:var(--opp)">Tu vois « Que faire ? » comme si tu étais <b>${esc(D.me)}</b>.</div>` : ''}</div>`;
-  if (left === 0) return povSel + holes + irCard(IRR) + `<div class="card"><h2>Que faire ?</h2><div class="muted">Plus d’acquisitions cette semaine. Regarde <b>Plus › Échanges</b> pour améliorer ton équipe.</div></div>`;
+  if (left === 0) return povSel + holes + irCard(IRR) + stashCard(STA) + `<div class="card"><h2>Que faire ?</h2><div class="muted">Plus d’acquisitions cette semaine. Regarde <b>Plus › Échanges</b> pour améliorer ton équipe.</div></div>`;
   const plans = qfFixMix(qfPlans(m, left, H), H), star = qfStar(plans, H), sel = QF.plan && plans.find(x => x.key === QF.plan && x.n) ? QF.plan : star;
   const pl = plans.find(x => x.key === sel), P = duelPWith(m), P0 = P ? P(0) : null;
   const hz = `<div class="seg seg4" id="wkhz" role="group" aria-label="Objectif">${QF_MODES.map(([h, l]) => `<button class="${H === h ? 'on' : ''}" data-h="${h}">${l}</button>`).join('')}</div>
@@ -957,7 +994,7 @@ function vTodo() {
   // dans la liste : les moves qui font partie du plan choisi
   moves.forEach(x => { x.inPlan = pl.steps.some(y => y.p === x.p && y.w === x.w); });
   const acqTxt = left == null ? '' : `<div class="small muted" style="margin-bottom:8px">Acquisitions : ${acq.acqUsed} sur ${acq.acqLimit} utilisées — il t’en reste <b>${left}</b>.</div>`;
-  return povSel + holes + irCard(IRR) + qfToday(pl, A, m, moves.find(x => x.t !== 'tr')) + qfNights(m)
+  return povSel + holes + irCard(IRR) + stashCard(STA) + qfToday(pl, A, m, moves.find(x => x.t !== 'tr')) + qfNights(m)
     + `<div class="card"><h2>Comparer les plans de la semaine</h2>${hz}${acqTxt}${qfTable(plans, star, sel, left, P0)}
       <div class="lbl" style="margin:14px 0 4px">${sel === star ? '★ ' : ''}${esc(pl.lab)} : les étapes</div>${pl.steps.length ? qfSteps(pl, m) : '<div class="muted small">Aucun move.</div>'}</div>`
     + `<div class="card"><h2>Si tu fais un seul move</h2><div class="small muted">Chaque option seule, gardée jusqu’à la fin de la semaine (sauf 🥅 : un soir). Classées selon l’objectif « ${esc((QF_MODES.find(x => x[0] === H) || QF_MODES[0])[1])} ». ➕ joueur gardé · 🥅 gardien pour un soir · 🔁 échange.</div>
