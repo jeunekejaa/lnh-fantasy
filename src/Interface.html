@@ -2888,7 +2888,8 @@ function ltValue(roster, days) {
       const g = days.filter(d => playsOn(x, d)).length, mine = roster.indexOf(x) >= 0;
       const add = mine ? base - planFp(roster.filter(q => q !== x), days) : planFp(ref.concat([x]), days) - baseRef;
       const fit = g && x.model > 0 ? Math.max(0, Math.min(1, add / (x.model * g))) : (OUT[x.status] ? 0 : 1);
-      v = (x.model || 0) * fit;
+      // × part des matchs qu'il jouera vraiment d'ici la fin (blessures, repos ; règle validée au labo, revenus de blessure compris)
+      v = (x.model || 0) * fit * (x.avail || 0.88);
     }
     memo.set(x, v); return v;
   };
