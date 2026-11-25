@@ -72,6 +72,11 @@ function doGet(e) {
     if (what === 'news') return ContentService.createTextOutput(playerNews(e.parameter.n || '')).setMimeType(ContentService.MimeType.JSON);
     if (what === 'z') { const t0 = Date.now(), z = getAppDataZ(); return ContentService.createTextOutput(JSON.stringify({ ms: Date.now() - t0, len: z.length, head: z.slice(0, 40) })).setMimeType(ContentService.MimeType.JSON); }
     if (what === 'recap') return ContentService.createTextOutput(getWeekRecap(+(e.parameter.p || 6))).setMimeType(ContentService.MimeType.JSON);
+    if (what === 'st') {                              // diagnostic : statut ESPN brut d'un joueur (roster de la ligue)
+      fetchEspnTeams_(); const n = e.parameter.n || '', raw = [];
+      ((ESPN_DATA && ESPN_DATA.teams) || []).forEach(t => ((t.roster || {}).entries || []).forEach(x => { const p = x.playerPoolEntry && x.playerPoolEntry.player; if (p && norm_(p.fullName) === norm_(n)) raw.push({ injuryStatus: p.injuryStatus, injured: p.injured, slot: x.lineupSlotId, status: x.status }); }));
+      return ContentService.createTextOutput(JSON.stringify({ raw: raw, map: ESPN_STATUS[norm_(n)], ovr: getOverrides_()[n] || null })).setMimeType(ContentService.MimeType.JSON);
+    }
     if (what === 'ver') return ContentService.createTextOutput(codeStatus_()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'update') return ContentService.createTextOutput(checkCodeFromApp()).setMimeType(ContentService.MimeType.JSON);
     if (what === 'refresh') return ContentService.createTextOutput(refreshLocked_(false)).setMimeType(ContentService.MimeType.JSON);
