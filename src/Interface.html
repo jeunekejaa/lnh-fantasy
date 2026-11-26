@@ -662,9 +662,13 @@ function restWeek(p, days) {
 function allInDrops(r, days) { return r.filter(p => !inIRslot(p)).sort((a, b) => restWeek(a, days) - restWeek(b, days)).slice(0, 6); }
 // variance des points d'un joueur d'ici dimanche, s'il est dans l'alignement « r »
 function restVar(p, r, days) {
+  // + covariance avec ses coéquipiers LNH alignés le même soir (labo, 10 saisons : corrélation +0,08 entre deux coéquipiers)
+  const RHO = 0.08;
   return days.reduce((t, d) => { if (!playsOn(p, d)) return t; const L = dayLineup(r, d);
     if (p.grp === 'G') return t + (L.goalies.indexOf(p) >= 0 ? varGame(p) * gShare(p, d) : 0);
-    return t + (L.starters.indexOf(p) >= 0 ? varGame(p) : 0); }, 0);
+    if (L.starters.indexOf(p) < 0) return t;
+    const vp = varGame(p), cov = L.starters.reduce((c, q) => c + (q !== p && q.nhl === p.nhl ? Math.sqrt(vp * varGame(q)) : 0), 0);
+    return t + vp + 2 * RHO * cov; }, 0);
 }
 // combien vaut 1 unité de variance en FP : P(gagner) = Φ(μ/σ) ; dP/dVar ÷ dP/dμ = −μ / (2σ²) (positif seulement si tu es derrière)
 function hailVarW(m) {
@@ -3155,13 +3159,61 @@ function gameWin(ab, d) {
   const A = tStr(ab), B = tStr(g[1]); if (!A || !B) return null;
   const ea = A.gf * B.ga / A.lg, eb = B.gf * A.ga / A.lg;
   const mp = D.mpg && D.mpg[d] && D.mpg[d][ab], pw = mp && mp.w != null ? +mp.w : null;   // MoneyPuck si dispo
-  return { p: pw != null ? pw : Math.min(0.85, Math.max(0.15, pyth(ea, eb) + (g[2] ? 0.02 : -0.02))), base: pyth(A.gf, A.ga), oppOff: B.gf / A.lg, src: pw != null ? 'MoneyPuck' : 'maison' };
+  const nw = gameWin2(ab, g[1], !!g[2], d);
+  return { p: pw != null ? pw : nw != null ? nw : Math.min(0.85, Math.max(0.15, pyth(ea, eb) + (g[2] ? 0.02 : -0.02))), base: pyth(A.gf, A.ga), oppOff: B.gf / A.lg,
+           src: pw != null ? 'MoneyPuck' : nw != null ? 'maison' : 'maison (simple)' };
+}
+// % de victoire maison (labo, 10 saisons hors échantillon : logloss 0,6767 → 0,6676, favori gagnant 57,0 % → 58,7 %) :
+// force = buts pour/contre de la saison, ramenés (K = 40 matchs) vers ½ saison passée + ½ moyenne ; Pythagore 2,05 ;
+// + écart des % d'arrêts des partants attendus ; + 2e soir de suite. Régression logistique du point de vue de l'équipe à domicile.
+const GW_COEF = [0.145, 1.081, 0.052, -0.272];
+let GMN = null, GMND = null;
+function gmSv(name) {
+  if (!D.gm || !D.gm.sv) return null;
+  if (GMND !== D) { GMND = D; GMN = {}; Object.keys(D.gm.sv).forEach(k => { GMN[norm(k)] = D.gm.sv[k]; }); }
+  const v = GMN[norm(name)]; return v != null ? v : D.gm.lgsv;
+}
+// % d'arrêts attendu du partant d'une équipe ce soir-là (moyenne de ses gardiens pondérée par leurs chances de partir)
+function teamSv(ab, d) {
+  const G = [];
+  D.teams.forEach(t => t.players.forEach(p => { if (p.grp === 'G' && p.nhl === ab && !OUT[p.status]) G.push(p); }));
+  (D.waivers || []).forEach(p => { if (p.grp === 'G' && p.nhl === ab && !OUT[p.status]) G.push(p); });
+  let w = 0, v = 0; G.forEach(p => { const s = gShare(p, d) || 0; w += s; v += s * gmSv(p.name); });
+  return w > 0 ? v / w : (D.gm && D.gm.lgsv) || null;
+}
+let GW2 = null, GW2D = null;
+function gameWin2(ab, op, home, d) {
+  if (GW2D !== D) { GW2D = D; GW2 = new Map(); }
+  const k = ab + op + home + d; if (!GW2.has(k)) GW2.set(k, gameWin2_(ab, op, home, d));
+  return GW2.get(k);
+}
+function gameWin2_(ab, op, home, d) {
+  const M = D.gm && D.gm.t, A = D.tstr && D.tstr[ab], B = D.tstr && D.tstr[op]; if (!M || !A || !B || !M[ab] || !M[op]) return null;
+  const all = Object.values(D.tstr), gp = all.reduce((t, x) => t + x.gp, 0), lg = gp ? all.reduce((t, x) => t + x.gf, 0) / gp : 3;
+  const mix = (tot, n, ly) => (tot + 40 * (0.5 * (ly != null ? ly : lg) + 0.5 * lg)) / (n + 40);
+  const H = home ? ab : op, V = home ? op : ab, h = D.tstr[H], v = D.tstr[V];
+  const hgf = mix(h.gf, h.gp, M[H][0]), hga = mix(h.ga, h.gp, M[H][1]), vgf = mix(v.gf, v.gp, M[V][0]), vga = mix(v.ga, v.gp, M[V][1]);
+  const pb = pyth(hgf * vga / lg, vgf * hga / lg), base = Math.log(pb / (1 - pb));
+  const sh = teamSv(H, d), sv = teamSv(V, d); if (sh == null || sv == null) return null;
+  const z = GW_COEF[0] + GW_COEF[1] * base + GW_COEF[2] * (sh - sv) * 100 + GW_COEF[3] * ((B2B(H, d) ? 1 : 0) - (B2B(V, d) ? 1 : 0));
+  const ph = 1 / (1 + Math.exp(-z));
+  return Math.min(0.9, Math.max(0.1, home ? ph : 1 - ph));
 }
 // FP d'un gardien S'IL EST PARTANT ce soir-là : sa projection, ajustée selon les chances de victoire (3 FP) et l'attaque adverse
 // (un but de plus = −1 FP et un arrêt de moins −0,2)
 function goalieFP(p, d) { return memo2('f', p, d, () => goalieFP0(p, d)); }
 function goalieFP0(p, d) {
   const m = p.model || 0, w = gameWin(p.nhl, d); if (!w) return m;
+  // FP d'un partant par le match (labo, 10 saisons sur 10 ; l'ancien ajustement faisait un peu moins bien que rien) :
+  // −0,048 + 3,592 × % victoire + 0,138 × tirs attendus − 1,087 × buts attendus (tirs × (1 − son % d'arrêts ramené))
+  // + 0,348 × niveau de la ligue (FP par départ de la saison, ramené vers la saison passée) — le FP des gardiens baisse d'année en année
+  const M = D.gm && D.gm.t, g = teamGames(p).find(x => x[0] === d);
+  if (M && g && M[p.nhl] && M[g[1]]) {
+    const all = Object.values(M), lgS = all.reduce((t, x) => t + (x[2] || 0) * (x[4] || 0), 0) / Math.max(1, all.reduce((t, x) => t + (x[4] || 0), 0)) || 30;
+    const shr = (v, n) => ((v || 0) * (n || 0) + 10 * lgS) / ((n || 0) + 10);
+    const eSA = shr(M[p.nhl][3], M[p.nhl][4]) * shr(M[g[1]][2], M[g[1]][4]) / lgS, eGA = eSA * (1 - gmSv(p.name));
+    return Math.max(0, -0.048 + 3.592 * w.p + 0.138 * eSA - 1.087 * eGA + 0.348 * (D.gm.lfp || 3.7));
+  }
   const r = p.x && p.x.r, ga = r ? r[1] : 2.9;
   return Math.max(0, m + 3 * (w.p - w.base) - 1.2 * ga * (w.oppOff - 1));
 }

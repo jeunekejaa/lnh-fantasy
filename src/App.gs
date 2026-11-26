@@ -286,7 +286,7 @@ function mlCorr_(x, T) {
 }
 
 // Réglages appris par le backtest 2025-26 (🧪), sinon valeurs de base de APP.K
-let MPG = null, TSTR = null, WKROS = null, CUR_TEAMS = null, WEEKST = null, STARTERS = null, TX_SEEN = {}, OPP_ADJ = null, BT_P = undefined, PJ_GK = undefined, TX_CACHE = [], GK_RECENT = {}, GK_ARR = {}, JOURNAL = null, ROLES = null;
+let GMOD = null, MPG = null, TSTR = null, WKROS = null, CUR_TEAMS = null, WEEKST = null, STARTERS = null, TX_SEEN = {}, OPP_ADJ = null, BT_P = undefined, PJ_GK = undefined, TX_CACHE = [], GK_RECENT = {}, GK_ARR = {}, JOURNAL = null, ROLES = null;
 function inSeason_() {
   if (BT_P === undefined) { BT_P = null; try { if (typeof btParams_ === 'function') BT_P = btParams_(); } catch (e) { /* rien */ } }
   return BT_P;
@@ -394,12 +394,34 @@ function modelSkater_(p, prior, mp, pos, pj, lg, gafP) {
     rec = Math.max(0.7, Math.min(1.4, Math.pow(l3[0] / toiNow, APP.L30B)));
     Object.keys(proj).forEach(k => { proj[k] *= rec; });
   }
+  // Labo 2026-11 (10 saisons, hors échantillon, prédiction calibrée ; les deux ensemble : +0,0094 FP²/match, 10 saisons sur 10) :
+  // a) rôle en AN : part du temps d'AN de son équipe (½ 3 derniers matchs + ½ saison) ÷ part déjà « contenue » dans sa projection
+  //    (saisons passées ramenées vers cette saison, k = 50 matchs), puissance 0,75 ; l'AN en plus passe en PPP, buts (35 %) et passes (65 %)
+  // b) temps de jeu de ses 3 derniers matchs ÷ son temps de jeu d'avant, puissance 0,3, sur tout (8 matchs et plus) —
+  //    remplace le biais « joue blessé » (avec ce facteur, le labo ne trouve plus aucun biais à ajouter)
+  let ppR = null, rt = null;
+  const ro = p && ROLES ? ROLES[p.id] || ROLES[String(p.id)] : null;
+  if (ro && ro.s && ro.gp >= 3) {
+    const S4 = ro.s, ssh = S4[2] > 0 ? S4[1] / S4[2] : null;
+    if (ssh != null && ro.share != null && n >= 5) {
+      const ppNow = hasMp && mp.gp ? mp.pptoi / mp.gp : null;
+      const hsh = pj && pj.ppt != null && ppNow != null ? ssh * (pj.ppt + 5) / (ppNow + 5) : ssh;
+      const emb = (50 * hsh + n * ssh) / (50 + n);
+      ppR = Math.max(0.4, Math.min(2.5, (0.5 * ro.share + 0.5 * ssh + 0.02) / (emb + 0.02)));
+      const dP = (proj.ppp || 0) * (Math.pow(ppR, 0.75) - 1);
+      proj.ppp = Math.max(0, proj.ppp + dP); proj.g = Math.max(0, proj.g + 0.35 * dP); proj.a = Math.max(0, proj.a + 0.65 * dP);
+    }
+    if (S4[3] >= 8 && S4[3] > ro.gp) {
+      const before = (S4[0] - ro.toi * ro.gp) / (S4[3] - ro.gp);
+      if (before > 0) { rt = Math.max(0.5, Math.min(1.5, ro.toi / before)); const f = Math.pow(rt, 0.3); Object.keys(proj).forEach(k => { proj[k] *= f; }); }
+    }
+  }
   // compagnons de trio (attaquants) : nouveau trio meilleur ou pire que d'habitude → attaque ±10 % au plus
   const lq = g === 'F' && p && LINEQ && LINEQ[p.id] != null ? LINEQ[p.id] : 0;
   if (lq) ['g', 'a', 'ppp', 'shp', 'sog'].forEach(k => { proj[k] *= 1 + 0.1 * lq; });
   // correction selon la tendance (FP/match), répartie sur toutes les stats
   const bias = cls && FN && FN.bias && FN.bias[cls] ? FN.bias[cls] : 0;
-  if (inj && FN.inj.b) { const f0 = fp_(proj), f = f0 > 0 ? Math.max(0, f0 + FN.inj.b) / f0 : 1; Object.keys(proj).forEach(k => { proj[k] *= f; }); }
+  if (inj && FN.inj.b && rt == null) { const f0 = fp_(proj), f = f0 > 0 ? Math.max(0, f0 + FN.inj.b) / f0 : 1; Object.keys(proj).forEach(k => { proj[k] *= f; }); }
   if (bias) { const f0 = fp_(proj), f = f0 > 0 ? Math.max(0, f0 + bias) / f0 : 1; Object.keys(proj).forEach(k => { proj[k] *= f; }); }
   // FP « mérités » cette saison (mêmes stats réelles, buts et passes corrigés de la chance)
   // (la chance compare toujours aux buts attendus MoneyPuck quand on les a)
@@ -407,7 +429,7 @@ function modelSkater_(p, prior, mp, pos, pj, lg, gafP) {
   const actual = n ? (p.fpg || 0) : null;
   return {
     model: fp_(proj), deserved: deserved, luck: n && hasMp ? actual - deserved : null,
-    toi: hasMp && mp.gp ? mp.toi / mp.gp / 60 : null, pptoi: hasMp && mp.gp ? mp.pptoi / mp.gp / 60 : null, role: roleF != null ? Math.round(roleF * 100) / 100 : null, ml: mlF, rec: rec != null ? Math.round(rec * 1000) / 1000 : null,
+    toi: hasMp && mp.gp ? mp.toi / mp.gp / 60 : null, pptoi: hasMp && mp.gp ? mp.pptoi / mp.gp / 60 : null, role: roleF != null ? Math.round(roleF * 100) / 100 : null, ml: mlF, ppR: ppR != null ? Math.round(ppR * 100) / 100 : undefined, rt: rt != null ? Math.round(rt * 100) / 100 : undefined, rec: rec != null ? Math.round(rec * 1000) / 1000 : null,
     // part des matchs restants qu'il jouera : voir availFor_ (0,70 + 0,12 × sa part de matchs joués la saison passée, ramenée vers cette saison)
     avail: availFor_(p, pj),
     ixg: hasMp && mp.gp ? mp.ixg / mp.gp : null, ppRole: ppRole, rates: proj, trend: cls, inj: inj || undefined, lq: lq || 0
@@ -744,7 +766,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
       perGame: round_(g === 'G' ? m.model * (m.share || CONFIG.GOALIE_START_SHARE) : m.model),   // FP attendus par match de son équipe
       deserved: m.deserved === null ? null : round_(m.deserved), luck: m.luck === null ? null : round_(m.luck),
       signal: g === 'G' ? '' : signal_(m, p ? p.gp : 0),
-      toi: m.toi ? round_(m.toi) : null, pptoi: m.pptoi ? round_(m.pptoi) : null, role: m.role != null ? m.role : undefined, ml: m.ml != null ? m.ml : undefined, rec: m.rec != null ? m.rec : undefined, avail: m.avail != null ? m.avail : undefined, gsax: m.gsax ? round_(m.gsax) : null,
+      toi: m.toi ? round_(m.toi) : null, pptoi: m.pptoi ? round_(m.pptoi) : null, role: m.role != null ? m.role : undefined, ml: m.ml != null ? m.ml : undefined, rec: m.rec != null ? m.rec : undefined, ppR: m.ppR, rt: m.rt, avail: m.avail != null ? m.avail : undefined, gsax: m.gsax ? round_(m.gsax) : null,
       left: sch.left[team] || 0, next: sch.next[team] || 0, today: !!sch.today[team], live: !!(sch.live && sch.live[team]),
       liveLeft: sch.liveLeft && sch.liveLeft[team] != null ? sch.liveLeft[team] : null,
       id: p ? p.id : null,
@@ -793,6 +815,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
   mark_('Gardiens partants (DailyFaceoff)');
   try { MPG = mpGames_(sch.weekGames); } catch (e) { WARN.push('MoneyPuck (gardiens partants, chances de victoire) : ' + e.message); }
   try { STARTERS = dfoStarters_(); } catch (e) { WARN.push('Gardiens partants : ' + e.message); }
+  try { GMOD = gameModel_(); } catch (e) { GMOD = null; WARN.push('Modèle de match : ' + e.message); }
   mark_('Arénas (mises en échec, tirs bloqués)');
   try { ARENA = arenaFactors_(); } catch (e) { WARN.push('Arénas : ' + e.message); }
   try { PEN = penFactors_(); } catch (e) { WARN.push('Discipline des équipes : ' + e.message); }
@@ -828,7 +851,7 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
               share: CONFIG.GOALIE_START_SHARE, sims: APP.SIMS, luck: APP.LUCK,
               k: inSeason_() ? Object.assign({}, APP.K, inSeason_().K, { gx: inSeason_().kxg, g: inSeason_().gsrc === 'tirs' || inSeason_().gsrc === 'mix' ? inSeason_().K.g : inSeason_().kg, gstart: inSeason_().gk ? inSeason_().gk.k : APP.K.gstart }) : APP.K,
               bt: inSeason_() },
-    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), untouch: getUntouch_(), rookies: rookies_(), lsv: LSV, odds: getOdds_(), moves: myMoves, journal: JOURNAL, roles: ROLES, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS, lines: DFOL, cal: CAL, hh: getHH_(), arena: ARENA, pen: PEN,
+    espn: espnLeagueInfo_(), tx: TX_CACHE, txSeen: TX_SEEN, ovr: getOverrides_(), watch: getWatch_(), untouch: getUntouch_(), rookies: rookies_(), lsv: LSV, odds: getOdds_(), moves: myMoves, journal: JOURNAL, roles: ROLES, gm: GMOD, opp: OPP_ADJ, starters: STARTERS, mpg: MPG, wk: WEEKST, tstr: TSTR, wkr: WKROS, lines: DFOL, cal: CAL, hh: getHH_(), arena: ARENA, pen: PEN,
     teams: teamsOut, waivers: waivers, schedule: sched.games, warn: WARN.slice(),
     sources: ['LNH (api-web.nhle.com)', 'ESPN Fantasy', 'GAF Aggregate Projections', 'MoneyPuck.com']
   };
@@ -1362,9 +1385,18 @@ function iceRoles_() {
       out[pid] = { pp: a.rank, ppPrev: b ? b.rank : null, ppm: Math.round(a.pp / Math.max(1, a.gp)), toi: Math.round(a.toi / Math.max(1, a.gp)),
                    share: now.teamPP ? Math.round(a.pp / now.teamPP * 100) / 100 : 0,
                    sharePrev: b && prev.teamPP ? Math.round(b.pp / prev.teamPP * 100) / 100 : (prev.n ? 0 : null),
-                   mates: mates(a), matesPrev: b ? mates(b) : null, gp: a.gp };
+                   mates: mates(a), matesPrev: b ? mates(b) : null, gp: a.gp, team: t };
     });
   });
+  // saison complète avec son équipe actuelle (présences complètes seulement) : s = [temps de jeu, temps en AN, temps d'AN de l'équipe
+  // dans ses matchs, matchs] — pour le rôle en AN (labo : 10 saisons sur 10) et le temps de jeu d'avant ses 3 derniers matchs
+  Object.keys(byTeam).forEach(t => {
+    const agg = {};
+    byTeam[t].filter(id => ICE_STORE[id]).forEach(id => { const side = ICE_STORE[id].teams[t]; if (!side) return;
+      Object.keys(side.p).forEach(pid => { const r = side.p[pid], o = agg[pid] || (agg[pid] = [0, 0, 0, 0]); o[0] += r[0]; o[1] += r[1]; o[2] += side.pp; o[3]++; }); });
+    Object.keys(agg).forEach(pid => { if (out[pid] && out[pid].team === t) out[pid].s = agg[pid]; });
+  });
+  Object.keys(out).forEach(pid => { delete out[pid].team; });
   Object.keys(out).forEach(pid => { out[pid].mates = out[pid].mates.map(m => names[m] || m); if (out[pid].matesPrev) out[pid].matesPrev = out[pid].matesPrev.map(m => names[m] || m); });
   // Temps de jeu des 30 derniers jours (idée 8 : niveau qui évolue) : pid → [minutes par match, matchs]
   const lim = ymd_(new Date(Date.now() - 30 * 86400000)), l30 = {};
@@ -1594,6 +1626,44 @@ function leagueSv_() {
     cache.put('LSV', JSON.stringify(LSV), 43200);
     return LSV;
   } catch (e) { return null; }
+}
+// Modèle de match (labo, 10 saisons, hors échantillon) : % de victoire (force de la saison passée, gardiens partants, 2e soir)
+// et FP d'un gardien partant (par le match : victoire, tirs attendus, buts attendus). Gardé 6 h.
+//   sv : nom normalisé → % d'arrêts ramené (3 saisons passées, poids 1 ; 0,6 ; 0,35, + cette saison ; K = 3000 tirs vers la ligue − 0,006)
+//   t  : abréviation → [buts pour/match saison passée, buts contre/match saison passée, tirs pour, tirs contre, matchs cette saison]
+function gameModel_() {
+  const cache = CacheService.getScriptCache(), hit = cache.get('GMODEL2');
+  if (hit) { try { return JSON.parse(hit); } catch (e) { /* on refait */ } }
+  const cur = +String(CONFIG.SEASON).slice(0, 4), sid = y => `${y}${y + 1}`;
+  const B = 'https://api.nhle.com/stats/rest/en', ex = y => encodeURIComponent(`seasonId=${sid(y)} and gameTypeId=${CONFIG.GAME_TYPE}`);
+  const gUrl = (y, st) => `${B}/goalie/summary?isAggregate=false&isGame=false&start=${st}&limit=100&cayenneExp=${ex(y)}`;
+  const tUrl = y => `${B}/team/summary?isAggregate=false&isGame=false&start=0&limit=50&cayenneExp=${ex(y)}`;
+  const urls = [], W = [[cur, 1], [cur - 1, 1], [cur - 2, 0.6], [cur - 3, 0.35]];
+  W.forEach(([y]) => [0, 100, 200].forEach(st => urls.push(gUrl(y, st))));
+  urls.push(tUrl(cur), tUrl(cur - 1), `${B}/team`);
+  const R = fetchJsonAll_(urls);
+  const sv = {}, sh = {}, LF = [[0, 0], [0, 0]]; let lsv = 0, lsa = 0;   // LF : FP des gardiens et départs (cette saison, saison passée)
+  W.forEach(([y, w], i) => [0, 1, 2].forEach(k => ((R[3 * i + k] || {}).data || []).forEach(x => {
+    const n = norm_(x.goalieFullName || ''); if (!n) return;
+    sv[n] = (sv[n] || 0) + w * (x.saves || 0); sh[n] = (sh[n] || 0) + w * (x.shotsAgainst || 0);
+    if (i === 1) { lsv += x.saves || 0; lsa += x.shotsAgainst || 0; }
+    if (i <= 1) { LF[i][0] += 3 * (x.wins || 0) - (x.goalsAgainst || 0) + 0.2 * (x.saves || 0) + 3 * (x.shutouts || 0) + (x.otLosses || 0); LF[i][1] += x.gamesStarted || 0; }
+  })));
+  const lg = lsa ? lsv / lsa : 0.9, out = { lgsv: Math.round((lg - 0.006) * 10000) / 10000, sv: {}, t: {} };
+  // niveau de la ligue : FP par départ cette saison (ramené vers la saison passée avec 300 départs)
+  const prevFp = LF[1][1] ? LF[1][0] / LF[1][1] : 3.8;
+  out.lfp = Math.round((LF[0][0] + 300 * prevFp) / (LF[0][1] + 300) * 1000) / 1000;
+  Object.keys(sv).forEach(n => { out.sv[n] = Math.round((sv[n] + 3000 * (lg - 0.006)) / (sh[n] + 3000) * 10000) / 10000; });
+  const tri = {}; ((R[R.length - 1] || {}).data || []).forEach(t => { tri[t.id] = t.triCode; });
+  const ly = {}; ((R[R.length - 2] || {}).data || []).forEach(t => { ly[t.teamId] = [t.goalsForPerGame, t.goalsAgainstPerGame]; });
+  ((R[R.length - 3] || {}).data || []).forEach(t => {
+    const ab = tri[t.teamId]; if (!ab) return;
+    const l = ly[t.teamId] || [null, null];
+    out.t[ab] = [l[0] != null ? Math.round(l[0] * 1000) / 1000 : null, l[1] != null ? Math.round(l[1] * 1000) / 1000 : null,
+                 Math.round((t.shotsForPerGame || 0) * 100) / 100, Math.round((t.shotsAgainstPerGame || 0) * 100) / 100, t.gamesPlayed || 0];
+  });
+  try { cache.put('GMODEL2', JSON.stringify(out), 21600); } catch (e) {}
+  return out;
 }
 function espnOwnership_() {
   const cache = CacheService.getScriptCache(), hit = cache.get('OWN3');
