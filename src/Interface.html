@@ -643,7 +643,7 @@ function actDay() {
   const t = todayStr(), L = lockInfo(t);
   if (L && !L.locked) return { d: t, L: L };
   const d = horizonDays(D.weekEnd).find(x => x > t && D.gt && D.gt[x]) || ymdAdd(t, 1);
-  return { d: d, L: lockInfo(d), late: true };
+  return { d: d, L: lockInfo(d), late: true, none: !L };   // none : aucun match aujourd'hui (≠ trop tard)
 }
 // variance ajoutée par les joueurs ajoutés (gardien : très variable) → risque
 function planRisk(steps, days) {
@@ -872,7 +872,7 @@ function stashCard(st) {
 function qfToday(pl, A, m, best1) {
   if (!pl || !pl.steps.length) return `<div class="card"><h2>À faire aujourd’hui</h2><div class="muted">Rien : aucun move ne vaut la peine pour l’instant.</div></div>`;
   const now = pl.steps.filter(x => x.from <= A.d), later = pl.steps.filter(x => x.from > A.d);
-  const dl = A.L ? (A.late ? `trop tard pour ce soir · pour ${dLabel(A.d)}, avant ${A.L.hm}` : `avant ${A.L.hm}${A.L.left ? ' (dans ' + A.L.left + ')' : ''}`) : '';
+  const dl = A.L ? (A.late ? `${A.none ? 'aucun match ce soir' : 'trop tard pour ce soir'} · pour ${dLabel(A.d)}, avant ${A.L.hm}` : `avant ${A.L.hm}${A.L.left ? ' (dans ' + A.L.left + ')' : ''}`) : '';
   // pari conditionnel pour le gardien du jour
   let cond = '';
   const gStep = now.find(x => x.p.grp === 'G');
@@ -1145,7 +1145,7 @@ function goalieTonight(m, LTW, acqLeft) {
     return { o: o, fpIf: fpIf, gainIf: gainIf };
   }).filter(x => sureBest ? x.gainIf > sureBest.gain + 0.2 : x.gainIf > 1).sort((a, b) => b.gainIf - a.gainIf).slice(0, 2);
   const lockTxt = L ? (d === today ? `Décide <b>avant ${L.hm}</b>${L.left ? ` (dans ${L.left})` : ''} : à ce moment, ton alignement se barre pour la soirée.`
-    : `Trop tard pour ce soir (alignement barré). Pour <b>${dLabel(d)}</b>, décide avant <b>${L.hm}</b>.`) : '';
+    : `${lockInfo(today) ? 'Trop tard pour ce soir (alignement barré).' : 'Aucun match ce soir.'} Pour <b>${dLabel(d)}</b>, décide avant <b>${L.hm}</b>.`) : '';
   const condTxt = cond.length ? `<div class="lbl" style="margin:12px 0 4px">Pari conditionnel</div>${cond.map(x => {
       const late = L && D.gt[d] && D.gt[d][x.o.g.nhl] && new Date(D.gt[d][x.o.g.nhl]) > L.at;
       return `<div class="small" style="margin:4px 0;line-height:1.5">Si <b>${esc(x.o.g.name)}</b> (${esc(x.o.g.nhl)}) est <b>confirmé avant ${L ? L.hm : 'le verrouillage'}</b>, prends-le : ${f1(x.fpIf)} FP attendus${sureBest ? ` contre ${f1(goalieEV(sureBest.g, d))} pour ${esc(sureBest.g.name.split(' ').slice(-1)[0])}` : ''}. Sinon, ${sureBest ? `prends <b>${esc(sureBest.g.name)}</b>` : 'ne fais rien'}.
