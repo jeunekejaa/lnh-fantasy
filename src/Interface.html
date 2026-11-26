@@ -659,7 +659,7 @@ function restWeek(p, days) {
   return days.reduce((t, d) => t + (p.grp === 'G' ? goalieEV(p, d) : playsNow(p, d) ? (p.model || 0) * oppMult(p, d) * avail(p, d) : 0), 0);
 }
 // all-in : les 8 joueurs qui rapporteront le moins d'ici dimanche, intouchables compris (une vedette dont l'équipe ne joue plus peut sauter)
-function allInDrops(r, days) { return r.slice().sort((a, b) => restWeek(a, days) - restWeek(b, days)).slice(0, 6); }
+function allInDrops(r, days) { return r.filter(p => !inIRslot(p)).sort((a, b) => restWeek(a, days) - restWeek(b, days)).slice(0, 6); }
 // variance des points d'un joueur d'ici dimanche, s'il est dans l'alignement « r »
 function restVar(p, r, days) {
   return days.reduce((t, d) => { if (!playsOn(p, d)) return t; const L = dayLineup(r, d);
@@ -808,7 +808,8 @@ function irReturns(m) {
   back.forEach(b => {
     // un autre blessé qui occupe une des 21 places peut aller à l'IR à sa place (aucun retrait)
     const swap = cur.find(p => p !== b && !inIRslot(p) && !toIR.has(p) && (p.status === 'OUT' || p.status === 'INJURY_RESERVE') && !(p.ret && p.ret <= soon));
-    if (swap) { toIR.add(swap); res.push({ b: b, irSwap: swap }); return; }
+    // il passe dans la case IR : dans le roster des plans, il est marqué ir = 1 (ni retrait possible, ni 2e proposition d'IR)
+    if (swap) { toIR.add(swap); res.push({ b: b, irSwap: swap }); cur = cur.map(q => q === swap ? Object.assign({}, q, { ir: 1 }) : q); return; }
     const base = planFp(cur, daysWk), nG = cur.filter(p => p.grp === 'G' && !OUT[p.status]).length;
     const opts = cur.filter(p => p !== b && !PROTECT[p.name] && !inIRslot(p) && !toIR.has(p) && !OUT[p.status] && !(p.grp === 'G' && nG <= D.config.lineup.G)).map(w => {
       const r = cur.filter(q => q !== w), wk = base - planFp(r, daysWk);
@@ -838,11 +839,13 @@ function irCard(ir) {
 // un blessé (ESPN « O » ou IR) qui occupe une de tes 21 places alors qu'une case IR est libre :
 // le mettre à l'IR libère une place → un ajout sans retrait (le meilleur selon « Meilleurs moves »)
 const IR_SLOTS = 2;
-function irStash(m, left) {
-  const R = m.players, used = R.filter(inIRslot).length;
+function irStash(m, left, IRR) {
+  // le joueur qui revient libère sa case IR (un blessé envoyé à l'IR à sa place est déjà marqué ir = 1 par irReturns)
+  const back = new Set(((IRR && IRR.list) || []).map(x => x.b));
+  const R = m.players, used = R.filter(p => inIRslot(p) && !back.has(p)).length;
   if (used >= IR_SLOTS) return null;
   const hurt = R.filter(p => !inIRslot(p) && (p.status === 'OUT' || p.status === 'INJURY_RESERVE')).slice(0, IR_SLOTS - used);
-  const dtd = R.filter(p => !inIRslot(p) && p.status === 'DAY_TO_DAY');
+  const dtd = R.filter(p => !inIRslot(p) && !back.has(p) && p.status === 'DAY_TO_DAY');
   if (!hurt.length && !dtd.length) return null;
   const daysWk = horizonDays(D.weekEnd), wks = weeksAfter(m), ltv = ltValue(R, futDays(ymdAdd(D.weekEnd, 1), 28));
   let cur = R.filter(p => hurt.indexOf(p) < 0); const res = [], taken = {};
@@ -980,7 +983,7 @@ function qfCore() {
   // acquisitions de l'équipe affichée : les tiennes viennent d'ESPN ; pour une autre équipe (point de vue), on les compte dans ses transactions de la semaine
   const lim = (D.espn && D.espn.acqLimit) || 7, used = acqUsedBy(m.team);
   const acq = { acqUsed: used, acqLimit: lim };
-  const STA = irStash(m, acqLeft(acq, daysWk));
+  const STA = irStash(m, acqLeft(acq, daysWk), IRR);
   if (STA) STA.list.forEach(x => { if (x.add) { m.players = m.players.filter(p => p !== x.h).concat([x.add.p]); acq.acqUsed++; } });
   const left = acqLeft(acq, daysWk);
   const plans = left === 0 ? [] : qfFixMix(qfPlans(m, left, H), H), star = left === 0 ? null : qfStar(plans, H);
@@ -3003,13 +3006,14 @@ function slotsByDay(players, days) {
 }
 function dropCandidates(m, forced) {
   if (forced) return [forced];
-  const sk = m.players.filter(p => p.grp !== 'G' && !PROTECT[p.name] && p.status !== 'INJURY_RESERVE')
+  // un joueur dans une case IR n'occupe aucune des 21 places : le retirer ne libère pas de place pour un ajout
+  const sk = m.players.filter(p => p.grp !== 'G' && !PROTECT[p.name] && !inIRslot(p))
     .sort((a, b) => (a.model || 0) - (b.model || 0)).slice(0, 6);
   return sk.concat(extraGoalies(m.players));
 }
 // gardiens « en trop » : au-delà des places de gardien, les moins utiles (projection × part des départs) peuvent être retirés
 function extraGoalies(players) {
-  const G = players.filter(p => p.grp === 'G' && !OUT[p.status]).sort((a, b) => (b.model || 0) * (b.share || 0) - (a.model || 0) * (a.share || 0));
+  const G = players.filter(p => p.grp === 'G' && !OUT[p.status] && !inIRslot(p)).sort((a, b) => (b.model || 0) * (b.share || 0) - (a.model || 0) * (a.share || 0));
   return G.slice(D.config.lineup.G).filter(p => !PROTECT[p.name]);
 }
 // gardiens libres utiles : partants probables (≥ 40 % des départs), triés par FP attendus par match de leur équipe

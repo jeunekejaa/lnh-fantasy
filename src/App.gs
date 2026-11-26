@@ -242,6 +242,7 @@ function gafStats_(ss) {
     const row = v[r], name = row[I.name];
     if (!name) continue;
     const gp = +row[I.gp] || 0;
+    if (gp <= 0) continue;   // aucun match projeté = pas de projection (sinon une base de 0 partout tirait sa projection vers 0)
     const per = k => (I[k] >= 0 && gp ? (+row[I[k]] || 0) / gp : 0);
     out[norm_(name)] = { pos: String(row[I.pos] || ''), fpg: +row[I.fpg] || 0, gp: gp,
       g: per('g'), a: per('a'), ppp: per('ppp'), shp: per('shp'), sog: per('sog'), hit: per('hit'), blk: per('blk'),
@@ -257,7 +258,9 @@ const DEPTH_PRIOR = {
   D: { g: 0.03, a: 0.15, ppp: 0.03, shp: 0, sog: 1.2, hit: 1.2, blk: 1.3 }
 };
 const grp_ = pos => { const p = String(pos || ''); return p === 'G' ? 'G' : (p.split(/[,\/ ]/).indexOf('D') >= 0 ? 'D' : 'F'); };
-const fp_ = s => { const S = CONFIG.SCORING; return S.G * s.g + S.A * s.a + S.PPP * s.ppp + S.SHP * s.shp + S.SOG * s.sog + S.HIT * s.hit + S.BLK * s.blk; };
+// boni de la ligue : +1 par tour du chapeau. Attendu par match = P(3 buts ou plus) si ses buts suivent une loi de Poisson de moyenne g
+const hat_ = g => g > 0 ? 1 - Math.exp(-g) * (1 + g + g * g / 2) : 0;
+const fp_ = s => { const S = CONFIG.SCORING; return S.G * s.g + S.A * s.a + S.PPP * s.ppp + S.SHP * s.shp + S.SOG * s.sog + S.HIT * s.hit + S.BLK * s.blk + (S.HAT || 0) * hat_(s.g); };
 const blend_ = (prior, obs, n, k) => (k * prior + n * obs) / (k + n);
 // Idée 7 · part des matchs restants qu'il jouera (labo 10 saisons, joueurs de 15 min et plus) : base selon sa saison passée
 // (0,70 + 0,12 × part des matchs joués), ramenée vers sa part de cette saison avec k = 20 matchs. L'ancienne formule surestimait
@@ -405,8 +408,7 @@ function modelSkater_(p, prior, mp, pos, pj, lg, gafP) {
   return {
     model: fp_(proj), deserved: deserved, luck: n && hasMp ? actual - deserved : null,
     toi: hasMp && mp.gp ? mp.toi / mp.gp / 60 : null, pptoi: hasMp && mp.gp ? mp.pptoi / mp.gp / 60 : null, role: roleF != null ? Math.round(roleF * 100) / 100 : null, ml: mlF, rec: rec != null ? Math.round(rec * 1000) / 1000 : null,
-    // part des matchs restants qu'il jouera (labo 10 saisons, bons réguliers) : 0,815 + 0,1 × sa part de matchs joués les saisons passées
-    // (un joueur durable ≈ 91-92 %, un joueur souvent blessé ≈ 88 % ; sans historique 88 %) — au lieu de 94 % pour tout le monde
+    // part des matchs restants qu'il jouera : voir availFor_ (0,70 + 0,12 × sa part de matchs joués la saison passée, ramenée vers cette saison)
     avail: availFor_(p, pj),
     ixg: hasMp && mp.gp ? mp.ixg / mp.gp : null, ppRole: ppRole, rates: proj, trend: cls, inj: inj || undefined, lq: lq || 0
   };
@@ -760,7 +762,10 @@ function buildAppSnapshot_(ss, teams, players, index, aliases) {
       rostered[keyOf(x.name)] = true;
       const p = findPlayer_(x.name, x.nhl, x.pos, index, aliases);
       const q = enrich(x.name, x.nhl, x.pos, x.status, p);
-      if (ESPN_SLOT[norm_(x.name)] === 8) q.ir = 1;   // dans une case de la réserve des blessés (ne compte pas dans les 21 places)
+      // case ESPN connue : 1 = case de la réserve des blessés (ne compte pas dans les 21 places), 0 = une des 21 places
+      // (un joueur au statut IR peut occuper une des 21 places : sans ce 0, l'app le croyait dans une case IR)
+      const sl = ESPN_SLOT[norm_(x.name)];
+      if (sl === 8) q.ir = 1; else if (sl != null) q.ir = 0;
       return q;
     });
     const e = st ? st.byId[sheetToId[t.team]] : null;
@@ -1225,7 +1230,17 @@ function oppAdjust_() {
 }
 // Présences sur la glace (feuilles de présences LNH, après chaque match) : qui est sur la 1re vague d'AN, avec qui il joue à 5 c. 5.
 // 6 derniers matchs de chaque équipe (3 récents vs 3 d'avant → promotions et changements de duo). Résumés gardés dans « APP Glace ».
-const ICE = { GAMES_PER_TEAM: 6, MAX_NEW: 40, SHEET: 'APP Glace' };
+const ICE = { GAMES_PER_TEAM: 6, MAX_NEW: 40, SHEET: 'APP Glace', TRIES: 6 };
+// Présences complètes ? Par équipe, la somme des secondes de ses patineurs ≈ 4,9 × la durée du match (5 patineurs, moins les
+// infériorités, plus le filet désert). Une feuille de présences à laquelle il manque une période tombe à ≈ 3,3 : seuil 4,5.
+// (Avant ce contrôle, des matchs lus trop tôt restaient en mémoire incomplets : temps de jeu récent sous-estimé → « joue blessé »
+// à tort, compagnons de trio et matchs manqués faussés.)
+function iceOk_(G) {
+  const T = G && G.teams, ks = T ? Object.keys(T) : [];
+  if (ks.length !== 2) return false;
+  const len = Math.max(3600, +G.len || 0);
+  return ks.every(t => Object.keys(T[t].p || {}).reduce((s, pid) => s + (+T[t].p[pid][0] || 0), 0) >= 4.5 * len);
+}
 // Nombre de matchs consécutifs (les plus récents) de son équipe actuelle qu'un joueur a manqués, d'après les présences sur la glace
 let ABS_IDX = null;
 function missedGames_(pid, team) {
@@ -1295,7 +1310,9 @@ function iceRoles_() {
   Object.keys(byTeam).forEach(t => byTeam[t].sort((a, b) => b - a).forEach(id => { want[id] = true; }));   // toute la saison (compagnons de trio)
   const sh = hiddenSheet_(ss, ICE.SHEET), store = {};
   if (sh.getLastRow()) sh.getRange(1, 1, sh.getLastRow(), 2).getValues().forEach(r => { if (r[0]) { try { store[+r[0]] = JSON.parse(r[1]); } catch (e) {} } });
-  const todo = Object.keys(want).map(Number).filter(id => !store[id]).sort((a, b) => b - a).slice(0, ICE.MAX_NEW);
+  // un match dont les présences sont incomplètes (feuille de la LNH pas encore finie au moment de la lecture) est relu,
+  // au plus ICE.TRIES fois ; en attendant, il n'entre dans aucun calcul
+  const todo = Object.keys(want).map(Number).filter(id => !store[id] || (!iceOk_(store[id]) && (store[id].tries || 0) < ICE.TRIES)).sort((a, b) => b - a).slice(0, ICE.MAX_NEW);
   for (let k = 0; k < todo.length; k += 10) {
     const batch = todo.slice(k, k + 10), urls = [];
     batch.forEach(id => { urls.push(`https://api.nhle.com/stats/rest/en/shiftcharts?cayenneExp=gameId=${id}`, `${WEB}/gamecenter/${id}/play-by-play`); });
@@ -1303,21 +1320,23 @@ function iceRoles_() {
     batch.forEach((id, i) => {
       const a = res[2 * i], b = res[2 * i + 1];
       if (a.getResponseCode() !== 200 || b.getResponseCode() !== 200) return;
-      try { store[id] = iceGame_(JSON.parse(a.getContentText()).data || [], JSON.parse(b.getContentText())); } catch (e) { /* match illisible : on réessaiera */ }
+      try { const old = store[id], G = iceGame_(JSON.parse(a.getContentText()).data || [], JSON.parse(b.getContentText()));
+        if (!iceOk_(G)) G.tries = ((old && old.tries) || 0) + 1;
+        store[id] = G; } catch (e) { /* match illisible : on réessaiera */ }
     });
   }
   // on ne garde que les matchs voulus
   const keep = Object.keys(want).filter(id => store[id]);
   sh.clearContents();
   if (keep.length) sh.getRange(1, 1, keep.length, 2).setValues(keep.map(id => [+id, JSON.stringify(store[id])]));
-  ICE_STORE = {}; keep.forEach(id => { ICE_STORE[id] = store[id]; });
+  ICE_STORE = {}; keep.forEach(id => { if (iceOk_(store[id])) ICE_STORE[id] = store[id]; });
   // par équipe : 3 derniers matchs vs 3 d'avant
   const out = {}, names = {}, goalie = {};
   // matchs déjà gardés avant le correctif : on écarte les gardiens (positions du cache LNH de la saison)
   const isD = {};
   try { const cm = readCache_(ss); Object.keys(cm).forEach(id => { if (cm[id].pos === 'G') goalie[id] = true; if (cm[id].pos === 'D') isD[id] = true; }); } catch (e) {}
   Object.keys(byTeam).forEach(t => {
-    const ids = byTeam[t].sort((a, b) => b - a).slice(0, ICE.GAMES_PER_TEAM).filter(id => store[id]);
+    const ids = byTeam[t].sort((a, b) => b - a).filter(id => ICE_STORE[id]).slice(0, ICE.GAMES_PER_TEAM);
     if (ids.length < 3) return;
     const agg = list => {
       const pl = {}; let teamPP = 0;
@@ -1349,8 +1368,8 @@ function iceRoles_() {
   Object.keys(out).forEach(pid => { out[pid].mates = out[pid].mates.map(m => names[m] || m); if (out[pid].matesPrev) out[pid].matesPrev = out[pid].matesPrev.map(m => names[m] || m); });
   // Temps de jeu des 30 derniers jours (idée 8 : niveau qui évolue) : pid → [minutes par match, matchs]
   const lim = ymd_(new Date(Date.now() - 30 * 86400000)), l30 = {};
-  games.forEach(g => { if (String(g.date) <= lim || !store[+g.id]) return;
-    const T = store[+g.id].teams || {};
+  games.forEach(g => { if (String(g.date) <= lim || !ICE_STORE[+g.id]) return;
+    const T = ICE_STORE[+g.id].teams || {};
     Object.keys(T).forEach(t => Object.keys(T[t].p || {}).forEach(pid => { if (goalie[pid]) return; const o = l30[pid] || (l30[pid] = [0, 0]); o[0] += T[t].p[pid][0]; o[1]++; })); });
   L30TOI = {}; Object.keys(l30).forEach(pid => { L30TOI[pid] = [l30[pid][0] / l30[pid][1] / 60, l30[pid][1]]; });
   return out;
@@ -1392,6 +1411,7 @@ function iceGame_(shifts, pbp) {
     });
     out.teams[tm] = { pp: teamPP, p: pl };  // clé = id d'équipe LNH (comme « LNH Parties »)
   });
+  out.len = plays.length ? Math.max(3600, plays[plays.length - 1].t) : 3600;   // durée du match (prolongation comprise), pour iceOk_
   return out;
 }
 function round_(x) { return typeof x === 'number' && isFinite(x) ? Math.round(x * 100) / 100 : null; }
