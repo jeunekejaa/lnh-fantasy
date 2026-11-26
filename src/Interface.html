@@ -826,7 +826,7 @@ function irReturns(m) {
 function irCard(ir) {
   if (!ir || !ir.list.length) return '';
   const ln = p => esc(p.name.split(' ').slice(-1)[0]);
-  const when = b => !OUT[b.status] ? 'il est rétabli' : b.ret && b.ret <= todayStr() ? 'retour prévu aujourd’hui, pas encore confirmé par ESPN' : 'retour prévu ' + dLabel(b.ret);
+  const when = b => b.status === 'DAY_TO_DAY' ? 'il est passé à « incertain » chez ESPN : il n’est normalement plus admissible à l’IR' : !OUT[b.status] ? 'il est rétabli' : b.ret && b.ret <= todayStr() ? 'retour prévu aujourd’hui, pas encore confirmé par ESPN' : 'retour prévu ' + dLabel(b.ret);
   const why = o => `${o.n ? `dans ton alignement ${o.n} fois d’ici dimanche` : 'n’entre pas dans ton alignement d’ici dimanche'} · ${f2(o.w.model)} FP par match${o.wk > 0.05 ? ` · coûte ${f1(o.wk)} FP cette semaine` : ' · ne coûte rien cette semaine'}${o.cover && o.cover.length ? ` (${o.cover.map(c => dLabel(c.d).split(' ')[0].replace('.', '') + ', ' + esc(c.by.name.split(' ').slice(-1)[0]) + ' prendrait sa place').join(' ; ')})` : ''}`;
   return `<div class="card" style="border-color:var(--warn)"><h2>🩹 Retour de blessure</h2>
     ${ir.list.map(x => `<div style="margin:8px 0;line-height:1.5"><div><b>${pname(x.b)}</b> revient (${when(x.b)}). Il est dans ta réserve des blessés : pour l’aligner, il doit reprendre une de tes 21 places.</div>
@@ -970,22 +970,32 @@ function qfCard(x, i, P0) {
     <div class="small muted">${when}</div>
     <div class="small" style="margin-top:2px">Pourquoi : ${x.why}</div></div>`;
 }
-function vTodo() {
+// le calcul de « Que faire » (cartes blessés + plans + ★), partagé avec le bandeau de la page Semaine pour qu'ils disent la même chose
+var QF_CORE = null;
+function qfCore() {
+  const H = WK.h || 'best', key = [D.me, H, D.updated, UNT_LIVE ? JSON.stringify(UNT_LIVE) : ''].join('|');
+  if (QF_CORE && QF_CORE.D === D && QF_CORE.key === key) return QF_CORE;
   qfWhy.ltv = null;
-  const m0 = me(), IRR = irReturns(m0), m = Object.assign(Object.create(Object.getPrototypeOf(m0)), m0, { players: IRR ? IRR.roster : m0.players.slice() }), H = WK.h || 'best', daysWk = horizonDays(D.weekEnd);
+  const m0 = me(), IRR = irReturns(m0), m = Object.assign(Object.create(Object.getPrototypeOf(m0)), m0, { players: IRR ? IRR.roster : m0.players.slice() }), daysWk = horizonDays(D.weekEnd);
   // acquisitions de l'équipe affichée : les tiennes viennent d'ESPN ; pour une autre équipe (point de vue), on les compte dans ses transactions de la semaine
   const lim = (D.espn && D.espn.acqLimit) || 7, used = acqUsedBy(m.team);
-  const acq = { acqUsed: used, acqLimit: lim }, A = actDay();
+  const acq = { acqUsed: used, acqLimit: lim };
   const STA = irStash(m, acqLeft(acq, daysWk));
   if (STA) STA.list.forEach(x => { if (x.add) { m.players = m.players.filter(p => p !== x.h).concat([x.add.p]); acq.acqUsed++; } });
   const left = acqLeft(acq, daysWk);
+  const plans = left === 0 ? [] : qfFixMix(qfPlans(m, left, H), H), star = left === 0 ? null : qfStar(plans, H);
+  QF_CORE = { D: D, key: key, H: H, m: m, IRR: IRR, STA: STA, acq: acq, left: left, plans: plans, star: star };
+  return QF_CORE;
+}
+function vTodo() {
+  const C = qfCore(), m = C.m, IRR = C.IRR, STA = C.STA, acq = C.acq, left = C.left, H = C.H, A = actDay();
   const L0 = D.config.lineup, healthy = k => m.players.filter(p => p.grp === k && !OUT[p.status]).length;
   const holes = healthy('G') < L0.G ? `<div class="warnbox" style="margin:0 0 12px">⚠ Il te manque <b>${L0.G - healthy('G')} gardien${L0.G - healthy('G') > 1 ? 's' : ''}</b> en santé.</div>` : '';
   const povSel = `<div class="card" style="padding:10px 14px;${povOn() ? 'border-color:var(--opp)' : ''}"><label class="small muted" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Point de vue
     <select id="povsel" style="flex:1;min-width:180px">${D.teams.slice().sort((a, b) => (b.team === POV_REAL) - (a.team === POV_REAL)).map(t => `<option value="${esc(t.team)}" ${t.team === D.me ? 'selected' : ''}>${t.team === POV_REAL ? 'Toi (' + esc(t.team) + ')' : esc(t.team)}</option>`).join('')}</select></label>
     ${povOn() ? `<div class="small" style="margin-top:6px;color:var(--opp)">Tu vois « Que faire ? » comme si tu étais <b>${esc(D.me)}</b>.</div>` : ''}</div>`;
   if (left === 0) return povSel + holes + irCard(IRR) + stashCard(STA) + `<div class="card"><h2>Que faire ?</h2><div class="muted">Plus d’acquisitions cette semaine. Regarde <b>Plus › Échanges</b> pour améliorer ton équipe.</div></div>`;
-  const plans = qfFixMix(qfPlans(m, left, H), H), star = qfStar(plans, H), sel = QF.plan && plans.find(x => x.key === QF.plan && x.n) ? QF.plan : star;
+  const plans = C.plans, star = C.star, sel = QF.plan && plans.find(x => x.key === QF.plan && x.n) ? QF.plan : star;
   const pl = plans.find(x => x.key === sel), P = duelPWith(m), P0 = P ? P(0) : null;
   const hz = `<div class="seg seg4" id="wkhz" role="group" aria-label="Objectif">${QF_MODES.map(([h, l]) => `<button class="${H === h ? 'on' : ''}" data-h="${h}">${l}</button>`).join('')}</div>
     <div class="small muted" style="margin:8px 0 12px">${(QF_MODES.find(x => x[0] === H) || QF_MODES[0])[2]} L’étoile ★ marque le plan recommandé pour cet objectif.</div>
@@ -2646,12 +2656,17 @@ function vWeek() {
   const A = duelSide(m), B = duelSide(o), d = duelOdds(m), lead = (r.live || 0) - (r.oppLive || 0);
   const pw = d ? Math.round(d.p * 100) : null;
   let planTxt = '';
-  if (isMe) try { const acq = D.espn || {}, left = acqLeft(acq, horizonDays(D.weekEnd));
-    const pl = left === 0 ? null : streamPlan(m, horizonDays(D.weekEnd), left == null ? 2 : Math.min(left, 7));
-    if (pl && pl.steps.length) planTxt = `<button class="card hero" data-go="todo" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;color:var(--ink);font:inherit;cursor:pointer;padding:12px 14px">
+  if (isMe && !povOn()) try {
+    // même calcul que « Que faire » : le plan ★ de l'objectif choisi, plus les gestes de la réserve des blessés
+    const C = qfCore(), pl = C.star ? C.plans.find(x => x.key === C.star) : null, ln = n => esc(n.split(' ').slice(-1)[0]);
+    const ir = [].concat(C.IRR ? C.IRR.list.map(x => x.irSwap ? ln(x.irSwap.name) + ' à l’IR' : x.drop ? 'retirer ' + ln(x.drop.w.name) + ' (retour de ' + ln(x.b.name) + ')' : '') : [],
+      C.STA ? C.STA.list.map(x => ln(x.h.name) + ' à l’IR' + (x.add ? ' → ' + ln(x.add.p.name) : '')) : []).filter(Boolean);
+    const steps = pl && pl.n ? pl.steps : [], n = ir.length + steps.length;
+    if (n) planTxt = `<button class="card hero" data-go="todo" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;color:var(--ink);font:inherit;cursor:pointer;padding:12px 14px">
       <svg viewBox="0 0 24 24" aria-hidden="true" style="width:20px;height:20px;flex:none;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>
-      <span style="flex:1"><b>${pl.steps.length} ajout${pl.steps.length > 1 ? 's' : ''} possible${pl.steps.length > 1 ? 's' : ''} cette semaine : <span class="up">+${f1(pl.gain)} FP</span></b><span class="small muted" style="display:block">${pl.steps.map(x => esc(x.w.name.split(' ').slice(-1)[0]) + ' → ' + esc(x.p.name.split(' ').slice(-1)[0])).join(' · ')} · voir « Que faire ? »</span></span>
-      <span class="muted" aria-hidden="true">›</span></button>`; } catch (e) {}
+      <span style="flex:1"><b>${n} geste${n > 1 ? 's' : ''} recommandé${n > 1 ? 's' : ''} cette semaine${steps.length ? ` : <span class="up">${sgn(pl.week)} FP</span>` : ''}</b><span class="small muted" style="display:block">${ir.concat(steps.map(x => ln(x.w.name) + ' → ' + ln(x.p.name))).join(' · ')} · ★ ${esc(pl ? pl.lab : '')} · voir « Que faire ? »</span></span>
+      <span class="muted" aria-hidden="true">›</span></button>`;
+  } catch (e) { console.warn(e); }
   const colA = isMe ? 'var(--accent)' : 'var(--ink)';
   const head = `<div class="card" style="padding:16px">
       ${isMe ? '' : `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><span class="small muted">Duel d’une autre équipe</span><button class="btn" data-duel="${esc(D.me)}">Revenir à mon duel</button></div>`}
@@ -3225,6 +3240,7 @@ function teamReport(m) {
 
 // ---------- « Mon info » : corrections manuelles (gardées sur le serveur) ----------
 function applyOvr() {
+  QF_CORE = null;
   refreshProtect();
   const O = D.ovr || {}, t = todayStr();
   const all = []; D.teams.forEach(tm => tm.players.forEach(p => all.push(p))); D.waivers.forEach(p => all.push(p));
