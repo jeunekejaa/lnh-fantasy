@@ -339,7 +339,7 @@ function render() {
   const warn = (CODEUP && CODEUP.updated ? `<div class="warnbox" style="border-color:var(--good)">⬆️ Nouvelle version de l’app installée (${esc(CODEUP.bundle)}). ${CODEUP.url ? `<a href="${esc(CODEUP.url)}" target="_top"><b>Touche ici pour la recharger</b></a>` : '<b>Rafraîchis la page</b>'} pour voir les changements.</div>` : '')
     + (CODEUP && CODEUP.err ? `<div class="warnbox">⚠ Mise à jour du code impossible : ${esc(CODEUP.err)}</div>` : '')
     + (D.warn && D.warn.length ? `<div class="warnbox">⚠ ${D.warn.map(esc).join(' · ')}</div>` : '')
-    + (staleDay() ? `<div class="warnbox">⚠ Ces données datent du <b>${esc(dShort(todayStr()))}</b> : « ce soir », les matchs restants et les partants sont ceux de cette journée-là. Appuie sur <b>Mettre à jour</b>.</div>` : '');
+    + (staleDay() ? `<div class="warnbox">⚠ Ces données datent du <b>${esc(dShort(dataDay()))}</b>  : alignements, matchs commencés et partants peuvent avoir changé depuis. Appuie sur <b>Mettre à jour</b>.</div>` : '');
   navState();
   const g = groupOf(TAB), segs = GROUPS[g].length > 1 ? `<div class="seg mob" role="group" aria-label="${GLABEL[g]}">${GROUPS[g].map(t => `<button data-sub="${t}" class="${t === TAB ? 'on' : ''}">${TLABEL[t]}</button>`).join('')}</div>` : '';
   $('#view').innerHTML = segs + warn + ({ board: vBoard, team: vTeam, week: vWeek, todo: () => withPov(vTodo), waivers: vWaivers, search: vSearch, pred: vPred, strat: vStrat, trend: vTrend, tx: vTx, log: vLog, trade: vTrade, about: vAbout }[TAB])();
@@ -1847,10 +1847,18 @@ let PSV = { mode: 'match', ws: null };   // ws = lundi de la semaine choisie (pa
 const weekList = () => D.weeks && D.weeks.length ? D.weeks
   : [{ s: ymdAdd(D.weekEnd, -6), e: D.weekEnd || '', fb: 'cur' }, { s: ymdAdd(D.weekEnd, 1), e: ymdAdd(D.weekEnd, 7), fb: 'next' }];
 function ymdAdd(d, k) { if (!d) return ''; const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + k); return x.toISOString().slice(0, 10); }
-const todayStr = () => D.fday || (D.updated || '').slice(0, 10);   // jour fantasy (ESPN) : après minuit, encore « hier » jusqu'à la bascule d'ESPN
 // vraie date du jour (heure de l'Est) : les données d'hier donnent un « ce soir » périmé
 const realToday = () => { try { return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Toronto' }); } catch (e) { return ''; } };
-const staleDay = () => { const r = realToday(), u = D && D.updated ? D.updated.slice(0, 10) : ''; return !!(r && u && u < r); };   // mise à jour faite un autre jour que celui de l'horloge
+const etHour = () => { try { return +new Date().toLocaleString('en-US', { timeZone: 'America/Toronto', hour: '2-digit', hour12: false }) % 24; } catch (e) { return 12; } };
+const dataDay = () => D.fday || (D.updated || '').slice(0, 10);   // jour fantasy (ESPN) au moment de la mise à jour
+// jour fantasy (ESPN) : après minuit, encore « hier » jusqu'à la bascule d'ESPN. Mais des données prises à 0 h 39 (encore
+// « vendredi » chez ESPN) ne doivent pas faire croire, à 13 h samedi, qu'on est encore vendredi : passé 6 h, on prend la vraie date.
+// (appelé des millions de fois dans les plans : l'horloge est relue au plus une fois par 30 s)
+let CLK = { t: -1e15, r: '', h: 12 };
+const clock = () => { const n = Date.now(); if (n - CLK.t > 30000) CLK = { t: n, r: realToday(), h: etHour() }; return CLK; };
+const todayStr = () => { const f = dataDay(), c = clock(); return c.r && f && c.r > f && c.h >= 6 ? c.r : f; };
+// données d'un autre jour (fantasy) que celui de l'horloge → avertir de mettre à jour
+const staleDay = () => { const f = dataDay(), c = clock(); return !!(c.r && f && f < c.r && c.h >= 6); };
 const wkKind = w => (w.e && w.e < todayStr() ? 'past' : w.s && w.s <= todayStr() ? 'cur' : 'fut');
 const curWeekIdx = () => { const W = weekList(), i = W.findIndex(w => wkKind(w) === 'cur'); return i < 0 ? 0 : i; };
 const wkIdx = () => { const i = PSV.ws ? weekList().findIndex(w => w.s === PSV.ws) : -1; return i >= 0 ? i : curWeekIdx(); };
